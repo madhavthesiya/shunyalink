@@ -1,6 +1,6 @@
 "use client";
 
-import { Link2, Zap, Database, Server, Heart } from "lucide-react";
+import { Link2, Zap, Database, Server, Heart, Linkedin, Mail } from "lucide-react";
 
 export function Footer() {
   return (
@@ -76,10 +76,28 @@ export function Footer() {
           <p className="text-sm text-muted-foreground">
             {'© 2026 ShunyaLink. A full-stack system design project.'}
           </p>
-          <div className="flex items-center gap-1 text-sm text-muted-foreground">
-            Built with
-            <Heart className="w-4 h-4 mx-1 text-destructive fill-destructive" />
-            for learning
+          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            <span className="flex items-center gap-1">
+              Built with
+              <Heart className="w-4 h-4 mx-1 text-destructive fill-destructive" />
+              by <span className="font-semibold text-foreground ml-1">Madhav Thesiya</span>
+            </span>
+            <a
+              href="https://www.linkedin.com/in/madhavthesiya/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-primary transition-colors"
+              title="LinkedIn"
+            >
+              <Linkedin className="w-4 h-4" />
+            </a>
+            <a
+              href="mailto:madhavthesiya07@gmail.com"
+              className="hover:text-primary transition-colors"
+              title="Email"
+            >
+              <Mail className="w-4 h-4" />
+            </a>
           </div>
         </div>
       </div>

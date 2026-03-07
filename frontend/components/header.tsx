@@ -25,7 +25,7 @@ export function Header() {
             asChild
           >
             <a
-              href="https://github.com"
+              href="https://github.com/madhavthesiya/shunyalink"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2"
