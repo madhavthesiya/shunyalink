@@ -1,0 +1,4 @@
+POST http://localhost:8080/api/v1/url/shorten
+Content-Type: text/plain
+
+https://codeforces.com

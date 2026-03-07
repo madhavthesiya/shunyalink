@@ -1,0 +1,17 @@
+# Secrets
+.env
+.env.local
+.env*.local
+
+# Backend
+backend/target/
+backend/.idea/
+
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# OS
+.DS_Store
+Thumbs.db
