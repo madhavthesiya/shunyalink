@@ -152,16 +152,6 @@ Swagger → `http://localhost:8080/swagger-ui.html`
 
 ---
 
-## Roadmap
-
-| Version | Planned Features |
-|---------|-----------------|
-| v1 *(current)* | Core shortening · Redis cache · Analytics · React UI |
-| v2 | JWT Auth · User accounts · Personal link dashboard |
-| v3 | Analytics dashboard · Clicks per day · Country · Device |
-| v4 | Custom domains · Bulk shortening · Link previews |
-| v5 | Free/Pro plans · Stripe payments |
-
 ---
 
-**Made by Madhav** — *If this was useful, drop a ⭐*
+**Made by Madhav Thesiya** — *If this was useful, drop a ⭐*
