@@ -9,7 +9,7 @@ on:
   workflow_dispatch: # allows manual trigger from GitHub UI
 
 env:
-  AZURE_WEBAPP_NAME: shunyalink-backend # ← Change this to your Azure Web App name
+  AZURE_WEBAPP_NAME: shunyalink-backend-ghfnd8f0hsbjhre3.centralindia-01 # ← Match exact Azure portal name
   DOCKER_IMAGE_NAME: shunyalink-backend
 
 jobs:
