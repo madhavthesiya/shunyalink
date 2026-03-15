@@ -1,0 +1,68 @@
+name: Deploy Backend to Azure App Service
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+  workflow_dispatch: # allows manual trigger from GitHub UI
+
+env:
+  AZURE_WEBAPP_NAME: shunyalink-backend # ← Change this to your Azure Web App name
+  DOCKER_IMAGE_NAME: shunyalink-backend
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout code ─────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Set up Java 21 ───────────────────────────────────────
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+          cache: "maven"
+
+      # ── 3. Build JAR with Maven ─────────────────────────────────
+      - name: Build with Maven
+        working-directory: ./backend
+        run: ./mvnw package -DskipTests -B
+
+      # ── 4. Login to Azure ───────────────────────────────────────
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # ── 5. Build & push Docker image to Azure Container Registry
+      - name: Build and push Docker image
+        working-directory: ./backend
+        run: |
+          docker build -f Dockerfile.backend -t ${{ env.AZURE_WEBAPP_NAME }}:${{ github.sha }} .
+          docker tag ${{ env.AZURE_WEBAPP_NAME }}:${{ github.sha }} ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:latest
+          docker tag ${{ env.AZURE_WEBAPP_NAME }}:${{ github.sha }} ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Login to Azure Container Registry
+        run: |
+          echo ${{ secrets.ACR_PASSWORD }} | docker login ${{ secrets.ACR_LOGIN_SERVER }} -u ${{ secrets.ACR_USERNAME }} --password-stdin
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:latest
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}
+
+      # ── 6. Deploy to Azure App Service ──────────────────────────
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          images: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}
+
+      # ── 7. Logout ───────────────────────────────────────────────
+      - name: Azure logout
+        run: az logout
