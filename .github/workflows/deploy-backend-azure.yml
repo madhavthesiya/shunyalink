@@ -32,7 +32,9 @@ jobs:
       # ── 3. Build JAR with Maven ─────────────────────────────────
       - name: Build with Maven
         working-directory: ./backend
-        run: ./mvnw package -DskipTests -B
+        run: |
+          chmod +x mvnw
+          ./mvnw package -DskipTests -B
 
       # ── 4. Login to Azure ───────────────────────────────────────
       - name: Login to Azure
