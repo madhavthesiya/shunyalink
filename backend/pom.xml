@@ -12,7 +12,7 @@
 		<relativePath/>
 	</parent>
 
-	<groupId>com.example</groupId>
+	<groupId>com.shunyalink</groupId>
 	<artifactId>url-shortener</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name>url-shortener</name>
