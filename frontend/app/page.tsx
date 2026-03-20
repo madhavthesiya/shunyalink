@@ -182,6 +182,7 @@ export default function Home() {
           />
           <QRModal
             shortUrl={result.shortUrl}
+            shortId={result.shortId}
             isOpen={showQR}
             onClose={() => setShowQR(false)}
           />
