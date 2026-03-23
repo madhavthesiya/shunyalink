@@ -1,11 +1,14 @@
 package com.shunyalink.url;
+import com.shunyalink.exception.BadRequestException;
 import com.shunyalink.rate.RateLimiterService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
-import jakarta.servlet.http.HttpServletResponse;
+
+import java.util.List;
 
 
 @RestController
@@ -26,6 +29,15 @@ public class UrlController {
         return request.getRemoteAddr(); // fallback for local dev
     }
 
+    // Helper to get userId from JWT (returns null for anonymous users)
+    private Long getCurrentUserId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof Long) {
+            return (Long) auth.getPrincipal();
+        }
+        return null;
+    }
+
     public UrlController(UrlService urlService, RateLimiterService rateLimiterService) {
 
         this.urlService = urlService;
@@ -41,7 +53,8 @@ public class UrlController {
         // rate limit 10 request per 60 seconds
         rateLimiterService.checkLimit(key,10,60);
 
-        UrlEntity entity = urlService.shortenUrl(request.getLongUrl(),request.getCustomAlias(), request.getExpiryDays());
+        Long userId = getCurrentUserId();
+        UrlEntity entity = urlService.shortenUrl(request.getLongUrl(),request.getCustomAlias(), request.getExpiryDays(), userId);
         return new ShortenResponse(
                 entity.getShortId(),
                 baseUrl + "/" + entity.getShortId(),
@@ -54,5 +67,21 @@ public class UrlController {
     public UrlStatsResponse getStats(@PathVariable String shortId){
 
         return urlService.getStats(shortId);
+    }
+
+    @GetMapping("/my-links")
+    public List<UrlStatsResponse> getMyLinks() {
+        Long userId = getCurrentUserId();
+        if (userId == null) throw new BadRequestException("Authentication required");
+        return urlService.getMyLinks(userId).stream()
+                .map(e -> new UrlStatsResponse(e.getShortId(), e.getLongUrl(), e.getClickCount(), e.getLastAccessedTime(), e.getCreatedAt()))
+                .toList();
+    }
+
+    @DeleteMapping("/{shortId}")
+    public void deleteUrl(@PathVariable String shortId) {
+        Long userId = getCurrentUserId();
+        if (userId == null) throw new BadRequestException("Authentication required");
+        urlService.deleteUrl(shortId, userId);
     }
 }

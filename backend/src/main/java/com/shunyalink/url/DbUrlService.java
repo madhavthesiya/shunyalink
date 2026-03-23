@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 
 @Service
@@ -50,7 +51,7 @@ public class DbUrlService implements UrlService {
 
     @Override
     @Transactional
-    public UrlEntity shortenUrl(String longUrl,String customAlias,Integer expiryDays) {
+    public UrlEntity shortenUrl(String longUrl,String customAlias,Integer expiryDays,Long userId) {
 
         if (customAlias != null && !customAlias.isBlank()) {
             String normalized = customAlias.toLowerCase().trim();
@@ -73,6 +74,7 @@ public class DbUrlService implements UrlService {
             entity.setLongUrl(longUrl);
             entity.setShortId(normalized);
             entity.setCustom(true);
+            entity.setUserId(userId);
             if (expiryDays != null) {
                 entity.setExpiryTime(LocalDateTime.now().plusDays(expiryDays));
             }
@@ -104,6 +106,7 @@ public class DbUrlService implements UrlService {
         entity.setLongUrl(longUrl);
         entity.setShortId(shortId);
         entity.setCustom(false);
+        entity.setUserId(userId);
         if (expiryDays != null) {
             entity.setExpiryTime(LocalDateTime.now().plusDays(expiryDays));
         }
@@ -199,5 +202,19 @@ public class DbUrlService implements UrlService {
                 lastAccessed,
                 entity.getCreatedAt()
         );
+    }
+
+    @Override
+    public List<UrlEntity> getMyLinks(Long userId) {
+        return urlRepository.findByUserIdOrderByCreatedAtDesc(userId);
+    }
+
+    @Override
+    @Transactional
+    public void deleteUrl(String shortId, Long userId) {
+        UrlEntity entity = urlRepository.findByShortIdAndUserId(shortId, userId)
+                .orElseThrow(() -> new NotFoundException("URL not found or not owned by you"));
+        redisTemplate.delete("url:" + shortId);
+        urlRepository.delete(entity);
     }
 }

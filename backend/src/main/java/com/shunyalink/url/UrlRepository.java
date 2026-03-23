@@ -41,4 +41,9 @@ public interface UrlRepository extends JpaRepository<UrlEntity, Long> {
     AND u.expiryTime < CURRENT_TIMESTAMP
 """)
     int deleteExpiredUrls();
+
+    List<UrlEntity> findByUserIdOrderByCreatedAtDesc(Long userId);
+
+    Optional<UrlEntity> findByShortIdAndUserId(String shortId, Long userId);
+
 }

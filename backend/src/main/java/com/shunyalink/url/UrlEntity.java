@@ -33,6 +33,9 @@ public class UrlEntity {
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    @Column(name = "user_id")
+    private Long userId;
+
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();
@@ -75,5 +78,9 @@ public class UrlEntity {
     public void setExpiryTime(LocalDateTime expiryTime) { this.expiryTime = expiryTime; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
+
+    public Long getUserId() { return userId; }
+
+    public void setUserId(Long userId) { this.userId = userId; }
 
 }
