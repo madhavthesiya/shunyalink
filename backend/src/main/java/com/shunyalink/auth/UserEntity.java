@@ -14,11 +14,14 @@ public class UserEntity {
     @Column(unique = true, nullable = false)
     private String email;
 
-    @Column(nullable = false)
-    private String password;  // stored as BCrypt hash
+    @Column(nullable = true)
+    private String password;  // stored as BCrypt hash  // null for Google users
 
     @Column(nullable = false, length = 100)
     private String name;
+
+    @Column(nullable = false, length = 10)
+    private String authProvider = "LOCAL";  // LOCAL or GOOGLE
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -36,4 +39,7 @@ public class UserEntity {
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
     public LocalDateTime getCreatedAt() { return createdAt; }
+    public String getAuthProvider() { return authProvider; }
+    public void setAuthProvider(String authProvider) { this.authProvider = authProvider; }
+
 }

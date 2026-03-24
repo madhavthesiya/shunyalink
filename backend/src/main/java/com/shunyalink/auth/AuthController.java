@@ -31,6 +31,11 @@ public class AuthController {
         return authService.login(request);
     }
 
+    @PostMapping("/google")
+    public AuthResponse googleLogin(@Valid @RequestBody GoogleTokenRequest request){
+        return authService.googleLogin(request.getIdToken());
+    }
+
     private String getClientIp(HttpServletRequest request) {
         String forwarded = request.getHeader("X-Forwarded-For");
         if (forwarded != null && !forwarded.isBlank()) {
