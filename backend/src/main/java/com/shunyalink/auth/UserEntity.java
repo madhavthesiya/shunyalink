@@ -23,6 +23,9 @@ public class UserEntity {
     @Column(nullable = false, length = 10)
     private String authProvider = "LOCAL";  // LOCAL or GOOGLE
 
+    @Column(nullable = false)
+    private boolean emailVerified = false;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -41,5 +44,7 @@ public class UserEntity {
     public LocalDateTime getCreatedAt() { return createdAt; }
     public String getAuthProvider() { return authProvider; }
     public void setAuthProvider(String authProvider) { this.authProvider = authProvider; }
+    public boolean isEmailVerified() { return emailVerified; }
+    public void setEmailVerified(boolean emailVerified) { this.emailVerified = emailVerified; }
 
 }

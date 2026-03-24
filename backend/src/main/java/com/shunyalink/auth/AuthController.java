@@ -5,6 +5,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController {
@@ -34,6 +36,21 @@ public class AuthController {
     @PostMapping("/google")
     public AuthResponse googleLogin(@Valid @RequestBody GoogleTokenRequest request){
         return authService.googleLogin(request.getIdToken());
+    }
+
+    @GetMapping("/verify")
+    public String verifyEmail(@RequestParam String token) {
+        return authService.verifyEmail(token);
+    }
+
+    @PostMapping("/forgot-password")
+    public String forgotPassword(@RequestBody Map<String, String> request) {
+        return authService.requestPasswordReset(request.get("email"));
+    }
+
+    @PostMapping("/reset-password")
+    public String resetPassword(@RequestBody Map<String, String> request) {
+        return authService.resetPassword(request.get("token"), request.get("newPassword"));
     }
 
     private String getClientIp(HttpServletRequest request) {

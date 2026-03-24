@@ -19,14 +19,24 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final String googleClientId;
+    private final VerificationTokenRepository verificationTokenRepo;
+    private final PasswordResetTokenRepository passwordResetTokenRepo;
+    private final EmailService emailService;
 
     public AuthService(UserRepository userRepository,
                        PasswordEncoder passwordEncoder,
-                       JwtService jwtService,@Value("${app.google.client-id}") String googleClientId) {
+                       JwtService jwtService,
+                       @Value("${app.google.client-id}") String googleClientId,
+                       VerificationTokenRepository verificationTokenRepo,
+                       PasswordResetTokenRepository passwordResetTokenRepo,
+                       EmailService emailService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.googleClientId = googleClientId;
+        this.verificationTokenRepo = verificationTokenRepo;
+        this.passwordResetTokenRepo = passwordResetTokenRepo;
+        this.emailService = emailService;
     }
 
     public AuthResponse register(RegisterRequest request) {
@@ -41,6 +51,12 @@ public class AuthService {
         user.setPassword(passwordEncoder.encode(request.getPassword())); // BCrypt hash
         user.setName(request.getName());
         userRepository.save(user);
+
+        // Send verification email
+        VerificationToken verificationToken = new VerificationToken();
+        verificationToken.setUser(user);
+        verificationTokenRepo.save(verificationToken);
+        emailService.sendVerificationEmail(user.getEmail(), verificationToken.getToken());
 
         // Generate JWT and return
         String token = jwtService.generateToken(user.getId(), user.getEmail());
@@ -100,6 +116,58 @@ public class AuthService {
         } catch (Exception e) {
             throw new BadRequestException("Google authentication failed");
         }
+    }
+
+    public String verifyEmail(String token) {
+        VerificationToken vToken = verificationTokenRepo.findByToken(token)
+                .orElseThrow(() -> new BadRequestException("Invalid verification token"));
+
+        if (vToken.isExpired()) {
+            throw new BadRequestException("Verification token has expired");
+        }
+
+        UserEntity user = vToken.getUser();
+        user.setEmailVerified(true);
+        userRepository.save(user);
+
+        return "Email verified successfully!";
+    }
+
+    public String requestPasswordReset(String email) {
+        UserEntity user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new BadRequestException("No account found with that email"));
+
+        if ("GOOGLE".equals(user.getAuthProvider())) {
+            throw new BadRequestException("Google accounts cannot reset password. Use Google login.");
+        }
+
+        PasswordResetToken resetToken = new PasswordResetToken();
+        resetToken.setUser(user);
+        passwordResetTokenRepo.save(resetToken);
+        emailService.sendPasswordResetEmail(user.getEmail(), resetToken.getToken());
+
+        return "Password reset email sent!";
+    }
+
+    public String resetPassword(String token, String newPassword) {
+        PasswordResetToken resetToken = passwordResetTokenRepo.findByToken(token)
+                .orElseThrow(() -> new BadRequestException("Invalid reset token"));
+
+        if (resetToken.isExpired()) {
+            throw new BadRequestException("Reset token has expired");
+        }
+        if (resetToken.isUsed()) {
+            throw new BadRequestException("Reset token has already been used");
+        }
+
+        UserEntity user = resetToken.getUser();
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+
+        resetToken.setUsed(true);
+        passwordResetTokenRepo.save(resetToken);
+
+        return "Password reset successfully!";
     }
 
 }
