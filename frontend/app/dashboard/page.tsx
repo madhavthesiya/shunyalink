@@ -74,9 +74,16 @@ export default function DashboardPage() {
       const data = await response.json();
       if (response.ok) {
         setUrls(data);
-        setError(null);
+        // Only clear the error state on active page loads, not silent background polls.
+        // This prevents the 5-sec poller from erasing form errors like "403 Forbidden".
+        if (showLoading) {
+          setError(null);
+        }
       } else {
-        setError(data?.message || "Failed to load URLs");
+        // Only surface background polling errors if they persist, or just rely on active operations
+        if (showLoading) {
+          setError(data?.message || "Failed to load URLs");
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load URLs");

@@ -17,6 +17,8 @@ public interface UrlRepository extends JpaRepository<UrlEntity, Long> {
 
     List<UrlEntity> findTop1000ByOrderByClickCountDesc();
 
+    Optional<UrlEntity> findFirstByLongUrlAndIsCustomFalse(String longUrl);
+
     Optional<UrlEntity> findFirstByLongUrlAndUserIdAndIsCustomFalse(String longUrl, Long userId);
 
     Optional<UrlEntity> findFirstByLongUrlAndUserIdIsNullAndIsCustomFalse(String longUrl);
