@@ -205,8 +205,38 @@ public class DbUrlService implements UrlService {
     }
 
     @Override
-    public List<UrlEntity> getMyLinks(Long userId) {
-        return urlRepository.findByUserIdOrderByCreatedAtDesc(userId);
+    public List<UrlStatsResponse> getMyLinks(Long userId) {
+        List<UrlEntity> entities = urlRepository.findByUserIdOrderByCreatedAtDesc(userId);
+        
+        return entities.stream().map(entity -> {
+            long dbClicks = entity.getClickCount();
+            long redisClicks = 0;
+            
+            Object redisClicksObj = redisTemplate.opsForHash().get("analytics:click_counts", entity.getShortId());
+            if (redisClicksObj != null) {
+                redisClicks = Long.parseLong(redisClicksObj.toString());
+            }
+            long totalClicks = dbClicks + redisClicks;
+
+            LocalDateTime lastAccessed = entity.getLastAccessedTime();
+            String redisTimestamp = redisTemplate.opsForValue().get("last_access:" + entity.getShortId());
+            if (redisTimestamp != null) {
+                try {
+                    LocalDateTime redisTime = LocalDateTime.parse(redisTimestamp);
+                    if (lastAccessed == null || redisTime.isAfter(lastAccessed)) {
+                        lastAccessed = redisTime;
+                    }
+                } catch (Exception e) {}
+            }
+
+            return new UrlStatsResponse(
+                    entity.getShortId(),
+                    entity.getLongUrl(),
+                    totalClicks,
+                    lastAccessed,
+                    entity.getCreatedAt()
+            );
+        }).toList();
     }
 
     @Override

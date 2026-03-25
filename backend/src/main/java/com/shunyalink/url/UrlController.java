@@ -79,9 +79,7 @@ public class UrlController {
     public List<UrlStatsResponse> getMyLinks() {
         Long userId = getCurrentUserId();
         if (userId == null) throw new BadRequestException("Authentication required");
-        return urlService.getMyLinks(userId).stream()
-                .map(e -> new UrlStatsResponse(e.getShortId(), e.getLongUrl(), e.getClickCount(), e.getLastAccessedTime(), e.getCreatedAt()))
-                .toList();
+        return urlService.getMyLinks(userId);
     }
 
     @DeleteMapping("/{shortId}")

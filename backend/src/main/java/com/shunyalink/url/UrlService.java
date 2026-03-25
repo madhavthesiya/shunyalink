@@ -6,7 +6,7 @@ public interface UrlService {
     UrlEntity shortenUrl(String longUrl, String customAlias, Integer expiryDays, Long userId);
     String getLongUrl(String shortId);
     UrlStatsResponse getStats(String shortId);
-    List<UrlEntity> getMyLinks(Long userId);
+    List<UrlStatsResponse> getMyLinks(Long userId);
     void deleteUrl(String shortId, Long userId);
 
 }
