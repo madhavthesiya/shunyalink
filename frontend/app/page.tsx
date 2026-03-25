@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AlertCircle, Sparkles, Zap, BarChart3, Settings2, ArrowRight } from "lucide-react";
 import { Header } from "@/components/header";
 import { ShortenerForm } from "@/components/shortener-form";
@@ -16,11 +16,29 @@ interface ShortenResult {
   createdAt: string;
 }
 
+interface PublicStats {
+  totalLinks: number;
+  totalUsers: number;
+  totalClicks: number;
+}
+
 export default function Home() {
   const [result, setResult] = useState<ShortenResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showStats, setShowStats] = useState(false);
   const [showQR, setShowQR] = useState(false);
+  const [stats, setStats] = useState<PublicStats | null>(null);
+
+  useEffect(() => {
+    const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
+    fetch(`${API_URL}/api/v1/url/stats/public`)
+      .then(res => {
+        if (!res.ok) throw new Error("Failed to fetch stats");
+        return res.json();
+      })
+      .then(data => setStats(data))
+      .catch(err => console.error("Error fetching public stats:", err));
+  }, []);
 
   const handleSuccess = (data: ShortenResult) => {
     setResult(data);
@@ -168,6 +186,31 @@ export default function Home() {
             </div>
           </div>
         </section>
+
+        {/* Public Stats Banner */}
+        {stats && (
+          <section className="pb-16 px-4 sm:px-6 mt-8 border-t border-border/50 pt-16">
+            <div className="max-w-4xl mx-auto">
+              <div className="text-center mb-10">
+                <h2 className="text-3xl font-bold text-foreground">By the numbers</h2>
+              </div>
+              <div className="grid grid-cols-3 gap-4 sm:gap-8 text-center animate-in fade-in-0 slide-in-from-bottom-4 duration-700 delay-300">
+                <div className="p-4 sm:p-6 rounded-2xl bg-card border border-border/50 hover:border-primary/20 transition-all duration-300">
+                  <div className="text-3xl sm:text-4xl font-bold tracking-tight text-primary mb-1">{stats.totalLinks.toLocaleString()}</div>
+                  <div className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Links Created</div>
+                </div>
+                <div className="p-4 sm:p-6 rounded-2xl bg-card border border-border/50 hover:border-primary/20 transition-all duration-300">
+                  <div className="text-3xl sm:text-4xl font-bold tracking-tight text-primary mb-1">{stats.totalClicks.toLocaleString()}</div>
+                  <div className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total Clicks</div>
+                </div>
+                <div className="p-4 sm:p-6 rounded-2xl bg-card border border-border/50 hover:border-primary/20 transition-all duration-300">
+                  <div className="text-3xl sm:text-4xl font-bold tracking-tight text-primary mb-1">{stats.totalUsers.toLocaleString()}</div>
+                  <div className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Happy Users</div>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
       </main>
 
       <Footer />

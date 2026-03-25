@@ -10,11 +10,14 @@ public class EmailService {
 
     private final JavaMailSender mailSender;
     private final String baseUrl;
+    private final String frontendUrl;
 
     public EmailService(JavaMailSender mailSender,
-                        @Value("${app.base-url}") String baseUrl) {
+                        @Value("${app.base-url}") String baseUrl,
+                        @Value("${app.allowed-origin}") String frontendUrl) {
         this.mailSender = mailSender;
         this.baseUrl = baseUrl;
+        this.frontendUrl = frontendUrl;
     }
 
     public void sendVerificationEmail(String to, String token) {
@@ -29,7 +32,7 @@ public class EmailService {
     }
 
     public void sendPasswordResetEmail(String to, String token) {
-        String link = baseUrl + "/api/v1/auth/reset-password?token=" + token;
+        String link = frontendUrl + "/reset-password?token=" + token;
 
         SimpleMailMessage message = new SimpleMailMessage();
         message.setTo(to);

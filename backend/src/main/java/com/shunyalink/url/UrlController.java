@@ -1,12 +1,15 @@
 package com.shunyalink.url;
 import com.shunyalink.exception.BadRequestException;
 import com.shunyalink.rate.RateLimiterService;
+import com.shunyalink.security.JwtService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+import com.shunyalink.auth.UserRepository;
 
 import java.util.List;
 
@@ -17,6 +20,8 @@ public class UrlController {
 
     private final UrlService urlService;
     private final RateLimiterService rateLimiterService;
+    private final UrlRepository urlRepository;
+    private final UserRepository userRepository;
 
     @Value("${app.base-url}")
     private String baseUrl;
@@ -38,10 +43,11 @@ public class UrlController {
         return null;
     }
 
-    public UrlController(UrlService urlService, RateLimiterService rateLimiterService) {
-
+    public UrlController(UrlService urlService, RateLimiterService rateLimiterService, UrlRepository urlRepository, UserRepository userRepository) {
         this.urlService = urlService;
         this.rateLimiterService = rateLimiterService;
+        this.urlRepository = urlRepository;
+        this.userRepository = userRepository;
     }
 
     @PostMapping("/shorten")
@@ -83,5 +89,26 @@ public class UrlController {
         Long userId = getCurrentUserId();
         if (userId == null) throw new BadRequestException("Authentication required");
         urlService.deleteUrl(shortId, userId);
+    }
+
+    @GetMapping("/stats/public")
+    public ResponseEntity<PublicStatsResponse> getPublicStats() {
+        long totalLinks = urlRepository.count();
+        long totalUsers = userRepository.count();
+        long totalClicks = urlRepository.sumTotalClicks();
+        
+        return ResponseEntity.ok(new PublicStatsResponse(totalLinks, totalUsers, totalClicks));
+    }
+
+    public static class PublicStatsResponse {
+        public long totalLinks;
+        public long totalUsers;
+        public long totalClicks;
+
+        public PublicStatsResponse(long totalLinks, long totalUsers, long totalClicks) {
+            this.totalLinks = totalLinks;
+            this.totalUsers = totalUsers;
+            this.totalClicks = totalClicks;
+        }
     }
 }

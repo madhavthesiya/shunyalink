@@ -12,7 +12,10 @@ import com.google.api.client.json.gson.GsonFactory;
 import org.springframework.beans.factory.annotation.Value;
 import java.util.Collections;
 
+import org.springframework.transaction.annotation.Transactional;
+
 @Service
+@Transactional
 public class AuthService {
 
     private final UserRepository userRepository;
