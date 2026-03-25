@@ -100,15 +100,28 @@ public class AuthService {
             String name = (String) payload.get("name");
 
             // Find existing user or create new one
-            UserEntity user = userRepository.findByEmail(email)
-                    .orElseGet(() -> {
-                        UserEntity newUser = new UserEntity();
-                        newUser.setEmail(email);
-                        newUser.setName(name != null ? name : email);
-                        newUser.setAuthProvider("GOOGLE");
-                        // No password for Google users
-                        return userRepository.save(newUser);
-                    });
+            UserEntity user;
+            Optional<UserEntity> existingUser = userRepository.findByEmail(email);
+            
+            if (existingUser.isEmpty()) {
+                UserEntity newUser = new UserEntity();
+                newUser.setEmail(email);
+                newUser.setName(name != null ? name : email);
+                newUser.setAuthProvider("GOOGLE");
+                newUser.setEmailVerified(true); // Google OAuth implies verified email
+                user = userRepository.save(newUser);
+                
+                // Send Welcome Email to first-time Google users
+                emailService.sendWelcomeEmail(user.getEmail(), user.getName());
+            } else {
+                user = existingUser.get();
+                // If the user existed but wasn't verified, verify them now and send welcome
+                if (!user.isEmailVerified()) {
+                    user.setEmailVerified(true);
+                    userRepository.save(user);
+                    emailService.sendWelcomeEmail(user.getEmail(), user.getName());
+                }
+            }
 
             // Generate our JWT and return
             String token = jwtService.generateToken(user.getId(), user.getEmail());
@@ -130,8 +143,19 @@ public class AuthService {
         }
 
         UserEntity user = vToken.getUser();
+        
+        // Prevent duplicate Welcome Emails if user clicks the link multiple times
+        if (user.isEmailVerified()) {
+            // Delete the consumed token to keep DB clean
+            verificationTokenRepo.delete(vToken);
+            return "Email is already verified!";
+        }
+        
         user.setEmailVerified(true);
         userRepository.save(user);
+
+        // Delete the consumed token so it can't be reused
+        verificationTokenRepo.delete(vToken);
 
         // Dispatch Welcome Email asynchronously
         emailService.sendWelcomeEmail(user.getEmail(), user.getName());
