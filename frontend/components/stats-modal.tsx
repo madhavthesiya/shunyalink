@@ -46,8 +46,8 @@ export function StatsModal({ shortId, isOpen, onClose }: StatsModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchStats = useCallback(async () => {
-    setIsLoading(true);
+  const fetchStats = useCallback(async (showLoading: boolean = true) => {
+    if (showLoading) setIsLoading(true);
     setError(null);
     try {
       const response = await fetch(`${API_URL}/api/v1/url/stats/${shortId}`);
@@ -61,14 +61,24 @@ export function StatsModal({ shortId, isOpen, onClose }: StatsModalProps) {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load stats");
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
     }
   }, [shortId]);
 
   useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+    
     if (isOpen && shortId) {
       fetchStats();
+      
+      intervalId = setInterval(() => {
+        fetchStats(false);
+      }, 3000);
     }
+    
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
   }, [isOpen, shortId, fetchStats]);
 
   useEffect(() => {

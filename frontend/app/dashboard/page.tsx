@@ -49,10 +49,17 @@ export default function DashboardPage() {
 
     setUserName(name || "User");
     loadUserUrls(token);
+
+    const intervalId = setInterval(() => {
+      loadUserUrls(token, false);
+    }, 5000);
+
+    return () => clearInterval(intervalId);
   }, [router]);
 
-  const loadUserUrls = async (token: string) => {
+  const loadUserUrls = async (token: string, showLoading: boolean = true) => {
     try {
+      if (showLoading) setIsLoading(true);
       const response = await fetch(`${API_URL}/api/v1/url/my-links`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -73,7 +80,7 @@ export default function DashboardPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load URLs");
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
     }
   };
 
