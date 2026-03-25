@@ -320,11 +320,10 @@ export default function DashboardPage() {
                                 title="Copy to clipboard"
                               >
                                 <Copy
-                                  className={`w-4 h-4 ${
-                                    copiedId === url.shortId
+                                  className={`w-4 h-4 ${copiedId === url.shortId
                                       ? "text-success"
                                       : "text-muted-foreground"
-                                  }`}
+                                    }`}
                                 />
                               </Button>
                               <Button

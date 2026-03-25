@@ -91,7 +91,10 @@ public class DbUrlService implements UrlService {
         }
         // Automatic Generate
         if (expiryDays == null) {
-            Optional<UrlEntity> existing = urlRepository.findFirstByLongUrlAndIsCustomFalse(longUrl);
+            Optional<UrlEntity> existing = (userId != null) 
+                ? urlRepository.findFirstByLongUrlAndUserIdAndIsCustomFalse(longUrl, userId)
+                : urlRepository.findFirstByLongUrlAndUserIdIsNullAndIsCustomFalse(longUrl);
+                
             if (existing.isPresent()) {
                 log.info("IDEMPOTENT return shortId={}", existing.get().getShortId());
                 return existing.get();
