@@ -3,6 +3,7 @@ package com.shunyalink.auth;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -23,6 +24,7 @@ public class EmailService {
         this.mailUsername = mailUsername;
     }
 
+    @Async
     public void sendVerificationEmail(String to, String token) {
         String link = baseUrl + "/api/v1/auth/verify?token=" + token;
 
@@ -35,6 +37,7 @@ public class EmailService {
         mailSender.send(message);
     }
 
+    @Async
     public void sendPasswordResetEmail(String to, String token) {
         String link = frontendUrl + "/reset-password?token=" + token;
 
