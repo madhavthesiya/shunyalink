@@ -39,8 +39,8 @@ public class UrlController {
     // Helper to get userId from JWT (returns null for anonymous users)
     private Long getCurrentUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth != null && auth.getPrincipal() instanceof Long) {
-            return (Long) auth.getPrincipal();
+        if (auth != null && auth.getPrincipal() instanceof Number n) {
+            return n.longValue();
         }
         return null;
     }

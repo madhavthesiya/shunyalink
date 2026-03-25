@@ -62,6 +62,7 @@ export default function DashboardPage() {
       if (showLoading) setIsLoading(true);
       const response = await fetch(`${API_URL}/api/v1/url/my-links`, {
         headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
       });
 
       if (response.status === 401) {
