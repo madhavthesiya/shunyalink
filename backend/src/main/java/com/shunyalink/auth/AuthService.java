@@ -133,6 +133,9 @@ public class AuthService {
         user.setEmailVerified(true);
         userRepository.save(user);
 
+        // Dispatch Welcome Email asynchronously
+        emailService.sendWelcomeEmail(user.getEmail(), user.getName());
+
         return "Email verified successfully!";
     }
 

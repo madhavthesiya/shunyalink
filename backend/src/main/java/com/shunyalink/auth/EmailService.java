@@ -49,4 +49,18 @@ public class EmailService {
                 + "\n\nThis link expires in 1 hour. If you didn't request this, ignore this email.");
         mailSender.send(message);
     }
+
+    @Async
+    public void sendWelcomeEmail(String to, String name) {
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setFrom(mailUsername);
+        message.setTo(to);
+        message.setSubject("Welcome to ShunyaLink! 🎉");
+        message.setText("Hi " + name + ",\n\n"
+                + "Thank you for verifying your email address! Your ShunyaLink account is now fully active and verified.\n"
+                + "You can now securely create, share, and track all your custom shortened links.\n\n"
+                + "Happy linking!\n"
+                + "The ShunyaLink Team");
+        mailSender.send(message);
+    }
 }

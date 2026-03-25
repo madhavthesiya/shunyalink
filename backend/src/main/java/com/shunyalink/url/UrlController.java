@@ -10,6 +10,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import com.shunyalink.auth.UserRepository;
+import com.shunyalink.auth.UserEntity;
+import com.shunyalink.exception.ForbiddenException;
 
 import java.util.List;
 
@@ -60,6 +62,15 @@ public class UrlController {
         rateLimiterService.checkLimit(key,10,60);
 
         Long userId = getCurrentUserId();
+
+        // Strict Email Verification Check for Logged-In Users
+        if (userId != null) {
+            UserEntity user = userRepository.findById(userId).orElse(null);
+            if (user != null && !user.isEmailVerified() && !"GOOGLE".equals(user.getAuthProvider())) {
+                throw new ForbiddenException("You must verify your email address before you can create links.");
+            }
+        }
+
         UrlEntity entity = urlService.shortenUrl(request.getLongUrl(),request.getCustomAlias(), request.getExpiryDays(), userId);
         return new ShortenResponse(
                 entity.getShortId(),
