@@ -44,12 +44,16 @@ public class AuthController {
     }
 
     @PostMapping("/forgot-password")
-    public String forgotPassword(@RequestBody Map<String, String> request) {
+    public String forgotPassword(@RequestBody Map<String, String> request, HttpServletRequest httpRequest) {
+        String ip = getClientIp(httpRequest);
+        rateLimiterService.checkLimit("rate:forgot-password:" + ip, 3, 300); // 3 attempts per 5 minutes
         return authService.requestPasswordReset(request.get("email"));
     }
 
     @PostMapping("/reset-password")
-    public String resetPassword(@RequestBody Map<String, String> request) {
+    public String resetPassword(@RequestBody Map<String, String> request, HttpServletRequest httpRequest) {
+        String ip = getClientIp(httpRequest);
+        rateLimiterService.checkLimit("rate:reset-password:" + ip, 5, 300); // 5 attempts per 5 minutes
         return authService.resetPassword(request.get("token"), request.get("newPassword"));
     }
 

@@ -35,7 +35,7 @@ public class DbUrlService implements UrlService {
     }
 
     private void validateAlias(String alias) {
-        if (!alias.matches("^[a-z0-9]([a-z0-9-]{1,18}[a-z0-9])?$")) {
+        if (!alias.matches("^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$")) {
             throw new BadRequestException(
                     "Alias must be 3-20 characters, using letters, numbers, or hyphens. " +
                             "Cannot start or end with a hyphen.");
@@ -92,8 +92,8 @@ public class DbUrlService implements UrlService {
         // Automatic Generate
         if (expiryDays == null) {
             Optional<UrlEntity> existing = (userId != null)
-                    ? urlRepository.findFirstByLongUrlAndUserIdAndIsCustomFalse(longUrl, userId)
-                    : urlRepository.findFirstByLongUrlAndUserIdIsNullAndIsCustomFalse(longUrl);
+                    ? urlRepository.findFirstByLongUrlAndUserIdAndIsCustomFalseAndExpiryTimeIsNull(longUrl, userId)
+                    : urlRepository.findFirstByLongUrlAndUserIdIsNullAndIsCustomFalseAndExpiryTimeIsNull(longUrl);
 
             if (existing.isPresent()) {
                 log.info("IDEMPOTENT return shortId={}", existing.get().getShortId());

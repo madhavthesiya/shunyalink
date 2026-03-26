@@ -165,22 +165,27 @@ public class AuthService {
     }
 
     public String requestPasswordReset(String email) {
-        UserEntity user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new BadRequestException("No account found with that email"));
+        Optional<UserEntity> userOptional = userRepository.findByEmail(email);
 
-        if ("GOOGLE".equals(user.getAuthProvider())) {
-            throw new BadRequestException("Google accounts cannot reset password. Use Google login.");
+        // Always return the same generic message to prevent user enumeration
+        if (userOptional.isEmpty() || "GOOGLE".equals(userOptional.get().getAuthProvider())) {
+            return "If this email is registered, a password reset link has been sent.";
         }
 
+        UserEntity user = userOptional.get();
         PasswordResetToken resetToken = new PasswordResetToken();
         resetToken.setUser(user);
         passwordResetTokenRepo.save(resetToken);
         emailService.sendPasswordResetEmail(user.getEmail(), resetToken.getToken());
 
-        return "Password reset email sent!";
+        return "If this email is registered, a password reset link has been sent.";
     }
 
     public String resetPassword(String token, String newPassword) {
+        if (newPassword == null || newPassword.length() < 8) {
+            throw new BadRequestException("Password must be at least 8 characters long");
+        }
+
         PasswordResetToken resetToken = passwordResetTokenRepo.findByToken(token)
                 .orElseThrow(() -> new BadRequestException("Invalid reset token"));
 

@@ -1,5 +1,6 @@
 package com.shunyalink.auth;
 
+import com.shunyalink.exception.NotFoundException;
 import com.shunyalink.url.DbUrlService;
 import com.shunyalink.url.UrlStatsResponse;
 import org.springframework.http.ResponseEntity;
@@ -49,7 +50,7 @@ public class ProfileController {
         
         // Find user entity to get User ID
         UserEntity user = userRepository.findByUsername(username)
-            .orElseThrow(() -> new RuntimeException("User not found"));
+            .orElseThrow(() -> new NotFoundException("User not found"));
             
         // Fetch only the URLs marked to "show on bio"
         List<UrlStatsResponse> bioLinks = dbUrlService.getBioLinks(user.getId());
