@@ -23,6 +23,11 @@ public interface UrlRepository extends JpaRepository<UrlEntity, Long> {
 
     Optional<UrlEntity> findFirstByLongUrlAndUserIdIsNullAndIsCustomFalse(String longUrl);
 
+    // Idempotency queries that exclude expired URLs
+    Optional<UrlEntity> findFirstByLongUrlAndUserIdAndIsCustomFalseAndExpiryTimeIsNull(String longUrl, Long userId);
+
+    Optional<UrlEntity> findFirstByLongUrlAndUserIdIsNullAndIsCustomFalseAndExpiryTimeIsNull(String longUrl);
+
     @Query(value = "SELECT nextval('url_id_seq')", nativeQuery = true)
     Long getNextId();
 
