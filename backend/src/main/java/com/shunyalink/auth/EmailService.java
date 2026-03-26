@@ -63,4 +63,18 @@ public class EmailService {
                 + "The ShunyaLink Team");
         mailSender.send(message);
     }
+
+    @Async
+    public void sendGoogleWelcomeEmail(String to, String name) {
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setFrom(mailUsername);
+        message.setTo(to);
+        message.setSubject("Welcome to ShunyaLink! 🎉");
+        message.setText("Hi " + name + ",\n\n"
+                + "Welcome aboard! You have successfully registered for ShunyaLink using your Google account.\n"
+                + "Your account is now fully active, and you can securely create, share, and track all your custom shortened links.\n\n"
+                + "Happy linking!\n"
+                + "The ShunyaLink Team");
+        mailSender.send(message);
+    }
 }

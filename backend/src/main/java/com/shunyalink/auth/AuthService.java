@@ -113,7 +113,7 @@ public class AuthService {
                 user = userRepository.save(newUser);
                 
                 // Send Welcome Email to first-time Google users
-                emailService.sendWelcomeEmail(user.getEmail(), user.getName());
+                emailService.sendGoogleWelcomeEmail(user.getEmail(), user.getName());
             } else {
                 user = existingUser.get();
                 // If the user existed but wasn't verified, verify them now and send welcome
