@@ -26,6 +26,16 @@ public class UserEntity {
     @Column(nullable = false)
     private boolean emailVerified = false;
 
+    // Link-In-Bio Profile Fields
+    @Column(unique = true, length = 50)
+    private String username;
+
+    @Column(length = 500)
+    private String bioText;
+
+    @Column(length = 20)
+    private String themeColor = "#000000";
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -46,5 +56,14 @@ public class UserEntity {
     public void setAuthProvider(String authProvider) { this.authProvider = authProvider; }
     public boolean isEmailVerified() { return emailVerified; }
     public void setEmailVerified(boolean emailVerified) { this.emailVerified = emailVerified; }
+
+    public String getUsername() { return username; }
+    public void setUsername(String username) { this.username = username; }
+    
+    public String getBioText() { return bioText; }
+    public void setBioText(String bioText) { this.bioText = bioText; }
+    
+    public String getThemeColor() { return themeColor; }
+    public void setThemeColor(String themeColor) { this.themeColor = themeColor; }
 
 }

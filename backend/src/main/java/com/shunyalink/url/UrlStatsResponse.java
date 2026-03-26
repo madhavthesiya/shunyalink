@@ -8,13 +8,21 @@ public class UrlStatsResponse {
     private long clickCount;
     private LocalDateTime lastAccessedTime;
     private LocalDateTime createdAt;
+    private boolean showOnBio;
+    private String title;
 
-    public UrlStatsResponse(String shortId, String longUrl, long clickCount, LocalDateTime lastAccessedTime, LocalDateTime createdAt) {
+    public UrlStatsResponse(String shortId, String longUrl, long clickCount, LocalDateTime lastAccessedTime, LocalDateTime createdAt, boolean showOnBio, String title) {
         this.shortId = shortId;
         this.longUrl = longUrl;
         this.clickCount = clickCount;
         this.lastAccessedTime = lastAccessedTime;
         this.createdAt = createdAt;
+        this.showOnBio = showOnBio;
+        this.title = title;
+    }
+
+    public String getTitle() {
+        return title;
     }
 
     public String getShortId() {
@@ -35,5 +43,9 @@ public class UrlStatsResponse {
 
     public LocalDateTime getCreatedAt() {
         return createdAt;
+    }
+
+    public boolean isShowOnBio() {
+        return showOnBio;
     }
 }

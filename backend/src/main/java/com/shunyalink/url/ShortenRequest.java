@@ -26,6 +26,9 @@ public class ShortenRequest {
     @Max(value = 365, message = "Expiry cannot exceed 365 days")
     private Integer expiryDays;
 
+    @Size(max = 100, message = "Title cannot exceed 100 characters")
+    private String title;
+
     public String getLongUrl() {
         return longUrl;
     }
@@ -48,5 +51,13 @@ public class ShortenRequest {
 
     public void setExpiryDays(Integer expiryDays) {
         this.expiryDays = expiryDays;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
     }
 }

@@ -74,8 +74,8 @@ export default function Home() {
             
             {/* Subheadline */}
             <p className="text-lg sm:text-xl text-muted-foreground max-w-xl mx-auto mb-4 animate-in fade-in-0 slide-in-from-bottom-4 duration-700 delay-200 text-pretty leading-relaxed">
-              Transform any long URL into a clean, shareable link. 
-              Track clicks, customize aliases, and share with confidence.
+              Transform long URLs into clean links and host them on your personalized Link-in-Bio profile. 
+              The ultimate Productivity & Branding Platform for your online identity.
             </p>
 
             {/* Trust indicators */}

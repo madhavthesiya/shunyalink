@@ -71,12 +71,13 @@ public class UrlController {
             }
         }
 
-        UrlEntity entity = urlService.shortenUrl(request.getLongUrl(),request.getCustomAlias(), request.getExpiryDays(), userId);
+        UrlEntity entity = urlService.shortenUrl(request.getLongUrl(),request.getCustomAlias(), request.getExpiryDays(), userId, request.getTitle());
         return new ShortenResponse(
                 entity.getShortId(),
                 baseUrl + "/" + entity.getShortId(),
                 entity.getLongUrl(),
-                entity.getCreatedAt()
+                entity.getCreatedAt(),
+                entity.getTitle()
         );
     }
 
@@ -98,6 +99,15 @@ public class UrlController {
         Long userId = getCurrentUserId();
         if (userId == null) throw new BadRequestException("Authentication required");
         urlService.deleteUrl(shortId, userId);
+    }
+
+    @PutMapping("/{shortId}/bio-visibility")
+    public void toggleBioVisibility(@PathVariable String shortId, @RequestBody java.util.Map<String, Boolean> request) {
+        Long userId = getCurrentUserId();
+        if (userId == null) throw new BadRequestException("Authentication required");
+        Boolean showOnBio = request.get("showOnBio");
+        if (showOnBio == null) throw new BadRequestException("showOnBio parameter is required");
+        urlService.toggleShowOnBio(shortId, userId, showOnBio);
     }
 
     @GetMapping("/stats/public")

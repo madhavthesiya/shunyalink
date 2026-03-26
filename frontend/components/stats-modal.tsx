@@ -10,6 +10,7 @@ interface Stats {
   clickCount: number;
   createdAt: string;
   lastAccessedTime: string | null;
+  title?: string;
 }
 
 interface StatsModalProps {
@@ -113,8 +114,10 @@ export function StatsModal({ shortId, isOpen, onClose }: StatsModalProps) {
               <TrendingUp className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-foreground">Link Analytics</h2>
-              <p className="text-sm text-muted-foreground">Performance metrics</p>
+              <h2 className="text-lg font-semibold text-foreground">
+                {stats?.title || "Link Analytics"}
+              </h2>
+              <p className="text-sm text-muted-foreground">{stats?.title ? `Analytics for ${stats.shortId}` : "Performance metrics"}</p>
             </div>
           </div>
           <Button

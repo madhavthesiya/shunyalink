@@ -16,20 +16,19 @@ import org.slf4j.LoggerFactory;
 import java.time.LocalDateTime;
 import java.util.List;
 
-
 @Service
 
 public class DbUrlService implements UrlService {
 
     private final UrlRepository urlRepository;
     private final IdEncoder idEncoder;
-    private final RedisTemplate<String,String> redisTemplate;
+    private final RedisTemplate<String, String> redisTemplate;
     private static final Logger log = LoggerFactory.getLogger(DbUrlService.class);
 
     // Helper — calculates correct TTL based on URL expiry
     private long getTtlSeconds(LocalDateTime expiryTime) {
         if (expiryTime == null) {
-            return 24 * 3600;    // permanent URL → 24 hours default
+            return 24 * 3600; // permanent URL → 24 hours default
         }
         long seconds = java.time.Duration.between(LocalDateTime.now(), expiryTime).getSeconds();
         return Math.max(seconds, 1); // never set TTL to 0 or negative
@@ -42,6 +41,7 @@ public class DbUrlService implements UrlService {
                             "Cannot start or end with a hyphen.");
         }
     }
+
     public DbUrlService(UrlRepository urlRepository, IdEncoder idEncoder, RedisTemplate<String, String> redisTemplate) {
 
         this.urlRepository = urlRepository;
@@ -51,7 +51,7 @@ public class DbUrlService implements UrlService {
 
     @Override
     @Transactional
-    public UrlEntity shortenUrl(String longUrl,String customAlias,Integer expiryDays,Long userId) {
+    public UrlEntity shortenUrl(String longUrl, String customAlias, Integer expiryDays, Long userId, String title) {
 
         if (customAlias != null && !customAlias.isBlank()) {
             String normalized = customAlias.toLowerCase().trim();
@@ -75,6 +75,7 @@ public class DbUrlService implements UrlService {
             entity.setShortId(normalized);
             entity.setCustom(true);
             entity.setUserId(userId);
+            entity.setTitle(title);
             if (expiryDays != null) {
                 entity.setExpiryTime(LocalDateTime.now().plusDays(expiryDays));
             }
@@ -84,17 +85,16 @@ public class DbUrlService implements UrlService {
                     "url:" + normalized,
                     longUrl,
                     getTtlSeconds(entity.getExpiryTime()),
-                    TimeUnit.SECONDS
-            );
+                    TimeUnit.SECONDS);
 
             return saved;
         }
         // Automatic Generate
         if (expiryDays == null) {
-            Optional<UrlEntity> existing = (userId != null) 
-                ? urlRepository.findFirstByLongUrlAndUserIdAndIsCustomFalse(longUrl, userId)
-                : urlRepository.findFirstByLongUrlAndUserIdIsNullAndIsCustomFalse(longUrl);
-                
+            Optional<UrlEntity> existing = (userId != null)
+                    ? urlRepository.findFirstByLongUrlAndUserIdAndIsCustomFalse(longUrl, userId)
+                    : urlRepository.findFirstByLongUrlAndUserIdIsNullAndIsCustomFalse(longUrl);
+
             if (existing.isPresent()) {
                 log.info("IDEMPOTENT return shortId={}", existing.get().getShortId());
                 return existing.get();
@@ -110,6 +110,7 @@ public class DbUrlService implements UrlService {
         entity.setShortId(shortId);
         entity.setCustom(false);
         entity.setUserId(userId);
+        entity.setTitle(title);
         if (expiryDays != null) {
             entity.setExpiryTime(LocalDateTime.now().plusDays(expiryDays));
         }
@@ -117,8 +118,7 @@ public class DbUrlService implements UrlService {
 
         redisTemplate.opsForValue().set(
                 "url:" + shortId, longUrl,
-                getTtlSeconds(entity.getExpiryTime()), TimeUnit.SECONDS
-        );
+                getTtlSeconds(entity.getExpiryTime()), TimeUnit.SECONDS);
 
         return saved;
     }
@@ -130,10 +130,10 @@ public class DbUrlService implements UrlService {
         String cacheKey = "url:" + shortId;
 
         // check Redis
-        String cachedUrl = redisTemplate.opsForValue().get(cacheKey); //  to check
-//      String cachedUrl = null; // BENCHMARK: force cache miss
+        String cachedUrl = redisTemplate.opsForValue().get(cacheKey); // to check
+        // String cachedUrl = null; // BENCHMARK: force cache miss
 
-        if(cachedUrl!=null){
+        if (cachedUrl != null) {
 
             // update analytics
             redisTemplate.opsForHash().increment("analytics:click_counts", shortId, 1);
@@ -144,10 +144,10 @@ public class DbUrlService implements UrlService {
 
         // cache miss -> query database
         UrlEntity entity = urlRepository.findByShortId(shortId)
-                .orElseThrow(()-> new NotFoundException("Short URL not found"));
+                .orElseThrow(() -> new NotFoundException("Short URL not found"));
 
         // check expiry
-        if(entity.getExpiryTime()!=null &&
+        if (entity.getExpiryTime() != null &&
                 entity.getExpiryTime().isBefore(LocalDateTime.now())) {
             throw new GoneException("Short URL has expired");
         }
@@ -172,8 +172,7 @@ public class DbUrlService implements UrlService {
 
         long dbClicks = entity.getClickCount();
 
-        Object redisClicksObj =
-                redisTemplate.opsForHash().get("analytics:click_counts", shortId);
+        Object redisClicksObj = redisTemplate.opsForHash().get("analytics:click_counts", shortId);
 
         long redisClicks = 0;
 
@@ -203,18 +202,19 @@ public class DbUrlService implements UrlService {
                 entity.getLongUrl(),
                 totalClicks,
                 lastAccessed,
-                entity.getCreatedAt()
-        );
+                entity.getCreatedAt(),
+                entity.isShowOnBio(),
+                entity.getTitle());
     }
 
     @Override
     public List<UrlStatsResponse> getMyLinks(Long userId) {
         List<UrlEntity> entities = urlRepository.findByUserIdOrderByCreatedAtDesc(userId);
-        
+
         return entities.stream().map(entity -> {
             long dbClicks = entity.getClickCount();
             long redisClicks = 0;
-            
+
             Object redisClicksObj = redisTemplate.opsForHash().get("analytics:click_counts", entity.getShortId());
             if (redisClicksObj != null) {
                 redisClicks = Long.parseLong(redisClicksObj.toString());
@@ -229,7 +229,8 @@ public class DbUrlService implements UrlService {
                     if (lastAccessed == null || redisTime.isAfter(lastAccessed)) {
                         lastAccessed = redisTime;
                     }
-                } catch (Exception e) {}
+                } catch (Exception e) {
+                }
             }
 
             return new UrlStatsResponse(
@@ -237,7 +238,33 @@ public class DbUrlService implements UrlService {
                     entity.getLongUrl(),
                     totalClicks,
                     lastAccessed,
-                    entity.getCreatedAt()
+                    entity.getCreatedAt(),
+                    entity.isShowOnBio(),
+                    entity.getTitle()
+            );
+        }).toList();
+    }
+
+    public List<UrlStatsResponse> getBioLinks(Long userId) {
+        List<UrlEntity> entities = urlRepository.findByUserIdAndShowOnBioTrueOrderByCreatedAtDesc(userId);
+        return entities.stream().map(entity -> {
+            long dbClicks = entity.getClickCount();
+            long redisClicks = 0;
+            
+            Object redisClicksObj = redisTemplate.opsForHash().get("analytics:click_counts", entity.getShortId());
+            if (redisClicksObj != null) {
+                redisClicks = Long.parseLong(redisClicksObj.toString());
+            }
+            long totalClicks = dbClicks + redisClicks;
+
+            return new UrlStatsResponse(
+                    entity.getShortId(),
+                    entity.getLongUrl(),
+                    totalClicks,
+                    entity.getLastAccessedTime(),
+                    entity.getCreatedAt(),
+                    entity.isShowOnBio(),
+                    entity.getTitle()
             );
         }).toList();
     }
@@ -249,5 +276,14 @@ public class DbUrlService implements UrlService {
                 .orElseThrow(() -> new NotFoundException("URL not found or not owned by you"));
         redisTemplate.delete("url:" + shortId);
         urlRepository.delete(entity);
+    }
+
+    @Override
+    @Transactional
+    public void toggleShowOnBio(String shortId, Long userId, boolean showOnBio) {
+        UrlEntity entity = urlRepository.findByShortIdAndUserId(shortId, userId)
+                .orElseThrow(() -> new NotFoundException("URL not found or not owned by you"));
+        entity.setShowOnBio(showOnBio);
+        urlRepository.save(entity);
     }
 }

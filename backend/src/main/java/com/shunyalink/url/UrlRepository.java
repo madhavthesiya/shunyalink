@@ -48,6 +48,8 @@ public interface UrlRepository extends JpaRepository<UrlEntity, Long> {
 
     List<UrlEntity> findByUserIdOrderByCreatedAtDesc(Long userId);
 
+    List<UrlEntity> findByUserIdAndShowOnBioTrueOrderByCreatedAtDesc(Long userId);
+
     Optional<UrlEntity> findByShortIdAndUserId(String shortId, Long userId);
 
     @Query("SELECT COALESCE(SUM(u.clickCount), 0) FROM UrlEntity u")

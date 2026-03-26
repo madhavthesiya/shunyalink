@@ -46,6 +46,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/url/shorten").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/url/stats/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/url/qr/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/profile/me").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/profile/settings").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/profile/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         // Everything else needs auth
                         .anyRequest().authenticated()

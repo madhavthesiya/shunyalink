@@ -28,12 +28,12 @@ public class AuthService {
     private final EmailService emailService;
 
     public AuthService(UserRepository userRepository,
-                       PasswordEncoder passwordEncoder,
-                       JwtService jwtService,
-                       @Value("${app.google.client-id}") String googleClientId,
-                       VerificationTokenRepository verificationTokenRepo,
-                       PasswordResetTokenRepository passwordResetTokenRepo,
-                       EmailService emailService) {
+            PasswordEncoder passwordEncoder,
+            JwtService jwtService,
+            @Value("${app.google.client-id}") String googleClientId,
+            VerificationTokenRepository verificationTokenRepo,
+            PasswordResetTokenRepository passwordResetTokenRepo,
+            EmailService emailService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
@@ -103,7 +103,7 @@ public class AuthService {
             // Find existing user or create new one
             UserEntity user;
             Optional<UserEntity> existingUser = userRepository.findByEmail(email);
-            
+
             if (existingUser.isEmpty()) {
                 UserEntity newUser = new UserEntity();
                 newUser.setEmail(email);
@@ -111,7 +111,7 @@ public class AuthService {
                 newUser.setAuthProvider("GOOGLE");
                 newUser.setEmailVerified(true); // Google OAuth implies verified email
                 user = userRepository.save(newUser);
-                
+
                 // Send Welcome Email to first-time Google users
                 emailService.sendGoogleWelcomeEmail(user.getEmail(), user.getName());
             } else {
@@ -144,14 +144,14 @@ public class AuthService {
         }
 
         UserEntity user = vToken.getUser();
-        
+
         // Prevent duplicate Welcome Emails if user clicks the link multiple times
         if (user.isEmailVerified()) {
             // Delete the consumed token to keep DB clean
             verificationTokenRepo.delete(vToken);
             return "Email is already verified!";
         }
-        
+
         user.setEmailVerified(true);
         userRepository.save(user);
 
@@ -201,4 +201,58 @@ public class AuthService {
         return "Password reset successfully!";
     }
 
+    public ProfileResponse getProfileById(Long userId) {
+        UserEntity user = userRepository.findById(userId)
+                .orElseThrow(() -> new BadRequestException("User not found"));
+
+        return new ProfileResponse(
+            user.getUsername(),
+            user.getName(),
+            user.getBioText(),
+            user.getThemeColor(),
+            null
+        );
+    }
+
+    public ProfileResponse getProfile(String username) {
+        UserEntity user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new BadRequestException("User profile not found"));
+
+        return new ProfileResponse(
+            user.getUsername(),
+            user.getName(),
+            user.getBioText(),
+            user.getThemeColor(),
+            null
+        );
+    }
+
+    public void updateProfile(Long userId, ProfileUpdateRequest request) {
+        UserEntity user = userRepository.findById(userId)
+                .orElseThrow(() -> new BadRequestException("User not found"));
+
+        if (request.getUsername() != null && !request.getUsername().isBlank()) {
+            String newUsername = request.getUsername().toLowerCase().trim();
+            // Check if username is already taken by SOMEONE ELSE
+            Optional<UserEntity> existing = userRepository.findByUsername(newUsername);
+            if (existing.isPresent() && !existing.get().getId().equals(userId)) {
+                throw new ConflictException("Username is already taken");
+            }
+            user.setUsername(newUsername);
+        }
+
+        if (request.getName() != null && !request.getName().isBlank()) {
+            user.setName(request.getName().trim());
+        }
+
+        if (request.getBioText() != null) {
+            user.setBioText(request.getBioText().trim());
+        }
+        
+        if (request.getThemeColor() != null) {
+            user.setThemeColor(request.getThemeColor().trim());
+        }
+
+        userRepository.save(user);
+    }
 }

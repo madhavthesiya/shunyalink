@@ -51,7 +51,7 @@ class UrlControllerTest {
         UrlEntity entity = new UrlEntity();
         entity.setShortId("abc123");
 
-        when(urlService.shortenUrl(eq("https://google.com"), isNull(), isNull(), any()))
+        when(urlService.shortenUrl(eq("https://google.com"), isNull(), isNull(), any(), any()))
                 .thenReturn(entity);
 
         ShortenRequest request = new ShortenRequest();
@@ -72,7 +72,7 @@ class UrlControllerTest {
         UrlEntity entity = new UrlEntity();
         entity.setShortId("myalias");
 
-        when(urlService.shortenUrl(eq("https://google.com"), eq("myalias"), isNull(), any()))
+        when(urlService.shortenUrl(eq("https://google.com"), eq("myalias"), isNull(), any(), any()))
                 .thenReturn(entity);
 
         ShortenRequest request = new ShortenRequest();
@@ -90,7 +90,7 @@ class UrlControllerTest {
     @Test
     @WithMockUser
     void shorten_duplicateAlias_returns409() throws Exception {
-        when(urlService.shortenUrl(any(), any(), any(), any()))
+        when(urlService.shortenUrl(any(), any(), any(), any(), any()))
                 .thenThrow(new ConflictException("Alias already in use"));
 
         ShortenRequest request = new ShortenRequest();
@@ -124,7 +124,8 @@ class UrlControllerTest {
     void getStats_existingShortId_returns200() throws Exception {
         UrlStatsResponse stats = new UrlStatsResponse(
                 "abc123", "https://google.com", 42L,
-                LocalDateTime.now(), LocalDateTime.now()
+                LocalDateTime.now(), LocalDateTime.now(),
+                false, "Title"
         );
         when(urlService.getStats("abc123")).thenReturn(stats);
 

@@ -34,6 +34,7 @@ export function ShortenerForm({ onSuccess, onError }: ShortenerFormProps) {
   const [longUrl, setLongUrl] = useState("");
   const [customAlias, setCustomAlias] = useState("");
   const [expiryDays, setExpiryDays] = useState("");
+  const [title, setTitle] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
@@ -64,6 +65,7 @@ export function ShortenerForm({ onSuccess, onError }: ShortenerFormProps) {
           longUrl: longUrl.trim(),
           ...(customAlias.trim() && { customAlias: customAlias.trim() }),
           ...(expiryDays && { expiryDays: parseInt(expiryDays, 10) }),
+          ...(title.trim() && { title: title.trim() }),
         }),
       });
 
@@ -78,6 +80,7 @@ export function ShortenerForm({ onSuccess, onError }: ShortenerFormProps) {
       setLongUrl("");
       setCustomAlias("");
       setExpiryDays("");
+      setTitle("");
     } catch (err) {
       if (err instanceof TypeError && err.message.includes("fetch")) {
         onError("Cannot reach the server. Make sure the backend is running.");
@@ -109,6 +112,24 @@ export function ShortenerForm({ onSuccess, onError }: ShortenerFormProps) {
             required
           />
         </div>
+      </div>
+
+      {/* Link Title (Custom Label) */}
+      <div className="space-y-3">
+        <Label htmlFor="title" className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <Hash className="w-4 h-4 text-primary" />
+          Link Title (e.g. My Portfolio)
+          <span className="text-xs text-muted-foreground/60 font-normal ml-auto">Shown on Bio Profile</span>
+        </Label>
+        <Input
+          id="title"
+          type="text"
+          placeholder="Enter a friendly name for this link"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          className="h-12 bg-background/50 border-border/50 rounded-xl premium-input focus:border-primary/50 focus:ring-2 focus:ring-primary/10 transition-all placeholder:text-muted-foreground/50"
+          disabled={isLoading}
+        />
       </div>
 
       {/* Optional Fields */}

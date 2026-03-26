@@ -30,11 +30,17 @@ public class UrlEntity {
     @Column
     private LocalDateTime expiryTime;
 
+    @Column(nullable = true, length = 100)
+    private String title;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     @Column(name = "user_id")
     private Long userId;
+
+    @Column(name = "show_on_bio", nullable = false)
+    private boolean showOnBio = false;
 
     @PrePersist
     protected void onCreate() {
@@ -79,8 +85,15 @@ public class UrlEntity {
 
     public LocalDateTime getCreatedAt() { return createdAt; }
 
+    public String getTitle() { return title; }
+    public void setTitle(String title) { this.title = title; }
+
     public Long getUserId() { return userId; }
 
     public void setUserId(Long userId) { this.userId = userId; }
+
+    public boolean isShowOnBio() { return showOnBio; }
+
+    public void setShowOnBio(boolean showOnBio) { this.showOnBio = showOnBio; }
 
 }

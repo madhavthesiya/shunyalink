@@ -57,8 +57,9 @@ public class EmailService {
         message.setTo(to);
         message.setSubject("Welcome to ShunyaLink! 🎉");
         message.setText("Hi " + name + ",\n\n"
-                + "Thank you for verifying your email address! Your ShunyaLink account is now fully active and verified.\n"
-                + "You can now securely create, share, and track all your custom shortened links.\n\n"
+                + "Thank you for verifying your email address! Your ShunyaLink account is now fully active.\n\n"
+                + "ShunyaLink is more than just a URL shortener; it is your ultimate Productivity & Branding Platform!\n"
+                + "You can securely create, share, and track all your custom shortened links, AND you can now build a beautiful, personalized 'Link-In-Bio' landing page to host your online identity.\n\n"
                 + "Happy linking!\n"
                 + "The ShunyaLink Team");
         mailSender.send(message);
@@ -71,8 +72,9 @@ public class EmailService {
         message.setTo(to);
         message.setSubject("Welcome to ShunyaLink! 🎉");
         message.setText("Hi " + name + ",\n\n"
-                + "Welcome aboard! You have successfully registered for ShunyaLink using your Google account.\n"
-                + "Your account is now fully active, and you can securely create, share, and track all your custom shortened links.\n\n"
+                + "Welcome aboard! You have successfully registered for ShunyaLink using your Google account.\n\n"
+                + "ShunyaLink is more than just a URL shortener; it is your ultimate Productivity & Branding Platform!\n"
+                + "Your account is now fully active. You can securely create, share, and track all your custom shortened links, AND you can now build a beautiful, personalized 'Link-In-Bio' landing page to host your online identity.\n\n"
                 + "Happy linking!\n"
                 + "The ShunyaLink Team");
         mailSender.send(message);
