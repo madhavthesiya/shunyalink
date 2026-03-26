@@ -29,7 +29,7 @@ ShunyaLink is a full-stack URL shortener engineered for production — not just 
 ## Architecture
 
 ```
-React Frontend (Vite)
+Next.js Frontend
        │
        │ REST API
        ▼
@@ -101,7 +101,7 @@ Interactive docs available at `/swagger-ui.html` when running locally.
 | Database | PostgreSQL 18 |
 | Cache | Redis 7 |
 | Migrations | Flyway 10 |
-| Frontend | React 18, Vite 7, Axios |
+| Frontend | Next.js 16, React 19, TypeScript |
 | Docs | SpringDoc OpenAPI (Swagger) |
 | Build | Maven |
 
@@ -110,7 +110,7 @@ Interactive docs available at `/swagger-ui.html` when running locally.
 ## Project Structure
 
 ```
-src/main/java/com/example/demo/
+src/main/java/com/shunyalink/
 ├── analytics/
 │   ├── AnalyticsScheduler.java          # Write-behind sync with distributed lock
 │   └── ExpiredLinkCleanupScheduler.java # Hourly expired link purge
@@ -132,10 +132,10 @@ src/main/resources/
 └── db/migration/
     └── V1__init.sql                     # Flyway schema (table + partial index)
 
-url-shortener-frontend/
+frontend/
 └── src/
-    ├── App.jsx                          # Main React component
-    └── App.css                          # Styles
+    ├── app/                             # Next.js app directory
+    └── components/                      # React components
 ```
 
 ---
@@ -144,10 +144,10 @@ url-shortener-frontend/
 
 Requires Java 21, PostgreSQL, Redis, and Node.js.
 
-Set environment variables `DB_USERNAME` and `DB_PASSWORD`, then start the Spring Boot app. Flyway will create the schema automatically on first run. For the frontend, run `npm install` and `npm run dev` inside the `url-shortener-frontend` folder.
+Set environment variables `DB_USERNAME` and `DB_PASSWORD`, then start the Spring Boot app. Flyway will create the schema automatically on first run. For the frontend, run `npm install` and `npm run dev` inside the `frontend` folder.
 
 Backend → `http://localhost:8080`  
-Frontend → `http://localhost:5173`  
+Frontend → `http://localhost:3000`  
 Swagger → `http://localhost:8080/swagger-ui.html`
 
 ---

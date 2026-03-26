@@ -97,6 +97,7 @@ export default function DashboardPage() {
     // Add newly created URL to the top of the list
     setUrls([
       {
+        showOnBio: false,
         shortId: data.shortId,
         longUrl: data.longUrl,
         clickCount: 0,
@@ -153,6 +154,28 @@ export default function DashboardPage() {
       month: "short",
       day: "numeric",
     });
+  };
+
+  const toggleBioVisibility = async (shortId: string, currentState: boolean) => {
+    const token = localStorage.getItem("authToken");
+    try {
+      const response = await fetch(`${API_URL}/api/v1/url/${shortId}/bio-visibility`, {
+        method: "PUT",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ showOnBio: !currentState })
+      });
+
+      if (response.ok) {
+        setUrls(prevUrls => prevUrls.map(u => u.shortId === shortId ? { ...u, showOnBio: !currentState } : u));
+      } else {
+        setError("Failed to update bio visibility");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update bio visibility");
+    }
   };
 
   return (
@@ -280,13 +303,13 @@ export default function DashboardPage() {
                         <th className="px-6 py-4 text-left font-semibold text-foreground">
                           Original URL
                         </th>
+                        <th className="px-6 py-4 text-center font-semibold text-foreground">Bio</th>
                         <th className="px-6 py-4 text-center font-semibold text-foreground">
                           Clicks
                         </th>
                         <th className="px-6 py-4 text-left font-semibold text-foreground">
                           Created
                         </th>
-                        <th className="px-6 py-4 text-center font-semibold text-foreground">Bio</th>
                         <th className="px-6 py-4 text-right font-semibold text-foreground">
                           Actions
                         </th>
@@ -407,26 +430,4 @@ export default function DashboardPage() {
       )}
     </div>
   );
-
-  const toggleBioVisibility = async (shortId: string, currentState: boolean) => {
-  const token = localStorage.getItem("authToken");
-  try {
-    const response = await fetch(`${API_URL}/api/v1/url/${shortId}/bio-visibility`, {
-      method: "PUT",
-      headers: { 
-        "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ showOnBio: !currentState })
-    });
-
-    if (response.ok) {
-      // Update the local state instantly
-      setUrls(urls.map(u => u.shortId === shortId ? { ...u, showOnBio: !currentState } : u));
-    }
-  } catch (err) {
-    console.error("Failed to toggle visibility", err);
-  }
-};
-
 }
