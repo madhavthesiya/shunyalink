@@ -58,6 +58,8 @@ public class ProfileController {
         ProfileResponse completeProfile = new ProfileResponse(
             baseProfile.getUsername(),
             baseProfile.getName(),
+            null,  // Don't expose email publicly
+            false, // Don't expose verification status publicly
             baseProfile.getBioText(),
             baseProfile.getThemeColor(),
             bioLinks
