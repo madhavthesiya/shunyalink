@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { ArrowRight, Loader2, Link, Hash, Calendar, Eye, EyeOff } from "lucide-react";
+import { useState, useEffect, type FormEvent } from "react";
+import { ArrowRight, Loader2, Link, Hash, Calendar, Eye, EyeOff, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -40,6 +40,11 @@ export function ShortenerForm({ onSuccess, onError }: ShortenerFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [showPasswordInput, setShowPasswordInput] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    setIsLoggedIn(!!localStorage.getItem("authToken"));
+  }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -121,22 +126,31 @@ export function ShortenerForm({ onSuccess, onError }: ShortenerFormProps) {
         </div>
       </div>
 
-      {/* Link Title (Custom Label) */}
       <div className="space-y-3">
         <Label htmlFor="title" className="flex items-center gap-2 text-sm font-medium text-foreground">
           <Hash className="w-4 h-4 text-primary" />
           Link Title (e.g. My Portfolio)
-          <span className="text-xs text-muted-foreground/60 font-normal ml-auto">Shown on Bio Profile</span>
+          {!isLoggedIn && (
+            <span className="text-[10px] bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded-full border border-amber-500/20 font-bold ml-auto animate-pulse">
+              Login Required
+            </span>
+          )}
+          {isLoggedIn && <span className="text-xs text-muted-foreground/60 font-normal ml-auto">Shown on Bio Profile</span>}
         </Label>
-        <Input
-          id="title"
-          type="text"
-          placeholder="Enter a friendly name for this link"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          className="h-12 bg-background/50 border-border/50 rounded-xl premium-input focus:border-primary/50 focus:ring-2 focus:ring-primary/10 transition-all placeholder:text-muted-foreground/50"
-          disabled={isLoading}
-        />
+        <div className="relative group">
+          <Input
+            id="title"
+            type="text"
+            placeholder={isLoggedIn ? "Enter a friendly name for this link" : "🔐 Login first to edit this field"}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className={`h-12 bg-background/50 border-border/50 rounded-xl premium-input focus:border-primary/50 focus:ring-2 focus:ring-primary/10 transition-all placeholder:text-muted-foreground/50 ${!isLoggedIn && "opacity-60 cursor-not-allowed"}`}
+            disabled={isLoading || !isLoggedIn}
+          />
+          {!isLoggedIn && (
+            <div className="absolute inset-0 z-10 cursor-not-allowed" title="Login required for premium features" />
+          )}
+        </div>
       </div>
 
       {/* Optional Fields */}
@@ -177,7 +191,6 @@ export function ShortenerForm({ onSuccess, onError }: ShortenerFormProps) {
         </div>
       </div>
 
-      {/* Password Protection */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <Label htmlFor="password-toggle" className="text-sm font-medium text-foreground cursor-pointer">

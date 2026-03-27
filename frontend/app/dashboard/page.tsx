@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { LogOut, Copy, QrCode, Loader2, AlertCircle, TrendingUp, Link2, Trash2, Smartphone, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ShortenerForm } from "@/components/shortener-form";
@@ -275,7 +276,7 @@ export default function DashboardPage() {
       {/* Custom Dashboard Header */}
       <header className="glass-card sticky top-0 z-50 border-b border-border/50">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
             <div className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-primary/80 shadow-lg shadow-primary/25">
               <Link2 className="w-4 h-4 text-primary-foreground" />
               <div className="absolute inset-0 rounded-xl bg-primary/20 blur-md -z-10" />
@@ -283,7 +284,7 @@ export default function DashboardPage() {
             <span className="text-xl font-semibold tracking-tight text-foreground">
               Shunya<span className="text-gradient">Link</span>
             </span>
-          </div>
+          </Link>
 
           <div className="flex items-center gap-4">
             <div className="text-right hidden sm:block">

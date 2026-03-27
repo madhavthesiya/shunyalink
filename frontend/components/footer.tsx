@@ -6,15 +6,15 @@ export function Footer() {
   return (
     <footer className="border-t border-border/50 bg-card/30 mt-auto">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-16">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 mb-12">
           {/* Brand */}
           <div>
-            <div className="flex items-center gap-3 mb-5">
-              <div className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-primary/80 shadow-lg shadow-primary/25">
+            <div className="flex items-center gap-2.5 mb-5">
+              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary shadow-md">
                 <Link2 className="w-4 h-4 text-primary-foreground" />
               </div>
-              <span className="text-lg font-semibold text-foreground">
-                Shunya<span className="text-gradient">Link</span>
+              <span className="text-xl font-bold text-foreground tracking-tight">
+                ShunyaLink
               </span>
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed max-w-xs">
@@ -24,49 +24,62 @@ export function Footer() {
 
           {/* Tech Stack */}
           <div>
-            <h4 className="font-semibold text-foreground mb-5">Tech Stack</h4>
+            <h4 className="font-semibold text-foreground mb-6">Tech Stack</h4>
             <ul className="space-y-4">
-              <li className="flex items-center gap-3 text-sm text-muted-foreground group">
-                <div className="w-8 h-8 rounded-lg bg-muted/50 flex items-center justify-center group-hover:bg-primary/10 transition-colors">
-                  <Server className="w-4 h-4 group-hover:text-primary transition-colors" />
+              <li className="flex items-center gap-3 text-sm text-muted-foreground/80 group">
+                <div className="w-9 h-9 rounded-xl bg-muted/30 border border-border/50 flex items-center justify-center group-hover:bg-primary/5 transition-all">
+                  <Server className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
                 </div>
-                Spring Boot Backend
+                <span className="group-hover:text-foreground transition-colors">Spring Boot Backend</span>
               </li>
-              <li className="flex items-center gap-3 text-sm text-muted-foreground group">
-                <div className="w-8 h-8 rounded-lg bg-muted/50 flex items-center justify-center group-hover:bg-primary/10 transition-colors">
-                  <Database className="w-4 h-4 group-hover:text-primary transition-colors" />
+              <li className="flex items-center gap-3 text-sm text-muted-foreground/80 group">
+                <div className="w-9 h-9 rounded-xl bg-muted/30 border border-border/50 flex items-center justify-center group-hover:bg-primary/5 transition-all">
+                  <Database className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
                 </div>
-                PostgreSQL Database
+                <span className="group-hover:text-foreground transition-colors">PostgreSQL Database</span>
               </li>
-              <li className="flex items-center gap-3 text-sm text-muted-foreground group">
-                <div className="w-8 h-8 rounded-lg bg-muted/50 flex items-center justify-center group-hover:bg-primary/10 transition-colors">
-                  <Zap className="w-4 h-4 group-hover:text-primary transition-colors" />
+              <li className="flex items-center gap-3 text-sm text-muted-foreground/80 group">
+                <div className="w-9 h-9 rounded-xl bg-muted/30 border border-border/50 flex items-center justify-center group-hover:bg-primary/5 transition-all">
+                  <Zap className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
                 </div>
-                Redis Caching
+                <span className="group-hover:text-foreground transition-colors">Redis Caching</span>
               </li>
             </ul>
           </div>
 
           {/* Features */}
           <div>
-            <h4 className="font-semibold text-foreground mb-5">Features</h4>
-            <ul className="space-y-3 text-sm text-muted-foreground">
-              <li className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-primary/60" />
-                Custom short aliases
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-primary/60" />
-                Link expiration settings
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-primary/60" />
-                Click analytics
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-primary/60" />
-                QR code generation
-              </li>
+            <h4 className="font-semibold text-foreground mb-6">Link Management</h4>
+            <ul className="space-y-4 text-sm text-muted-foreground/80">
+              {[
+                'Custom short aliases',
+                'Password protection',
+                'Link expiration settings',
+                'QR code generation'
+              ].map((feature) => (
+                <li key={feature} className="flex items-center gap-3 group cursor-default">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary ring-4 ring-primary/10" />
+                  <span className="group-hover:text-foreground transition-colors">{feature}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Identity Features */}
+          <div>
+            <h4 className="font-semibold text-foreground mb-6">Identity Features</h4>
+            <ul className="space-y-4 text-sm text-muted-foreground/80">
+              {[
+                'Link-in-Bio profiles',
+                'Premium Profile Cards',
+                'Claim unique @handle',
+                'Detailed Click analytics'
+              ].map((feature) => (
+                <li key={feature} className="flex items-center gap-3 group cursor-default">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary ring-4 ring-primary/10" />
+                  <span className="group-hover:text-foreground transition-colors">{feature}</span>
+                </li>
+              ))}
             </ul>
           </div>
         </div>

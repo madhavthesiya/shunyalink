@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { AlertCircle, Sparkles, Zap, BarChart3, Settings2, ArrowRight } from "lucide-react";
+import { AlertCircle, Sparkles, Zap, BarChart3, Settings2, ArrowRight, User } from "lucide-react";
 import { Header } from "@/components/header";
 import { ShortenerForm } from "@/components/shortener-form";
 import { ResultBox } from "@/components/result-box";
@@ -56,43 +56,48 @@ export default function Home() {
 
       <main className="flex-1 grid-pattern">
         {/* Hero Section */}
-        <section className="pt-12 sm:pt-20 pb-12 px-4 sm:px-6">
+        <section className="pt-4 sm:pt-10 pb-12 px-4 sm:px-6">
           <div className="max-w-3xl mx-auto text-center">
-            {/* Badge */}
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/5 border border-primary/10 text-primary text-sm font-medium mb-8 animate-in fade-in-0 slide-in-from-bottom-4 duration-700">
-              <Sparkles className="w-4 h-4" />
-              <span>Free URL Shortener</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-            </div>
             
             {/* Headline */}
             <h1 className="text-5xl sm:text-6xl md:text-7xl font-bold tracking-tight text-foreground mb-6 animate-in fade-in-0 slide-in-from-bottom-4 duration-700 delay-100">
-              <span className="text-balance">Make your links</span>
+              <span className="text-balance">Shorten Links.</span>
               <br />
-              <span className="text-gradient">beautifully short</span>
+              <span className="text-gradient">Build your Identity.</span>
             </h1>
             
             {/* Subheadline */}
-            <p className="text-lg sm:text-xl text-muted-foreground max-w-xl mx-auto mb-4 animate-in fade-in-0 slide-in-from-bottom-4 duration-700 delay-200 text-pretty leading-relaxed">
-              Transform long URLs into clean links and host them on your personalized Link-in-Bio profile. 
-              The ultimate Productivity & Branding Platform for your online identity.
+            <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-8 animate-in fade-in-0 slide-in-from-bottom-4 duration-700 delay-200 text-pretty leading-relaxed">
+              Transform long URLs into clean links and host them on your personalized 
+              <strong> Shunya Link-in-Bio</strong> profile. The ultimate Productivity & Branding Platform 
+              for your online identity.
             </p>
 
-            {/* Trust indicators */}
-            <div className="flex items-center justify-center gap-6 text-sm text-muted-foreground animate-in fade-in-0 slide-in-from-bottom-4 duration-700 delay-300">
-              <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-success" />
-                No signup required
-              </span>
-              <span className="hidden sm:flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-success" />
-                Instant redirects
-              </span>
+            {/* Trust indicators & Secondary CTA */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6 animate-in fade-in-0 slide-in-from-bottom-4 duration-700 delay-300">
+              <div className="flex items-center gap-6 text-sm text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-success" />
+                  No signup required
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-success" />
+                  Instant redirects
+                </span>
+              </div>
+              <div className="hidden sm:block w-px h-4 bg-border/50" />
+              <a 
+                href="/register" 
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary hover:bg-primary/20 text-sm font-semibold transition-all group"
+              >
+                Claim your Bio Link
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </a>
             </div>
           </div>
         </section>
 
-        {/* URL Shortener Card */}
+        {/* Result Display & Quick Spotlight */}
         <section className="pb-12 sm:pb-16 px-4 sm:px-6">
           <div className="max-w-xl mx-auto">
             <div className="glass-card rounded-2xl shadow-2xl shadow-primary/5 p-8 sm:p-10 animate-in fade-in-0 slide-in-from-bottom-4 duration-700 delay-400">
@@ -124,18 +129,111 @@ export default function Home() {
           </div>
         </section>
 
+        {/* Branding & Identity Section (The Bio Profile) */}
+        <section className="py-20 sm:py-32 bg-primary/5 border-y border-primary/10 relative overflow-hidden">
+          <div className="absolute inset-0 grid-pattern opacity-30" />
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 relative z-10">
+            <div className="flex flex-col md:flex-row items-center gap-12 sm:gap-20">
+              <div className="flex-1 text-center md:text-left">
+                <span className="inline-block px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider mb-6">
+                  Personal Branding
+                </span>
+                <h2 className="text-4xl sm:text-5xl font-bold text-foreground mb-6 leading-tight">
+                  One Link to <br />
+                  <span className="text-gradient">Rule them all.</span>
+                </h2>
+                <p className="text-lg text-muted-foreground mb-8 leading-relaxed">
+                  Tired of changing Bio links everyday? ShunyaLink gives you a permanent, 
+                  beautiful storefront for your online identity. Connect your Instagram, 
+                  Twitter, Portfolio, and Shop in one place.
+                </p>
+                <div className="space-y-4 mb-10">
+                  <div className="flex items-center gap-3 text-foreground font-medium">
+                    <div className="w-6 h-6 rounded-full bg-success/20 flex items-center justify-center">
+                      <Zap className="w-3.5 h-3.5 text-success" />
+                    </div>
+                    Claim your unique handle: shunyalink.me/@name
+                  </div>
+                  <div className="flex items-center gap-3 text-foreground font-medium">
+                    <div className="w-6 h-6 rounded-full bg-success/20 flex items-center justify-center">
+                      <Zap className="w-3.5 h-3.5 text-success" />
+                    </div>
+                    Unlimited social links & custom themes
+                  </div>
+                </div>
+                <a 
+                  href="/register" 
+                  className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-primary text-primary-foreground font-bold shadow-lg shadow-primary/20 hover:scale-105 transition-all group"
+                >
+                  Create your Bio Profile
+                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                </a>
+              </div>
+              
+              <div className="flex-1 relative pb-12 sm:pb-0">
+                <div className="relative z-10 max-w-[300px] mx-auto">
+                  {/* Mobile Phone Frame */}
+                  <div className="relative rounded-[3rem] border-8 border-foreground/5 shadow-2xl p-4 bg-background aspect-[9/18.5] overflow-hidden group hover:scale-105 transition-transform duration-500">
+                    {/* Notch/Dynamic Island */}
+                    <div className="absolute top-2 left-1/2 -translate-x-1/2 w-20 h-5 bg-foreground/10 rounded-full z-20" />
+                    
+                    {/* Screen Content */}
+                    <div className="h-full w-full rounded-[2.5rem] bg-gradient-to-b from-primary/5 to-transparent p-6 flex flex-col items-center">
+                      {/* Avatar Wrapper */}
+                      <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-primary/20 via-primary/40 to-primary/20 p-1 mb-4 mt-4">
+                        <div className="w-full h-full rounded-full bg-background border-2 border-primary/20 overflow-hidden flex items-center justify-center">
+                          <User className="w-10 h-10 text-primary/40" />
+                        </div>
+                      </div>
+                      
+                      {/* Text details */}
+                      <div className="text-center mb-10">
+                        <h4 className="text-lg font-bold text-foreground mb-1">Your Name</h4>
+                        <p className="text-sm font-semibold text-primary mb-2">@username</p>
+                        <p className="text-[10px] text-muted-foreground leading-tight px-4 opacity-70">
+                          Your bio will appear here to welcome your visitors...
+                        </p>
+                      </div>
+                      
+                      {/* Link Buttons */}
+                      <div className="w-full space-y-3 mb-auto">
+                        {['Portfolio', 'Twitter', 'GitHub'].map((label) => (
+                          <div key={label} className="w-full py-3 px-4 rounded-xl border border-primary/10 bg-background shadow-sm text-center text-[10px] font-bold text-foreground/80 cursor-default">
+                            {label}
+                          </div>
+                        ))}
+                      </div>
+                      
+                      {/* Brand Footer */}
+                      <div className="flex items-center gap-1.5 opacity-40 mt-6 group-hover:opacity-60 transition-opacity">
+                        <Sparkles className="w-3 h-3 text-primary" />
+                        <span className="text-[10px] font-bold tracking-tight">shunyalink.com</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Decorative blobs */}
+                  <div className="absolute -top-10 -right-10 w-40 h-40 bg-primary/20 blur-[80px] -z-10 animate-pulse" />
+                  <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-primary/30 blur-[80px] -z-10 animate-pulse delay-700" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* Features Section */}
         <section className="py-12 sm:py-16 border-t border-border/50">
           <div className="max-w-5xl mx-auto px-4 sm:px-6">
             <div className="text-center mb-16">
               <span className="inline-block px-3 py-1 rounded-full bg-primary/5 border border-primary/10 text-primary text-xs font-semibold uppercase tracking-wider mb-4">
-                Features
+                The Platform
               </span>
               <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4 text-balance">
-                Why choose ShunyaLink?
+                Everything you need to <span className="text-gradient">Grow.</span>
               </h2>
               <p className="text-muted-foreground max-w-lg mx-auto">
-                Built for speed, designed for simplicity. Everything you need, nothing you do not.
+                ShunyaLink isn't just a tool; it's the ultimate productivity & branding 
+                platform for your online identity.
               </p>
             </div>
             
@@ -145,9 +243,10 @@ export default function Home() {
                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
                   <Zap className="w-6 h-6 text-primary" />
                 </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">Lightning Fast</h3>
+                <h3 className="text-lg font-semibold text-foreground mb-2">Brand Consistency</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  Redis caching ensures sub-millisecond redirects. Your links load instantly, every time.
+                  Every link you share reinforces your brand. ShunyaLink ensures your 
+                  digital presence is unified and professional.
                 </p>
               </div>
               
@@ -156,9 +255,10 @@ export default function Home() {
                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
                   <BarChart3 className="w-6 h-6 text-primary" />
                 </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">Rich Analytics</h3>
+                <h3 className="text-lg font-semibold text-foreground mb-2">Growth Insights</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  Track total clicks, creation dates, and last access times for every shortened link.
+                  Understand your audience. Track clicks, geography, and engagement 
+                  to scale your online identity effectively.
                 </p>
               </div>
               
@@ -167,9 +267,10 @@ export default function Home() {
                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
                   <Settings2 className="w-6 h-6 text-primary" />
                 </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">Custom Aliases</h3>
+                <h3 className="text-lg font-semibold text-foreground mb-2">Unique Identity</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  Brand your links with memorable custom aliases. Set expiration for temporary campaigns.
+                  Secure your unique @handle and customize your Bio profile with 
+                  themes that match your personality.
                 </p>
               </div>
             </div>
@@ -177,10 +278,10 @@ export default function Home() {
             {/* CTA */}
             <div className="mt-16 text-center">
               <a 
-                href="#" 
-                className="inline-flex items-center gap-2 text-primary hover:text-primary/80 font-medium transition-colors group"
+                href="/register" 
+                className="inline-flex items-center gap-2 text-primary hover:text-primary/80 font-bold transition-colors group"
               >
-                Start shortening for free
+                Start building your identity for free
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </a>
             </div>
