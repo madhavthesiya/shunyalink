@@ -5,6 +5,8 @@ import com.shunyalink.exception.NotFoundException;
 import com.shunyalink.rate.RateLimiterService;
 import com.shunyalink.security.JwtService;
 import com.shunyalink.security.CustomUserDetailsService;
+import com.shunyalink.auth.UserRepository;
+import com.shunyalink.auth.UserEntity;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
