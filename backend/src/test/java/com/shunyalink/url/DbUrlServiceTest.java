@@ -14,6 +14,7 @@ import org.mockito.quality.Strictness;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -41,6 +42,9 @@ class DbUrlServiceTest {
 
     @Mock
     private IdEncoder idEncoder;
+
+    @Mock
+    private PasswordEncoder passwordEncoder;
 
     @InjectMocks
     private DbUrlService dbUrlService;

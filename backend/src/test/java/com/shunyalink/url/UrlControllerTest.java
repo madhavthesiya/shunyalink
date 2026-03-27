@@ -43,6 +43,18 @@ class UrlControllerTest {
     @MockBean
     private CustomUserDetailsService customUserDetailsService;
 
+    @MockBean
+    private UrlRepository urlRepository;
+
+    @MockBean
+    private UserRepository userRepository;
+
+    @MockBean
+    private org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
+
+    @MockBean
+    private CsvExportService csvExportService;
+
     // ─── POST /api/v1/url/shorten ────────────────────────────────────
 
     @Test
