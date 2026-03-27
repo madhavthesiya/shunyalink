@@ -26,6 +26,7 @@ public class AuthService {
     private final VerificationTokenRepository verificationTokenRepo;
     private final PasswordResetTokenRepository passwordResetTokenRepo;
     private final EmailService emailService;
+    private final com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository;
 
     public AuthService(UserRepository userRepository,
             PasswordEncoder passwordEncoder,
@@ -33,7 +34,8 @@ public class AuthService {
             @Value("${app.google.client-id}") String googleClientId,
             VerificationTokenRepository verificationTokenRepo,
             PasswordResetTokenRepository passwordResetTokenRepo,
-            EmailService emailService) {
+            EmailService emailService,
+            com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
@@ -41,6 +43,7 @@ public class AuthService {
         this.verificationTokenRepo = verificationTokenRepo;
         this.passwordResetTokenRepo = passwordResetTokenRepo;
         this.emailService = emailService;
+        this.globalStatsRepository = globalStatsRepository;
     }
 
     public AuthResponse register(RegisterRequest request) {
@@ -55,6 +58,9 @@ public class AuthService {
         user.setPassword(passwordEncoder.encode(request.getPassword())); // BCrypt hash
         user.setName(request.getName());
         userRepository.save(user);
+
+        // Professional Stats: Increment global users count
+        globalStatsRepository.incrementUsers();
 
         // Send verification email
         VerificationToken verificationToken = new VerificationToken();
@@ -111,6 +117,9 @@ public class AuthService {
                 newUser.setAuthProvider("GOOGLE");
                 newUser.setEmailVerified(true); // Google OAuth implies verified email
                 user = userRepository.save(newUser);
+
+                // Professional Stats: Increment global users count
+                globalStatsRepository.incrementUsers();
 
                 // Send Welcome Email to first-time Google users
                 emailService.sendGoogleWelcomeEmail(user.getEmail(), user.getName());

@@ -25,12 +25,18 @@ public class DbUrlService implements UrlService {
     private final RedisTemplate<String, String> redisTemplate;
     private static final Logger log = LoggerFactory.getLogger(DbUrlService.class);
     private final PasswordEncoder passwordEncoder;
+    private final com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository;
 
-    public DbUrlService(UrlRepository urlRepository, IdEncoder idEncoder, RedisTemplate<String, String> redisTemplate, PasswordEncoder passwordEncoder) {
+    public DbUrlService(UrlRepository urlRepository,
+                        IdEncoder idEncoder,
+                        RedisTemplate<String, String> redisTemplate,
+                        PasswordEncoder passwordEncoder,
+                        com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository) {
         this.urlRepository = urlRepository;
         this.idEncoder = idEncoder;
         this.redisTemplate = redisTemplate;
         this.passwordEncoder = passwordEncoder;
+        this.globalStatsRepository = globalStatsRepository;
     }
 
     private long getTtlSeconds(LocalDateTime expiryTime) {
@@ -75,6 +81,7 @@ public class DbUrlService implements UrlService {
                 entity.setPassword(passwordEncoder.encode(password));
             }
             UrlEntity saved = urlRepository.save(entity);
+            globalStatsRepository.incrementLinks();
             redisTemplate.opsForValue().set(
                     "url:" + normalized,
                     longUrl,
@@ -107,6 +114,7 @@ public class DbUrlService implements UrlService {
             entity.setPassword(passwordEncoder.encode(password));
         }
         UrlEntity saved = urlRepository.save(entity);
+        globalStatsRepository.incrementLinks();
         redisTemplate.opsForValue().set(
                 "url:" + shortId, longUrl,
                 getTtlSeconds(entity.getExpiryTime()), TimeUnit.SECONDS);

@@ -28,6 +28,7 @@ public class UrlController {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final CsvExportService csvExportService;
+    private final com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository;
 
     @Value("${app.base-url}")
     private String baseUrl;
@@ -51,13 +52,15 @@ public class UrlController {
 
     public UrlController(UrlService urlService, RateLimiterService rateLimiterService,
                          UrlRepository urlRepository, UserRepository userRepository,
-                         PasswordEncoder passwordEncoder, CsvExportService csvExportService) {
+                         PasswordEncoder passwordEncoder, CsvExportService csvExportService,
+                         com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository) {
         this.urlService = urlService;
         this.rateLimiterService = rateLimiterService;
         this.urlRepository = urlRepository;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.csvExportService = csvExportService;
+        this.globalStatsRepository = globalStatsRepository;
     }
 
     @PostMapping("/shorten")
@@ -121,11 +124,11 @@ public class UrlController {
 
     @GetMapping("/stats/public")
     public ResponseEntity<PublicStatsResponse> getPublicStats() {
-        long totalLinks = urlRepository.count();
-        long totalUsers = userRepository.count();
-        long totalClicks = urlRepository.sumTotalClicks();
-        
-        return ResponseEntity.ok(new PublicStatsResponse(totalLinks, totalUsers, totalClicks));
+        com.shunyalink.analytics.GlobalStatsEntity stats = globalStatsRepository.getStats();
+        return ResponseEntity.ok(new PublicStatsResponse(
+                stats.getTotalLinks(),
+                stats.getTotalUsers(),
+                stats.getTotalClicks()));
     }
 
     @PostMapping("/resolve/{shortId}")

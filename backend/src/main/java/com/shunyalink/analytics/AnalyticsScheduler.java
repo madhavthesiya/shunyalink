@@ -21,10 +21,14 @@ public class AnalyticsScheduler {
     private static final String SOURCE_KEY = "analytics:click_counts";
     private static final String LOCK_KEY = "analytics:sync:lock";
 
+    private final com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository;
+
     public AnalyticsScheduler(RedisTemplate<String, String> redisTemplate,
-                              UrlRepository urlRepository) {
+                              UrlRepository urlRepository,
+                              com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository) {
         this.redisTemplate = redisTemplate;
         this.urlRepository = urlRepository;
+        this.globalStatsRepository = globalStatsRepository;
     }
 
     @Scheduled(fixedRate = 30000)
@@ -53,10 +57,16 @@ public class AnalyticsScheduler {
             Map<Object, Object> counters = redisTemplate.opsForHash().entries(processingKey);
             log.info("ANALYTICS SYNC started size={}", counters.size());
 
+            long totalBatchClicks = 0;
             for (Map.Entry<Object, Object> entry : counters.entrySet()) {
                 String shortId = (String) entry.getKey();
                 long count = Long.parseLong(entry.getValue().toString());
                 urlRepository.incrementClickCount(shortId, count);
+                totalBatchClicks += count;
+            }
+
+            if (totalBatchClicks > 0) {
+                globalStatsRepository.incrementClicks(totalBatchClicks);
             }
 
             log.info("ANALYTICS SYNC completed processed={}", counters.size());
