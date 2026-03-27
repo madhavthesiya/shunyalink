@@ -5,6 +5,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
+import java.net.URI;
 import java.util.Map;
 
 @RestController
@@ -13,6 +16,9 @@ public class AuthController {
 
     private final AuthService authService;
     private final RateLimiterService rateLimiterService;
+
+    @org.springframework.beans.factory.annotation.Value("${app.frontend-url}")
+    private String frontendUrl;
 
     public AuthController(AuthService authService, RateLimiterService rateLimiterService) {
         this.authService = authService;
@@ -39,8 +45,11 @@ public class AuthController {
     }
 
     @GetMapping("/verify")
-    public String verifyEmail(@RequestParam String token) {
-        return authService.verifyEmail(token);
+    public ResponseEntity<Void> verifyEmail(@RequestParam String token) {
+        authService.verifyEmail(token);
+        return ResponseEntity.status(HttpStatus.FOUND)
+                .location(URI.create(frontendUrl + "/login?verified=true"))
+                .build();
     }
 
     @PostMapping("/forgot-password")

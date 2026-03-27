@@ -16,7 +16,7 @@ public class EmailService {
 
     public EmailService(JavaMailSender mailSender,
                         @Value("${app.base-url}") String baseUrl,
-                        @Value("${app.allowed-origin}") String frontendUrl,
+                        @Value("${app.frontend-url}") String frontendUrl,
                         @Value("${spring.mail.username:noreply.shunyalink@gmail.com}") String mailUsername) {
         this.mailSender = mailSender;
         this.baseUrl = baseUrl;

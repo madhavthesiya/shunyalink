@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { ArrowRight, Loader2, Link, Hash, Calendar } from "lucide-react";
+import { ArrowRight, Loader2, Link, Hash, Calendar, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,6 +12,7 @@ interface ShortenResponse {
   shortUrl: string;
   longUrl: string;
   createdAt: string;
+  passwordProtected: boolean;
 }
 
 interface ShortenerFormProps {
@@ -35,6 +36,9 @@ export function ShortenerForm({ onSuccess, onError }: ShortenerFormProps) {
   const [customAlias, setCustomAlias] = useState("");
   const [expiryDays, setExpiryDays] = useState("");
   const [title, setTitle] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showPasswordInput, setShowPasswordInput] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
@@ -66,6 +70,7 @@ export function ShortenerForm({ onSuccess, onError }: ShortenerFormProps) {
           ...(customAlias.trim() && { customAlias: customAlias.trim() }),
           ...(expiryDays && { expiryDays: parseInt(expiryDays, 10) }),
           ...(title.trim() && { title: title.trim() }),
+          ...(password.trim() && { password: password.trim() }),
         }),
       });
 
@@ -81,6 +86,8 @@ export function ShortenerForm({ onSuccess, onError }: ShortenerFormProps) {
       setCustomAlias("");
       setExpiryDays("");
       setTitle("");
+      setPassword("");
+      setShowPasswordInput(false);
     } catch (err) {
       if (err instanceof TypeError && err.message.includes("fetch")) {
         onError("Cannot reach the server. Make sure the backend is running.");
@@ -168,6 +175,44 @@ export function ShortenerForm({ onSuccess, onError }: ShortenerFormProps) {
             disabled={isLoading}
           />
         </div>
+      </div>
+
+      {/* Password Protection */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <Label htmlFor="password-toggle" className="text-sm font-medium text-foreground cursor-pointer">
+            Lock with Password
+            <p className="text-[10px] text-muted-foreground/60 font-normal">Require a password to access this link</p>
+          </Label>
+          <input 
+            type="checkbox" 
+            id="password-toggle"
+            checked={showPasswordInput}
+            onChange={(e) => setShowPasswordInput(e.target.checked)}
+            className="w-4 h-4 rounded border-border/50 bg-background/50 accent-primary cursor-pointer"
+            disabled={isLoading}
+          />
+        </div>
+        {showPasswordInput && (
+          <div className="animate-in fade-in slide-in-from-top-2 duration-300 relative">
+            <Input
+              type={showPassword ? "text" : "password"}
+              placeholder="Enter link password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="h-12 bg-background/50 border-border/50 rounded-xl premium-input focus:border-primary/50 focus:ring-2 focus:ring-primary/10 transition-all pr-12"
+              disabled={isLoading}
+              required={showPasswordInput}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary transition-all transition-colors"
+            >
+              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Submit Button */}

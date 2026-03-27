@@ -5,9 +5,11 @@ import com.shunyalink.security.JwtService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import com.shunyalink.auth.UserRepository;
 import com.shunyalink.auth.UserEntity;
@@ -24,6 +26,8 @@ public class UrlController {
     private final RateLimiterService rateLimiterService;
     private final UrlRepository urlRepository;
     private final UserRepository userRepository;
+    private final BCryptPasswordEncoder passwordEncoder;
+    private final CsvExportService csvExportService;
 
     @Value("${app.base-url}")
     private String baseUrl;
@@ -45,11 +49,15 @@ public class UrlController {
         return null;
     }
 
-    public UrlController(UrlService urlService, RateLimiterService rateLimiterService, UrlRepository urlRepository, UserRepository userRepository) {
+    public UrlController(UrlService urlService, RateLimiterService rateLimiterService,
+                         UrlRepository urlRepository, UserRepository userRepository,
+                         BCryptPasswordEncoder passwordEncoder, CsvExportService csvExportService) {
         this.urlService = urlService;
         this.rateLimiterService = rateLimiterService;
         this.urlRepository = urlRepository;
         this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.csvExportService = csvExportService;
     }
 
     @PostMapping("/shorten")
@@ -71,13 +79,14 @@ public class UrlController {
             }
         }
 
-        UrlEntity entity = urlService.shortenUrl(request.getLongUrl(),request.getCustomAlias(), request.getExpiryDays(), userId, request.getTitle());
+        UrlEntity entity = urlService.shortenUrl(request.getLongUrl(),request.getCustomAlias(), request.getExpiryDays(), userId, request.getTitle(),request.getPassword());
         return new ShortenResponse(
                 entity.getShortId(),
                 baseUrl + "/" + entity.getShortId(),
                 entity.getLongUrl(),
                 entity.getCreatedAt(),
-                entity.getTitle()
+                entity.getTitle(),
+                entity.getPassword() != null
         );
     }
 
@@ -118,6 +127,36 @@ public class UrlController {
         
         return ResponseEntity.ok(new PublicStatsResponse(totalLinks, totalUsers, totalClicks));
     }
+
+    @PostMapping("/resolve/{shortId}")
+    public ResponseEntity<?> resolvePassword(@PathVariable String shortId, @RequestBody java.util.Map<String, String> body) {
+        String password = body.get("password");
+        UrlEntity entity = urlRepository.findByShortId(shortId)
+                .orElseThrow(() -> new com.shunyalink.exception.NotFoundException("URL not found"));
+
+        // Check password using Bcrypt
+        if (entity.getPassword() == null || passwordEncoder.matches(password, entity.getPassword())) {
+            urlService.incrementClickCount(shortId); // Increment click analytics!
+            return ResponseEntity.ok(java.util.Map.of("longUrl", entity.getLongUrl()));
+        } else {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Incorrect password");
+        }
+    }
+
+    @GetMapping("/export/csv")
+    public ResponseEntity<byte[]> exportCsv() {
+        Long userId = getCurrentUserId();
+        if (userId == null) throw new com.shunyalink.exception.BadRequestException("Authentication required");
+
+        List<UrlEntity> urls = urlRepository.findByUserIdOrderByCreatedAtDesc(userId);
+        String csvContent = csvExportService.exportToCsv(urls);
+
+        return ResponseEntity.ok()
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=links.csv")
+                .contentType(org.springframework.http.MediaType.parseMediaType("text/csv"))
+                .body(csvContent.getBytes());
+    }
+
 
     public static class PublicStatsResponse {
         public long totalLinks;

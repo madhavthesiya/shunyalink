@@ -29,6 +29,9 @@ public class ShortenRequest {
     @Size(max = 100, message = "Title cannot exceed 100 characters")
     private String title;
 
+    @Size(min = 4, max = 20, message = "Password must be 4-20 characters")
+    private String password;
+
     public String getLongUrl() {
         return longUrl;
     }
@@ -60,4 +63,9 @@ public class ShortenRequest {
     public void setTitle(String title) {
         this.title = title;
     }
+
+    public String getPassword() { return password; }
+
+    public void setPassword(String password) { this.password = password; }
+
 }

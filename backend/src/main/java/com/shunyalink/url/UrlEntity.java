@@ -23,7 +23,7 @@ public class UrlEntity {
     private boolean isCustom;
 
     @Column(nullable = false)
-    private long clickCount=0;
+    private long clickCount = 0;
 
     private LocalDateTime lastAccessedTime;
 
@@ -36,6 +36,9 @@ public class UrlEntity {
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    @Column(nullable = true)
+    private String password;
+
     @Column(name = "user_id")
     private Long userId;
 
@@ -47,7 +50,8 @@ public class UrlEntity {
         this.createdAt = LocalDateTime.now();
     }
 
-    public UrlEntity() {}
+    public UrlEntity() {
+    }
 
     public UrlEntity(String shortId, String longUrl, boolean isCustom) {
         this.shortId = shortId;
@@ -55,45 +59,88 @@ public class UrlEntity {
         this.isCustom = isCustom;
     }
 
-    public Long getId() { return id; }
+    public Long getId() {
+        return id;
+    }
 
-    public String getShortId() { return shortId; }
+    public String getShortId() {
+        return shortId;
+    }
 
-    public void setShortId(String shortId) { this.shortId = shortId; }
+    public void setShortId(String shortId) {
+        this.shortId = shortId;
+    }
 
-    public String getLongUrl() { return longUrl; }
+    public String getLongUrl() {
+        return longUrl;
+    }
 
-    public void setLongUrl(String longUrl) { this.longUrl = longUrl; }
+    public void setLongUrl(String longUrl) {
+        this.longUrl = longUrl;
+    }
 
-    public boolean isCustom() { return isCustom; }
+    public boolean isCustom() {
+        return isCustom;
+    }
 
-    public void setCustom(boolean Custom) { this.isCustom = Custom; }
+    public void setCustom(boolean Custom) {
+        this.isCustom = Custom;
+    }
 
-    public long getClickCount() { return clickCount; }
+    public long getClickCount() {
+        return clickCount;
+    }
 
-    public void setClickCount(long clickCount) { this.clickCount = clickCount; }
+    public void setClickCount(long clickCount) {
+        this.clickCount = clickCount;
+    }
 
-    public LocalDateTime getLastAccessedTime() { return lastAccessedTime; }
+    public LocalDateTime getLastAccessedTime() {
+        return lastAccessedTime;
+    }
 
     public void setLastAccessedTime(LocalDateTime lastAccessedTime) {
         this.lastAccessedTime = lastAccessedTime;
     }
 
-    public LocalDateTime getExpiryTime() { return expiryTime; }
+    public LocalDateTime getExpiryTime() {
+        return expiryTime;
+    }
 
-    public void setExpiryTime(LocalDateTime expiryTime) { this.expiryTime = expiryTime; }
+    public void setExpiryTime(LocalDateTime expiryTime) {
+        this.expiryTime = expiryTime;
+    }
 
-    public LocalDateTime getCreatedAt() { return createdAt; }
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
 
-    public String getTitle() { return title; }
-    public void setTitle(String title) { this.title = title; }
+    public String getTitle() {
+        return title;
+    }
 
-    public Long getUserId() { return userId; }
+    public void setTitle(String title) {
+        this.title = title;
+    }
 
-    public void setUserId(Long userId) { this.userId = userId; }
+    public Long getUserId() {
+        return userId;
+    }
 
-    public boolean isShowOnBio() { return showOnBio; }
+    public void setUserId(Long userId) {
+        this.userId = userId;
+    }
 
-    public void setShowOnBio(boolean showOnBio) { this.showOnBio = showOnBio; }
+    public boolean isShowOnBio() {
+        return showOnBio;
+    }
+
+    public void setShowOnBio(boolean showOnBio) {
+        this.showOnBio = showOnBio;
+    }
+
+    public String getPassword() { return password; }
+
+    public void setPassword(String password) { this.password = password; }
 
 }

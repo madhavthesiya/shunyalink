@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, Copy, QrCode, Loader2, AlertCircle, TrendingUp, Link2, Trash2, Smartphone } from "lucide-react";
+import { LogOut, Copy, QrCode, Loader2, AlertCircle, TrendingUp, Link2, Trash2, Smartphone, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ShortenerForm } from "@/components/shortener-form";
 import { QRModal } from "@/components/qr-modal";
@@ -22,6 +22,7 @@ interface UrlData {
   lastAccessedTime: string | null;
   createdAt: string;
   title?: string;
+  passwordProtected: boolean;
 }
 
 interface ShortenResponse {
@@ -30,6 +31,7 @@ interface ShortenResponse {
   longUrl: string;
   createdAt: string;
   title?: string;
+  passwordProtected: boolean;
 }
 
 export default function DashboardPage() {
@@ -111,6 +113,7 @@ export default function DashboardPage() {
         showOnBio: false,
         createdAt: data.createdAt,
         title: data.title,
+        passwordProtected: data.passwordProtected,
       },
       ...urls,
     ]);
@@ -193,6 +196,34 @@ export default function DashboardPage() {
         next.delete(shortId);
         return next;
       });
+    }
+  };
+
+  const handleCsvExport = async () => {
+    const token = localStorage.getItem("authToken");
+    if (!token) return;
+    
+    try {
+      const response = await fetch(`${API_URL}/api/v1/url/export/csv`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `shunyalink_export_${new Date().getTime()}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+      } else {
+        const data = await response.json();
+        setError(data?.message || "Failed to export CSV");
+      }
+    } catch (err) {
+      setError("Failed to export CSV due to network error");
     }
   };
 
@@ -340,8 +371,20 @@ export default function DashboardPage() {
               )}
 
               {/* URLs Table Section */}
-              <div>
-                <h2 className="text-2xl font-bold text-foreground mb-6">Your Shortened URLs</h2>
+              <div className="space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <h2 className="text-2xl font-bold text-foreground">Your Shortened URLs</h2>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCsvExport}
+                    className="w-full sm:w-auto border-primary/20 hover:bg-primary/5 hover:text-primary transition-all duration-300"
+                    disabled={isLoading || urls.length === 0}
+                  >
+                    <Copy className="w-4 h-4 mr-2" />
+                    Export CSV
+                  </Button>
+                </div>
 
                 {isLoading ? (
                   <div className="glass-card rounded-2xl shadow-2xl shadow-primary/5 p-12 flex items-center justify-center">
@@ -388,9 +431,12 @@ export default function DashboardPage() {
                                   href={`${API_URL}/${url.shortId}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-primary hover:underline font-medium truncate block"
+                                  className="text-primary hover:underline font-medium truncate flex items-center gap-2"
                                 >
                                   {url.title || url.shortId}
+                                  {url.passwordProtected && (
+                                    <Lock className="w-3 h-3 text-muted-foreground/60" />
+                                  )}
                                 </a>
                                 {url.title && (
                                   <span className="text-[10px] text-muted-foreground/60 font-mono">
