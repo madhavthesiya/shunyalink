@@ -7,7 +7,7 @@ import com.shunyalink.exception.NotFoundException;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -24,9 +24,9 @@ public class DbUrlService implements UrlService {
     private final IdEncoder idEncoder;
     private final RedisTemplate<String, String> redisTemplate;
     private static final Logger log = LoggerFactory.getLogger(DbUrlService.class);
-    private final BCryptPasswordEncoder passwordEncoder;
+    private final PasswordEncoder passwordEncoder;
 
-    public DbUrlService(UrlRepository urlRepository, IdEncoder idEncoder, RedisTemplate<String, String> redisTemplate, BCryptPasswordEncoder passwordEncoder) {
+    public DbUrlService(UrlRepository urlRepository, IdEncoder idEncoder, RedisTemplate<String, String> redisTemplate, PasswordEncoder passwordEncoder) {
         this.urlRepository = urlRepository;
         this.idEncoder = idEncoder;
         this.redisTemplate = redisTemplate;
