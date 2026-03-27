@@ -51,7 +51,7 @@ public class UrlController {
 
     public UrlController(UrlService urlService, RateLimiterService rateLimiterService,
                          UrlRepository urlRepository, UserRepository userRepository,
-                         BCryptPasswordEncoder passwordEncoder, CsvExportService csvExportService) {
+                         PasswordEncoder passwordEncoder, CsvExportService csvExportService) {
         this.urlService = urlService;
         this.rateLimiterService = rateLimiterService;
         this.urlRepository = urlRepository;
