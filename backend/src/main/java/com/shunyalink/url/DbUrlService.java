@@ -82,7 +82,9 @@ public class DbUrlService implements UrlService {
                     TimeUnit.SECONDS);
             return saved;
         }
-        if (expiryDays == null) {
+        // Rule: Only reuse existing links if NO password and NO expiry is requested.
+        // This ensures private/temporary links always get a unique ID.
+        if (expiryDays == null && (password == null || password.isBlank())) {
             Optional<UrlEntity> existing = (userId != null)
                     ? urlRepository.findFirstByLongUrlAndUserIdAndIsCustomFalse(longUrl, userId)
                     : urlRepository.findFirstByLongUrlAndUserIdIsNullAndIsCustomFalse(longUrl);

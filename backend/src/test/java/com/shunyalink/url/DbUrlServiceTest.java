@@ -117,6 +117,30 @@ class DbUrlServiceTest {
         assertEquals("abc123", result.getShortId());
         verify(valueOperations).set(eq("url:abc123"), eq("https://google.com"), anyLong(), eq(TimeUnit.SECONDS));
     }
+
+    @Test
+    void shortenUrl_withPassword_doesNotReusePublicLink() {
+        // Setup: A public (no password) link already exists for this URL
+        UrlEntity existingPublic = new UrlEntity();
+        existingPublic.setShortId("public123");
+        existingPublic.setLongUrl("https://google.com");
+        existingPublic.setCustom(false);
+        existingPublic.setPassword(null);
+
+        // We want the service to ignore this and create a NEW one because we provide a password
+        when(urlRepository.findFirstByLongUrlAndUserIdIsNullAndIsCustomFalse("https://google.com"))
+                .thenReturn(Optional.of(existingPublic));
+        
+        when(urlRepository.getNextId()).thenReturn(9999L);
+        when(idEncoder.encode(9999L)).thenReturn("newp123");
+        when(urlRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        UrlEntity result = dbUrlService.shortenUrl("https://google.com", null, null, null, null, "mypass");
+
+        assertEquals("newp123", result.getShortId());
+        assertNotEquals("public123", result.getShortId());
+        verify(urlRepository).save(any(UrlEntity.class));
+    }
     // ─── getLongUrl tests ────────────────────────────────────────────
 
     @Test
