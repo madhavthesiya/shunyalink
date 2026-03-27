@@ -46,6 +46,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/url/shorten").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/url/stats/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/url/qr/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/url/resolve/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/profile/me").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/v1/profile/settings").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/v1/profile/**").permitAll()
