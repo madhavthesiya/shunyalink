@@ -61,11 +61,27 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of(allowedOrigin, "http://localhost:3000", "http://localhost:5173"));
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        
+        // Split allowedOrigin by comma and add each to allowed origins
+        if (allowedOrigin != null && !allowedOrigin.isEmpty()) {
+            String[] origins = allowedOrigin.split(",");
+            for (String origin : origins) {
+                config.addAllowedOrigin(origin.trim());
+            }
+        }
+        
+        // Always allow local development origins
+        config.addAllowedOrigin("http://localhost:3000");
+        config.addAllowedOrigin("http://localhost:5173");
+        
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         config.setAllowedHeaders(List.of("*"));
+        config.setAllowCredentials(true); // Recommended for JWT/Cookie flows
         config.setMaxAge(3600L);
-        return new UrlBasedCorsConfigurationSource() {{ registerCorsConfiguration("/**", config); }};
+        
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
     }
 
     @Bean
