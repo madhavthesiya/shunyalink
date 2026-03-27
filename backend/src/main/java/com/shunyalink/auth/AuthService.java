@@ -173,6 +173,26 @@ public class AuthService {
         return "Email verified successfully!";
     }
 
+    public void resendVerificationEmail(String email) {
+        UserEntity user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new BadRequestException("User not found"));
+
+        if (user.isEmailVerified()) {
+            throw new BadRequestException("Email is already verified");
+        }
+
+        // Professional Cleanup: Delete any old pending tokens for this user
+        verificationTokenRepo.deleteByUser(user);
+
+        // Generate a fresh token
+        VerificationToken newToken = new VerificationToken();
+        newToken.setUser(user);
+        verificationTokenRepo.save(newToken);
+
+        // Dispatch email
+        emailService.sendVerificationEmail(user.getEmail(), newToken.getToken());
+    }
+
     public String requestPasswordReset(String email) {
         UserEntity user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new BadRequestException("No account found with that email"));
@@ -217,6 +237,8 @@ public class AuthService {
         return new ProfileResponse(
             user.getUsername(),
             user.getName(),
+            user.getEmail(),
+            user.isEmailVerified(),
             user.getBioText(),
             user.getThemeColor(),
             null
@@ -230,6 +252,8 @@ public class AuthService {
         return new ProfileResponse(
             user.getUsername(),
             user.getName(),
+            null, // Don't expose email publicly
+            false,
             user.getBioText(),
             user.getThemeColor(),
             null
