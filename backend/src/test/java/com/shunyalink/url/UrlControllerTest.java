@@ -17,6 +17,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -139,9 +140,10 @@ class UrlControllerTest {
         UrlStatsResponse stats = new UrlStatsResponse(
                 "abc123", "https://google.com", 42L,
                 LocalDateTime.now(), LocalDateTime.now(),
-                false, "Title", false, null
+                false, "Title", false, null,
+                Collections.emptyMap(), Collections.emptyMap()
         );
-        when(urlService.getStats("abc123")).thenReturn(stats);
+        when(urlService.getStats(eq("abc123"), anyLong())).thenReturn(stats);
 
         mockMvc.perform(get("/api/v1/url/stats/abc123"))
                 .andExpect(status().isOk())
@@ -152,7 +154,7 @@ class UrlControllerTest {
     @Test
     @WithMockUser
     void getStats_notFound_returns404() throws Exception {
-        when(urlService.getStats("xyz"))
+        when(urlService.getStats(eq("xyz"), anyLong()))
                 .thenThrow(new NotFoundException("Short URL not found"));
 
         mockMvc.perform(get("/api/v1/url/stats/xyz"))

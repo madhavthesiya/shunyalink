@@ -206,7 +206,7 @@ class DbUrlServiceTest {
         when(urlRepository.findByShortId("abc123")).thenReturn(Optional.of(entity));
         when(hashOperations.get("analytics:click_counts", "abc123")).thenReturn("5");
 
-        UrlStatsResponse stats = dbUrlService.getStats("abc123");
+        UrlStatsResponse stats = dbUrlService.getStats("abc123", 0L);
 
         assertEquals("abc123", stats.getShortId());
         assertEquals(15L, stats.getClickCount()); // 10 DB + 5 Redis
@@ -216,6 +216,6 @@ class DbUrlServiceTest {
     void getStats_notFound_throwsNotFoundException() {
         when(urlRepository.findByShortId("xyz")).thenReturn(Optional.empty());
 
-        assertThrows(NotFoundException.class, () -> dbUrlService.getStats("xyz"));
+        assertThrows(NotFoundException.class, () -> dbUrlService.getStats("xyz", 0L));
     }
 }
