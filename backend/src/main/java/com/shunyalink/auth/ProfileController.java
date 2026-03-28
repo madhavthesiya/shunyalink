@@ -5,12 +5,16 @@ import com.shunyalink.url.UrlStatsResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
 import java.util.List;
 import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/profile")
+@Tag(name = "User Profile", description = "Endpoints for managing user display names, bios, and theme colors")
 public class ProfileController {
 
     private final AuthService authService;
@@ -24,6 +28,7 @@ public class ProfileController {
     }
 
     // Private Endpoint - Load current user's profile for settings
+    @Operation(summary = "Get your own profile", description = "Returns full profile details for the authenticated user.")
     @GetMapping("/me")
     public ResponseEntity<ProfileResponse> getMyProfile(@AuthenticationPrincipal Object principal) {
         if (principal == null) {
@@ -42,6 +47,7 @@ public class ProfileController {
     }
 
     // Public Endpoint - No Authentication Required
+    @Operation(summary = "Get public bio profile", description = "Returns public display details and bio-links for a specific username.")
     @GetMapping("/{username}")
     public ResponseEntity<ProfileResponse> getPublicProfile(@PathVariable String username) {
         // Fetch base profile data (throws 400 or 404 if not found)
@@ -69,6 +75,7 @@ public class ProfileController {
     }
 
     // Authenticated Endpoint - Secure User Updates
+    @Operation(summary = "Update profile settings", description = "Updates display name, bio, and theme preferences for the authenticated user.")
     @PostMapping("/settings")
     public ResponseEntity<Map<String, String>> updateProfileSettings(
             @RequestBody ProfileUpdateRequest request,
