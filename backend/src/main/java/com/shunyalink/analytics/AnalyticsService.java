@@ -51,39 +51,71 @@ public class AnalyticsService {
         redisTemplate.opsForValue().set(lastAccessKey, java.time.LocalDateTime.now().toString());
         redisTemplate.expire(lastAccessKey, 30, TimeUnit.DAYS);
 
-        // 5. Record Geo-Location (with Caching & External Lookup)
+        // 5. Record Geo-Location (with Caching, External Lookup & Self-Healing)
         String country = getCountryFromIp(ipAddress);
-        redisTemplate.opsForHash().increment(GEO_KEY_PREFIX + shortId, country, 1);
+        recordGeoWithSelfHealing(shortId, country);
     }
 
     private String getCountryFromIp(String ip) {
-        // MAANG Strategy: Correct internal IP handling (RFC1918 + CGNAT)
-        if (ip == null || ip.equals("127.0.0.1") || ip.startsWith("192.168.") || 
-            ip.startsWith("10.") || ip.startsWith("172.") || ip.startsWith("100.64.") || 
-            ip.equals("0:0:0:0:0:0:0:1")) {
+        // MAANG Strategy: Professional local and IPv6 range handling
+        if (ip == null || ip.equals("127.0.0.1") || ip.equalsIgnoreCase("::1")) {
             return "Local/Dev";
         }
 
-        // 1. Check Redis Cache First (High Efficiency)
-        String cacheKey = GEO_CACHE_PREFIX + ip;
+        // Clean IPv6 brackets or ports if present
+        String cleanIp = ip.replace("[", "").replace("]", "").split(":")[0];
+
+        // Handle private/internal ranges
+        if (cleanIp.startsWith("192.168.") || cleanIp.startsWith("10.") || cleanIp.startsWith("172.") || 
+            cleanIp.startsWith("100.64.") || cleanIp.startsWith("169.254.")) {
+            return "Local/Dev";
+        }
+
+        // 1. Check Redis Cache First
+        String cacheKey = GEO_CACHE_PREFIX + cleanIp;
         String cachedCountry = redisTemplate.opsForValue().get(cacheKey);
         if (cachedCountry != null) return cachedCountry;
 
-        // 2. External API Lookup (ip-api.com)
+        // 2. External API Lookup (ipapi.co) - Switch to HTTPS for reliability
         try {
-            String url = "http://ip-api.com/json/" + ip + "?fields=country";
-            Map<String, Object> response = restTemplate.getForObject(url, Map.class);
-            if (response != null && response.containsKey("country")) {
-                String country = (String) response.get("country").toString();
-                // Cache the IP results for 7 days to avoid excessive API calls
+            String url = "https://ipapi.co/" + cleanIp + "/json/";
+            Map<?, ?> response = restTemplate.getForObject(url, Map.class);
+            
+            if (response != null && response.containsKey("country_name")) {
+                String country = (String) response.get("country_name");
+                // Cache the result for 7 days
                 redisTemplate.opsForValue().set(cacheKey, country, 7, TimeUnit.DAYS);
                 return country;
             }
         } catch (Exception e) {
-            // Logically fall back to Unknown rather than failing the process
-            System.err.println("Geo-IP Lookup Failed for " + ip + ": " + e.getMessage());
+            System.err.println("Geo-IP Lookup ERROR for " + cleanIp + ": " + e.getMessage());
         }
         return "Unknown";
+    }
+
+    /**
+     * Special MAANG logic: Self-Heal analytics if we previously recorded "Unknown"
+     * but have now successfully resolved a real country.
+     */
+    private void recordGeoWithSelfHealing(String shortId, String country) {
+        String key = GEO_KEY_PREFIX + shortId;
+        
+        // If we found a real country and it's not "Unknown" or "Local/Dev"
+        if (!"Unknown".equals(country) && !"Local/Dev".equals(country)) {
+            Object unknownCountObj = redisTemplate.opsForHash().get(key, "Unknown");
+            if (unknownCountObj != null) {
+                long unknownCount = Long.parseLong(unknownCountObj.toString());
+                if (unknownCount > 0) {
+                    // "Repair" history: Shift one count from Unknown to the Real Country
+                    redisTemplate.opsForHash().increment(key, "Unknown", -1);
+                    redisTemplate.opsForHash().increment(key, country, 1);
+                    return;
+                }
+            }
+        }
+        
+        // Standard increment if no healing needed
+        redisTemplate.opsForHash().increment(key, country, 1);
     }
 
     /**
