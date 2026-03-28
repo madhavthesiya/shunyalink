@@ -57,8 +57,10 @@ public class AnalyticsService {
     }
 
     private String getCountryFromIp(String ip) {
-        // MAANG Strategy: Correct client IP handling
-        if (ip == null || ip.equals("127.0.0.1") || ip.startsWith("192.168.") || ip.equals("0:0:0:0:0:0:0:1")) {
+        // MAANG Strategy: Correct internal IP handling (RFC1918 + CGNAT)
+        if (ip == null || ip.equals("127.0.0.1") || ip.startsWith("192.168.") || 
+            ip.startsWith("10.") || ip.startsWith("172.") || ip.startsWith("100.64.") || 
+            ip.equals("0:0:0:0:0:0:0:1")) {
             return "Local/Dev";
         }
 
