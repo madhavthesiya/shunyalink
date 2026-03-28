@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useRef, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { LogOut, Copy, QrCode, Loader2, AlertCircle, TrendingUp, Link2, Trash2, Smartphone, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -37,8 +37,9 @@ interface ShortenResponse {
   passwordProtected: boolean;
 }
 
-export default function DashboardPage() {
+function DashboardContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [userName, setUserName] = useState<string>("");
   const [urls, setUrls] = useState<UrlData[]>([]);
   const [totalUrls, setTotalUrls] = useState(0);
@@ -50,7 +51,7 @@ export default function DashboardPage() {
   const [showQR, setShowQR] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [selectedShortId, setSelectedShortId] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<"links" | "settings">("links");
+  const [activeTab, setActiveTab] = useState<"links" | "settings">((searchParams.get("tab") as "links" | "settings") || "links");
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
   const [recentResult, setRecentResult] = useState<ShortenResponse | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -708,3 +709,12 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
+      <DashboardContent />
+    </Suspense>
+  );
+}
+

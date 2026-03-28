@@ -1,6 +1,7 @@
 "use client"
 
-import { User, Sparkles } from "lucide-react"
+import { User, Sparkles, ArrowRight } from "lucide-react"
+import Link from "next/link"
 import { LinkButton } from "@/components/link-button"
 import { cn } from "@/lib/utils"
 
@@ -131,11 +132,22 @@ export function ProfileCard({
             </div>
           )}
 
-          {/* Watermark */}
+          {/* Promotional Watermark */}
           {showWatermark && (
-            <div className="mt-8 flex items-center justify-center gap-1.5 text-xs text-muted-foreground/40">
-              <Sparkles className="h-3 w-3" />
-              <span>Powered by ShunyaLink</span>
+            <div className="mt-12 flex flex-col items-center justify-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-1000 delay-500">
+              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.2em] text-muted-foreground/30 font-bold">
+                <Sparkles className="h-3 w-3" />
+                <span>Powered by ShunyaLink</span>
+              </div>
+              <Link 
+                href="/" 
+                className="group flex items-center gap-2 px-4 py-1.5 rounded-full bg-foreground/[0.03] hover:bg-foreground/[0.07] border border-border/20 transition-all duration-300"
+              >
+                 <span className="text-[10px] font-bold text-muted-foreground/50 group-hover:text-muted-foreground transition-colors">
+                   Create your free identity
+                 </span>
+                 <ArrowRight className="w-3 h-3 text-muted-foreground/30 group-hover:text-primary transition-colors" />
+              </Link>
             </div>
           )}
         </div>

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { AlertCircle, Sparkles, Zap, BarChart3, Settings2, ArrowRight, User } from "lucide-react";
 import { Header } from "@/components/header";
 import { ShortenerForm } from "@/components/shortener-form";
@@ -28,8 +30,11 @@ export default function Home() {
   const [showStats, setShowStats] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [stats, setStats] = useState<PublicStats | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
+    setIsLoggedIn(!!localStorage.getItem("authToken"));
+    
     const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
     fetch(`${API_URL}/api/v1/url/stats/public`)
       .then(res => {
@@ -86,13 +91,13 @@ export default function Home() {
                 </span>
               </div>
               <div className="hidden sm:block w-px h-4 bg-border/50" />
-              <a 
-                href="/register" 
+              <Link 
+                href={isLoggedIn ? "/dashboard?tab=settings" : "/register"} 
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary hover:bg-primary/20 text-sm font-semibold transition-all group"
               >
-                Claim your Bio Link
+                {isLoggedIn ? "Manage your Bio Link" : "Claim your Bio Link"}
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </a>
+              </Link>
             </div>
           </div>
         </section>
@@ -161,13 +166,13 @@ export default function Home() {
                     Unlimited social links & custom themes
                   </div>
                 </div>
-                <a 
-                  href="/register" 
+                 <Link 
+                  href={isLoggedIn ? "/dashboard?tab=settings" : "/register"} 
                   className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-primary text-primary-foreground font-bold shadow-lg shadow-primary/20 hover:scale-105 transition-all group"
                 >
-                  Create your Bio Profile
+                  {isLoggedIn ? "Manage your Bio Profile" : "Create your Bio Profile"}
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                </a>
+                </Link>
               </div>
               
               <div className="flex-1 relative pb-12 sm:pb-0">
