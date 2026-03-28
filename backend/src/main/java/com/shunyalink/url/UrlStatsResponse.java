@@ -10,9 +10,10 @@ public class UrlStatsResponse {
     private LocalDateTime createdAt;
     private boolean showOnBio;
     private String title;
-    private boolean passwordProtected; // Add this
+    private boolean passwordProtected;
+    private String password;
 
-    public UrlStatsResponse(String shortId, String longUrl, long clickCount, LocalDateTime lastAccessedTime, LocalDateTime createdAt, boolean showOnBio, String title, boolean passwordProtected) {
+    public UrlStatsResponse(String shortId, String longUrl, long clickCount, LocalDateTime lastAccessedTime, LocalDateTime createdAt, boolean showOnBio, String title, boolean passwordProtected, String password) {
         this.shortId = shortId;
         this.longUrl = longUrl;
         this.clickCount = clickCount;
@@ -21,6 +22,7 @@ public class UrlStatsResponse {
         this.showOnBio = showOnBio;
         this.title = title;
         this.passwordProtected = passwordProtected;
+        this.password = password;
     }
 
     public String getTitle() {
@@ -53,5 +55,9 @@ public class UrlStatsResponse {
 
     public boolean isPasswordProtected() {
         return passwordProtected;
+    }
+
+    public String getPassword() {
+        return password;
     }
 }

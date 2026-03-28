@@ -28,17 +28,24 @@ public class DbUrlService implements UrlService {
     private static final Logger log = LoggerFactory.getLogger(DbUrlService.class);
     private final PasswordEncoder passwordEncoder;
     private final com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository;
+    private final MetadataService metadataService;
+
+    private final com.shunyalink.util.EncryptionUtils encryptionUtils;
 
     public DbUrlService(UrlRepository urlRepository,
                         IdEncoder idEncoder,
                         RedisTemplate<String, String> redisTemplate,
                         PasswordEncoder passwordEncoder,
-                        com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository) {
+                        com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository,
+                        MetadataService metadataService,
+                        com.shunyalink.util.EncryptionUtils encryptionUtils) {
         this.urlRepository = urlRepository;
         this.idEncoder = idEncoder;
         this.redisTemplate = redisTemplate;
         this.passwordEncoder = passwordEncoder;
         this.globalStatsRepository = globalStatsRepository;
+        this.metadataService = metadataService;
+        this.encryptionUtils = encryptionUtils;
     }
 
     private long getTtlSeconds(LocalDateTime expiryTime) {
@@ -59,7 +66,7 @@ public class DbUrlService implements UrlService {
 
     @Override
     @Transactional
-    public UrlEntity shortenUrl(String longUrl, String customAlias, Integer expiryDays, Long userId, String title, String password) {
+    public UrlEntity shortenUrl(String longUrl, String customAlias, Integer expiryDays, Long userId, String title, String password, boolean useAutoTitle) {
         if (customAlias != null && !customAlias.isBlank()) {
             String normalized = customAlias.toLowerCase().trim();
             validateAlias(normalized);
@@ -80,15 +87,19 @@ public class DbUrlService implements UrlService {
                 entity.setExpiryTime(LocalDateTime.now().plusDays(expiryDays));
             }
             if (password != null && !password.isBlank()) {
-                entity.setPassword(passwordEncoder.encode(password));
+                entity.setPassword(encryptionUtils.encrypt(password));
             }
             UrlEntity saved = urlRepository.save(entity);
-            globalStatsRepository.incrementLinks();
             redisTemplate.opsForValue().set(
                     "url:" + normalized,
                     longUrl,
                     getTtlSeconds(entity.getExpiryTime()),
                     TimeUnit.SECONDS);
+
+            // Phase 7: Trigger Async Metadata Fetch (Only if requested by user)
+            if (useAutoTitle && (title == null || title.isBlank())) {
+                metadataService.fetchAndSaveTitle(normalized, longUrl);
+            }
             return saved;
         }
         // Rule: Only reuse existing links if NO password and NO expiry is requested.
@@ -113,13 +124,18 @@ public class DbUrlService implements UrlService {
             entity.setExpiryTime(LocalDateTime.now().plusDays(expiryDays));
         }
         if (password != null && !password.isBlank()) {
-            entity.setPassword(passwordEncoder.encode(password));
+            entity.setPassword(encryptionUtils.encrypt(password));
         }
         UrlEntity saved = urlRepository.save(entity);
         globalStatsRepository.incrementLinks();
         redisTemplate.opsForValue().set(
                 "url:" + shortId, longUrl,
                 getTtlSeconds(entity.getExpiryTime()), TimeUnit.SECONDS);
+
+        // Phase 7: Trigger Async Metadata Fetch (Only if requested by user)
+        if (useAutoTitle && (title == null || title.isBlank())) {
+            metadataService.fetchAndSaveTitle(shortId, longUrl);
+        }
         return saved;
     }
 
@@ -142,6 +158,27 @@ public class DbUrlService implements UrlService {
         redisTemplate.opsForValue().set(cacheKey, longUrl, ttl, TimeUnit.SECONDS);
         incrementClickCount(shortId);
         return longUrl;
+    }
+
+    @Override
+    @Transactional
+    public void updateUrlMetadata(String shortId, Long userId, String title, String password) {
+        UrlEntity entity = urlRepository.findByShortIdAndUserId(shortId, userId)
+                .orElseThrow(() -> new NotFoundException("URL not found or not owned by you"));
+        
+        if (title != null) {
+            entity.setTitle(title.trim().isEmpty() ? null : title.trim());
+        }
+        
+        if (password != null) {
+            if (password.trim().isEmpty()) {
+                entity.setPassword(null);
+            } else {
+                entity.setPassword(encryptionUtils.encrypt(password));
+            }
+        }
+        
+        urlRepository.save(entity);
     }
 
     @Override
@@ -176,7 +213,8 @@ public class DbUrlService implements UrlService {
                 entity.getCreatedAt(),
                 entity.isShowOnBio(),
                 entity.getTitle(),
-                entity.getPassword() != null);
+                entity.getPassword() != null,
+                entity.getPassword() != null ? encryptionUtils.decrypt(entity.getPassword()) : null);
     }
 
     @Override
@@ -210,7 +248,8 @@ public class DbUrlService implements UrlService {
                     entity.getCreatedAt(),
                     entity.isShowOnBio(),
                     entity.getTitle(),
-                    entity.getPassword() != null
+                    entity.getPassword() != null,
+                    entity.getPassword() != null ? encryptionUtils.decrypt(entity.getPassword()) : null
             );
         });
     }
@@ -234,7 +273,8 @@ public class DbUrlService implements UrlService {
                     entity.getCreatedAt(),
                     entity.isShowOnBio(),
                     entity.getTitle(),
-                    entity.getPassword() != null
+                    entity.getPassword() != null,
+                    entity.getPassword() != null ? encryptionUtils.decrypt(entity.getPassword()) : null
             );
         }).toList();
     }
@@ -246,6 +286,17 @@ public class DbUrlService implements UrlService {
                 .orElseThrow(() -> new NotFoundException("URL not found or not owned by you"));
         redisTemplate.delete("url:" + shortId);
         urlRepository.delete(entity);
+    }
+
+    @Override
+    @Transactional
+    public void deleteUrls(List<String> shortIds, Long userId) {
+        for (String shortId : shortIds) {
+            urlRepository.findByShortIdAndUserId(shortId, userId).ifPresent(entity -> {
+                redisTemplate.delete("url:" + shortId);
+                urlRepository.delete(entity);
+            });
+        }
     }
 
     @Override

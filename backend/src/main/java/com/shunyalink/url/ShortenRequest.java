@@ -32,6 +32,8 @@ public class ShortenRequest {
     @Size(min = 4, max = 20, message = "Password must be 4-20 characters")
     private String password;
 
+    private boolean useAutoTitle = false;
+
     public String getLongUrl() {
         return longUrl;
     }
@@ -67,5 +69,9 @@ public class ShortenRequest {
     public String getPassword() { return password; }
 
     public void setPassword(String password) { this.password = password; }
+
+    public boolean isUseAutoTitle() { return useAutoTitle; }
+
+    public void setUseAutoTitle(boolean useAutoTitle) { this.useAutoTitle = useAutoTitle; }
 
 }

@@ -5,6 +5,8 @@ import { ArrowRight, Loader2, Link, Hash, Calendar, Eye, EyeOff, Lock } from "lu
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Sparkles } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 interface ShortenResponse {
@@ -37,6 +39,7 @@ export function ShortenerForm({ onSuccess, onError }: ShortenerFormProps) {
   const [expiryDays, setExpiryDays] = useState("");
   const [title, setTitle] = useState("");
   const [password, setPassword] = useState("");
+  const [useAutoTitle, setUseAutoTitle] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showPasswordInput, setShowPasswordInput] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -76,6 +79,7 @@ export function ShortenerForm({ onSuccess, onError }: ShortenerFormProps) {
           ...(expiryDays && { expiryDays: parseInt(expiryDays, 10) }),
           ...(title.trim() && { title: title.trim() }),
           ...(password.trim() && { password: password.trim() }),
+          useAutoTitle,
         }),
       });
 
@@ -92,6 +96,7 @@ export function ShortenerForm({ onSuccess, onError }: ShortenerFormProps) {
       setExpiryDays("");
       setTitle("");
       setPassword("");
+      setUseAutoTitle(false);
       setShowPasswordInput(false);
     } catch (err) {
       if (err instanceof TypeError && err.message.includes("fetch")) {
@@ -144,14 +149,34 @@ export function ShortenerForm({ onSuccess, onError }: ShortenerFormProps) {
             placeholder={isLoggedIn ? "Enter a friendly name for this link" : "🔐 Login first to edit this field"}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className={`h-12 bg-background/50 border-border/50 rounded-xl premium-input focus:border-primary/50 focus:ring-2 focus:ring-primary/10 transition-all placeholder:text-muted-foreground/50 ${!isLoggedIn && "opacity-60 cursor-not-allowed"}`}
-            disabled={isLoading || !isLoggedIn}
           />
           {!isLoggedIn && (
             <div className="absolute inset-0 z-10 cursor-not-allowed" title="Login required for premium features" />
           )}
         </div>
       </div>
+
+      {/* Phase 7: Smart AI Title Toggle */}
+      {isLoggedIn && (
+        <div className="flex items-center justify-between p-4 rounded-xl border border-primary/10 bg-primary/5 group transition-all duration-300 hover:border-primary/20 hover:bg-primary/10">
+          <div className="space-y-1">
+            <Label htmlFor="smart-title" className="flex items-center gap-2 text-sm font-semibold text-foreground cursor-pointer">
+              <Sparkles className="w-4 h-4 text-primary animate-pulse" />
+              Smart AI Title
+            </Label>
+            <p className="text-[11px] text-muted-foreground leading-tight max-w-[240px]">
+              Automatically fetch and clean the page title from the URL using our AI scraper.
+            </p>
+          </div>
+          <Switch 
+            id="smart-title"
+            checked={useAutoTitle}
+            onCheckedChange={setUseAutoTitle}
+            disabled={isLoading || title.trim().length > 0} // Disable if manual title is provided
+            className="data-[state=checked]:bg-primary"
+          />
+        </div>
+      )}
 
       {/* Optional Fields */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">

@@ -3,17 +3,29 @@
 import { useEffect, useState, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { LogOut, Copy, QrCode, Loader2, AlertCircle, TrendingUp, Link2, Trash2, Smartphone, Lock } from "lucide-react";
+import { LogOut, Copy, QrCode, Loader2, AlertCircle, TrendingUp, Link2, Trash2, Smartphone, Lock, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ShortenerForm } from "@/components/shortener-form";
 import { ShortenSuccessModal } from "@/components/shorten-success-modal";
 import { ResultBox } from "@/components/result-box";
 import { QRModal } from "@/components/qr-modal";
 import { StatsModal } from "@/components/stats-modal";
+import { EditMetadataModal } from "@/components/edit-metadata-modal";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { cn } from "@/lib/utils";
-
 import { UserProfileSettings } from "@/components/user-profile-settings";
+import { Checkbox } from "@/components/ui/checkbox";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
@@ -26,6 +38,7 @@ interface UrlData {
   createdAt: string;
   title?: string;
   passwordProtected: boolean;
+  password?: string;
 }
 
 interface ShortenResponse {
@@ -35,6 +48,7 @@ interface ShortenResponse {
   createdAt: string;
   title?: string;
   passwordProtected: boolean;
+  password?: string;
 }
 
 function DashboardContent() {
@@ -50,7 +64,12 @@ function DashboardContent() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showQR, setShowQR] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
   const [selectedShortId, setSelectedShortId] = useState<string>("");
+  const [editingUrl, setEditingUrl] = useState<UrlData | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [activeTab, setActiveTab] = useState<"links" | "settings">((searchParams.get("tab") as "links" | "settings") || "links");
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
   const [recentResult, setRecentResult] = useState<ShortenResponse | null>(null);
@@ -181,6 +200,7 @@ function DashboardContent() {
         createdAt: data.createdAt,
         title: data.title,
         passwordProtected: data.passwordProtected,
+        password: data.password,
       },
       ...urls,
     ]);
@@ -265,6 +285,59 @@ function DashboardContent() {
         next.delete(shortId);
         return next;
       });
+    }
+  };
+
+  const handleUpdateUrl = (shortId: string, newTitle: string, newProtected: boolean, newPassword?: string) => {
+    setUrls((prev) => 
+      prev.map((u) => (u.shortId === shortId ? { ...u, title: newTitle, passwordProtected: newProtected, password: newPassword } : u))
+    );
+  };
+
+  const toggleSelect = (shortId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(shortId)) next.delete(shortId);
+      else next.add(shortId);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === urls.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(urls.map((u) => u.shortId)));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    setIsBulkDeleting(true);
+    const token = localStorage.getItem("authToken");
+
+    try {
+      const response = await fetch(`${API_URL}/api/v1/url/bulk-delete`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(Array.from(selectedIds)),
+      });
+
+      if (response.ok) {
+        setUrls((prev) => prev.filter((u) => !selectedIds.has(u.shortId)));
+        setSelectedIds(new Set());
+        toast.success(`Successfully deleted ${selectedIds.size} links`);
+      } else {
+        toast.error("Failed to delete selected links");
+      }
+    } catch (err) {
+      toast.error("Network error. Please try again.");
+    } finally {
+      setIsBulkDeleting(false);
+      setShowBulkDeleteConfirm(false);
     }
   };
 
@@ -509,6 +582,13 @@ function DashboardContent() {
                       <table className="w-full text-sm">
                         <thead className="border-b border-border/50 bg-secondary/50">
                           <tr>
+                            <th className="px-6 py-4 text-left">
+                              <Checkbox 
+                                checked={urls.length > 0 && selectedIds.size === urls.length}
+                                onCheckedChange={toggleSelectAll}
+                                aria-label="Select all"
+                              />
+                            </th>
                             <th className="px-6 py-4 text-left font-semibold text-foreground">
                               Short URL
                             </th>
@@ -531,8 +611,19 @@ function DashboardContent() {
                           {urls.map((url) => (
                             <tr
                               key={url.shortId}
-                              className="border-b border-border/50 hover:bg-secondary/30 transition-colors"
+                              className={cn(
+                                "border-b border-border/50 hover:bg-secondary/30 transition-colors",
+                                selectedIds.has(url.shortId) && "bg-primary/5 hover:bg-primary/10"
+                              )}
                             >
+                              <td className="px-6 py-4">
+                                <Checkbox 
+                                  checked={selectedIds.has(url.shortId)}
+                                  onCheckedChange={() => toggleSelect(url.shortId)}
+                                  aria-label={`Select ${url.shortId}`}
+                                  className="data-[state=checked]:bg-primary"
+                                />
+                              </td>
                               <td className="px-6 py-4">
                                 <a
                                   href={`${API_URL}/${url.shortId}`}
@@ -591,6 +682,18 @@ function DashboardContent() {
                                           : "text-muted-foreground"
                                         }`}
                                     />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      setEditingUrl(url);
+                                      setShowEdit(true);
+                                    }}
+                                    className="h-8 w-8 p-0 text-muted-foreground hover:text-primary transition-colors"
+                                    title="Edit Link Metadata"
+                                  >
+                                    <Pencil className="w-4 h-4" />
                                   </Button>
                                   <Button
                                     size="sm"
@@ -706,6 +809,83 @@ function DashboardContent() {
           />
         </>
       )}
+
+      {editingUrl && (
+        <EditMetadataModal
+          isOpen={showEdit}
+          onClose={() => {
+            setShowEdit(false);
+            setEditingUrl(null);
+          }}
+          shortId={editingUrl.shortId}
+          initialTitle={editingUrl.title}
+          initialPasswordProtected={editingUrl.passwordProtected}
+          initialPassword={editingUrl.password}
+          onUpdate={handleUpdateUrl}
+        />
+      )}
+
+      {/* Floating Bulk Actions Bar */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-8 duration-500">
+          <div className="flex items-center gap-6 px-6 py-4 rounded-2xl bg-foreground/90 text-background shadow-2xl backdrop-blur-md border border-white/10 ring-1 ring-black/20">
+            <div className="flex items-center gap-3 border-r border-white/20 pr-6">
+              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center font-bold text-sm">
+                {selectedIds.size}
+              </div>
+              <span className="text-sm font-medium">links selected</span>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedIds(new Set())}
+                className="text-white/70 hover:text-white hover:bg-white/10 h-10 px-4 rounded-xl transition-all"
+              >
+                Clear
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setShowBulkDeleteConfirm(true)}
+                className="h-10 px-4 rounded-xl bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/20 transition-all font-semibold"
+                disabled={isBulkDeleting}
+              >
+                {isBulkDeleting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete Selected
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Confirmation */}
+      <AlertDialog open={showBulkDeleteConfirm} onOpenChange={setShowBulkDeleteConfirm}>
+        <AlertDialogContent className="glass-card border-border/50 rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-xl">Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              This will permanently delete <span className="font-bold text-foreground">{selectedIds.size}</span> selected links. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-xl border-border/50 h-12">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkDelete}
+              className="rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90 h-12 font-semibold btn-glow"
+            >
+              Confirm Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

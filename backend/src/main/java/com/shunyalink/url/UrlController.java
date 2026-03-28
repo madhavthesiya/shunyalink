@@ -24,6 +24,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+import com.shunyalink.util.EncryptionUtils;
 
 import java.util.List;
 import java.util.Map;
@@ -40,6 +41,7 @@ public class UrlController {
     private final PasswordEncoder passwordEncoder;
     private final CsvExportService csvExportService;
     private final com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository;
+    private final EncryptionUtils encryptionUtils;
 
     @Value("${app.base-url}")
     private String baseUrl;
@@ -47,7 +49,8 @@ public class UrlController {
     public UrlController(UrlService urlService, RateLimiterService rateLimiterService,
                          UrlRepository urlRepository, UserRepository userRepository,
                          PasswordEncoder passwordEncoder, CsvExportService csvExportService,
-                         com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository) {
+                         com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository,
+                         EncryptionUtils encryptionUtils) {
         this.urlService = urlService;
         this.rateLimiterService = rateLimiterService;
         this.urlRepository = urlRepository;
@@ -55,6 +58,7 @@ public class UrlController {
         this.passwordEncoder = passwordEncoder;
         this.csvExportService = csvExportService;
         this.globalStatsRepository = globalStatsRepository;
+        this.encryptionUtils = encryptionUtils;
     }
 
     private String getClientIp(HttpServletRequest request) {
@@ -93,14 +97,15 @@ public class UrlController {
             }
         }
 
-        UrlEntity entity = urlService.shortenUrl(request.getLongUrl(), request.getCustomAlias(), request.getExpiryDays(), userId, request.getTitle(), request.getPassword());
+        UrlEntity entity = urlService.shortenUrl(request.getLongUrl(), request.getCustomAlias(), request.getExpiryDays(), userId, request.getTitle(), request.getPassword(), request.isUseAutoTitle());
         return new ShortenResponse(
                 entity.getShortId(),
                 baseUrl + "/" + entity.getShortId(),
                 entity.getLongUrl(),
                 entity.getCreatedAt(),
                 entity.getTitle(),
-                entity.getPassword() != null
+                entity.getPassword() != null,
+                entity.getPassword() != null ? encryptionUtils.decrypt(entity.getPassword()) : null
         );
     }
 
@@ -137,12 +142,21 @@ public class UrlController {
                 .body(csvContent.getBytes());
     }
 
-    @Operation(summary = "Delete a link", description = "Permanently removes a short link from the system.", security = @SecurityRequirement(name = "Bearer Authentication"))
+    @Operation(summary = "Delete a short URL", description = "Permanently removes a short link from the system.", security = @SecurityRequirement(name = "Bearer Authentication"))
     @DeleteMapping("/{shortId}")
-    public void deleteUrl(@PathVariable String shortId) {
-        Long userId = getCurrentUserId();
-        if (userId == null) throw new BadRequestException("Authentication required");
+    public ResponseEntity<?> deleteUrl(@PathVariable String shortId, @AuthenticationPrincipal Long userId) {
         urlService.deleteUrl(shortId, userId);
+        return ResponseEntity.ok(Map.of("message", "URL deleted successfully"));
+    }
+
+    @PostMapping("/bulk-delete")
+    @Operation(summary = "Bulk delete short URLs", security = @SecurityRequirement(name = "Bearer Authentication"))
+    public ResponseEntity<?> bulkDelete(@RequestBody List<String> shortIds, @AuthenticationPrincipal Long userId) {
+        if (shortIds == null || shortIds.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "No IDs provided"));
+        }
+        urlService.deleteUrls(shortIds, userId);
+        return ResponseEntity.ok(Map.of("message", "URLs deleted successfully", "count", shortIds.size()));
     }
 
     @Operation(summary = "Toggle Bio Link visibility", description = "Shows or hides a link on your public Bio Profile.", security = @SecurityRequirement(name = "Bearer Authentication"))
@@ -153,6 +167,18 @@ public class UrlController {
         Boolean showOnBio = request.get("showOnBio");
         if (showOnBio == null) throw new BadRequestException("showOnBio parameter is required");
         urlService.toggleShowOnBio(shortId, userId, showOnBio);
+    }
+
+    @Operation(summary = "Update link metadata", description = "Allows editing the title and password of an existing link.", security = @SecurityRequirement(name = "Bearer Authentication"))
+    @PatchMapping("/{shortId}/metadata")
+    public void updateMetadata(@PathVariable String shortId, @RequestBody Map<String, String> request) {
+        Long userId = getCurrentUserId();
+        if (userId == null) throw new BadRequestException("Authentication required");
+        
+        String title = request.get("title");
+        String password = request.get("password");
+        
+        urlService.updateUrlMetadata(shortId, userId, title, password);
     }
 
     @Operation(summary = "Get public system stats", description = "Returns total links, users, and clicks for landing pages.")
@@ -172,11 +198,37 @@ public class UrlController {
         UrlEntity entity = urlRepository.findByShortId(shortId)
                 .orElseThrow(() -> new com.shunyalink.exception.NotFoundException("URL not found"));
 
-        if (entity.getPassword() == null || passwordEncoder.matches(password, entity.getPassword())) {
+        String storedPassword = entity.getPassword();
+        boolean matches = false;
+        
+        if (storedPassword == null) {
+            matches = true;
+        } else {
+            // Try decryption first (new AES method)
+            // We use the service's encryption utils via reflection or just inject it
+            // Actually, I'll inject EncryptionUtils into UrlController too.
+            // Wait, I need to update the constructor in UrlController.
+             matches = checkPassword(password, storedPassword);
+        }
+
+        if (matches) {
             urlService.incrementClickCount(shortId);
             return ResponseEntity.ok(Map.of("longUrl", entity.getLongUrl()));
         } else {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Incorrect password");
+        }
+    }
+
+    private boolean checkPassword(String plain, String stored) {
+        try {
+            // Try BCrypt first (legacy)
+            if (stored.startsWith("$2a$") || stored.startsWith("$2b$")) {
+                return passwordEncoder.matches(plain, stored);
+            }
+            // Use injected AES encryption (new)
+            return plain.equals(encryptionUtils.decrypt(stored));
+        } catch (Exception e) {
+            return false;
         }
     }
 
