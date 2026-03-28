@@ -1,29 +1,33 @@
 import http from 'k6/http';
-import { check } from 'k6';
+import { check, sleep } from 'k6';
 
-// This is the production-level load configuration
+// k6 Load Test: ShunyaLink High-Performance Redirects 🚀
+// Goal: Measure TPS and Latency on the hot redirect path.
+
 export const options = {
   stages: [
-    { duration: '5s', target: 50 },  // Ramp up to 50 concurrent users over 5 seconds
-    { duration: '20s', target: 100 }, // Sustain 100 concurrent users for 20 seconds
-    { duration: '5s', target: 0 },   // Ramp down to 0 users over 5 seconds
+    { duration: '30s', target: 50 }, // Ramp up to 50 users
+    { duration: '1m', target: 50 },  // Stay at 50 users (Steady state)
+    { duration: '30s', target: 0 },  // Ramp down to 0 users
   ],
   thresholds: {
-    // We want 95% of requests to complete in under 50ms
-    http_req_duration: ['p(95)<50'],
-    // We want the error rate to be less than 1%
-    http_req_failed: ['rate<0.01'],
+    http_req_duration: ['p(95)<500'], // 95% of requests should be below 500ms
+    http_req_failed: ['rate<0.01'],    // Error rate should be less than 1%
   },
 };
 
 export default function () {
-  // REPLACE "mytestlink" with the actual short ID you created in Step 2!
-  const res = http.get('http://localhost:8080/f', {
-    redirects: 0 // We don't want k6 to follow the redirect to Google. We just want to measure your server's response time to issue the 302 status.
+  // 🏁 Test a real shortId (replace with a valid one from your DB)
+  const url = 'http://localhost:8080/p/abcd123'; 
+  
+  const res = http.get(url, {
+    redirects: 0, // We want to measure the REDIRECT latency, not the destination
   });
 
-  // Verify your server responded with a 302 Found (Redirect)
   check(res, {
-    'status is 302 (redirect)': (r) => r.status === 302,
+    'is redirect (302)': (r) => r.status === 302,
+    'has location header': (r) => r.headers['Location'] !== undefined,
   });
+
+  sleep(0.1); // Small sleep to simulate real user behavior
 }

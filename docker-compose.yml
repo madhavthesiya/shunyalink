@@ -1,4 +1,4 @@
-version: "3.9"
+
 
 services:
 
@@ -34,13 +34,15 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Spring Boot Backend ─────────────────────────────────────────────────────
+  # ── Spring Boot Backend (Replicated 🚀) ───────────────────────────────────────
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile.backend
-    container_name: urlshortener-backend
+    # Removed container_name for replication
     restart: unless-stopped
+    deploy:
+      replicas: 3
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,10 +54,27 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/urlshortener
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
-      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost}
       ALLOWED_ORIGIN: ${ALLOWED_ORIGIN:-http://localhost:3000}
+    # No direct port exposure — only Nginx can talk to backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Nginx Load Balancer (Entry Point ⚖️) ──────────────────────────────────
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile.nginx
+    container_name: urlshortener-lb
+    restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_started
 
   # ── Next.js Frontend ────────────────────────────────────────────────────────
   frontend:
@@ -63,11 +82,11 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.frontend
       args:
-        NEXT_PUBLIC_API_URL: ${APP_BASE_URL:-http://localhost:8080}
+        NEXT_PUBLIC_API_URL: ${APP_BASE_URL:-http://localhost}
     container_name: urlshortener-frontend
     restart: unless-stopped
     depends_on:
-      - backend
+      - nginx
     ports:
       - "3000:3000"
 
