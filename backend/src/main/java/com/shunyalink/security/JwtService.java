@@ -51,6 +51,22 @@ public class JwtService{
         }
     }
 
+    /**
+     * Extracts the expiration claim from the token.
+     */
+    public java.util.Date extractExpiration(String token) {
+        return extractClaims(token).getExpiration();
+    }
+
+    /**
+     * Calculates how many milliseconds are left before the token expires.
+     */
+    public long getRemainingTimeMs(String token) {
+        java.util.Date expiration = extractExpiration(token);
+        long diff = expiration.getTime() - System.currentTimeMillis();
+        return diff > 0 ? diff : 0;
+    }
+
     private Claims extractClaims(String token) {
         return Jwts.parser()
                 .verifyWith(signingKey)

@@ -213,11 +213,23 @@ function DashboardContent() {
     setError(message);
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("userEmail");
-    localStorage.removeItem("userName");
-    router.push("/");
+  const handleLogout = async () => {
+    try {
+      const token = localStorage.getItem("authToken");
+      if (token) {
+        await fetch(`${API_URL}/api/v1/auth/logout`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      }
+    } catch (err) {
+      console.error("Logout error:", err);
+    } finally {
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("userEmail");
+      localStorage.removeItem("userName");
+      router.push("/login");
+    }
   };
 
   const copyToClipboard = (shortId: string) => {

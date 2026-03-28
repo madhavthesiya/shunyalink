@@ -18,9 +18,11 @@ import java.util.List;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
+    private final JwtBlacklistService blacklistService;
 
-    public JwtAuthenticationFilter(JwtService jwtService) {
+    public JwtAuthenticationFilter(JwtService jwtService, JwtBlacklistService blacklistService) {
         this.jwtService = jwtService;
+        this.blacklistService = blacklistService;
     }
 
     @Override
@@ -40,7 +42,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // 3. Extract and validate the token
         String token = authHeader.substring(7); // Remove "Bearer "
 
-        if (jwtService.isTokenValid(token)) {
+        // NEW: Check if the token has been revoked via logout
+        if (jwtService.isTokenValid(token) && !blacklistService.isTokenBlacklisted(token)) {
             String email = jwtService.extractEmail(token);
             Long userId = jwtService.extractUserId(token);
 

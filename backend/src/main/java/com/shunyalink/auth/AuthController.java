@@ -19,13 +19,19 @@ public class AuthController {
 
     private final AuthService authService;
     private final RateLimiterService rateLimiterService;
+    private final com.shunyalink.security.JwtService jwtService;
+    private final com.shunyalink.security.JwtBlacklistService blacklistService;
 
     @org.springframework.beans.factory.annotation.Value("${app.frontend-url}")
     private String frontendUrl;
 
-    public AuthController(AuthService authService, RateLimiterService rateLimiterService) {
+    public AuthController(AuthService authService, RateLimiterService rateLimiterService,
+                          com.shunyalink.security.JwtService jwtService,
+                          com.shunyalink.security.JwtBlacklistService blacklistService) {
         this.authService = authService;
         this.rateLimiterService = rateLimiterService;
+        this.jwtService = jwtService;
+        this.blacklistService = blacklistService;
     }
 
     @Operation(summary = "Register a new user", description = "Creates a new user account and sends a verification email.")
@@ -77,6 +83,20 @@ public class AuthController {
     @PostMapping("/reset-password")
     public String resetPassword(@RequestBody Map<String, String> request) {
         return authService.resetPassword(request.get("token"), request.get("newPassword"));
+    }
+
+    @Operation(summary = "Logout user", description = "Invalidates the current JWT token.")
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(HttpServletRequest request) {
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            String token = authHeader.substring(7);
+            if (jwtService.isTokenValid(token)) {
+                long remainingTimeMs = jwtService.getRemainingTimeMs(token);
+                blacklistService.blacklistToken(token, remainingTimeMs);
+            }
+        }
+        return ResponseEntity.ok().build();
     }
 
     private String getClientIp(HttpServletRequest request) {
