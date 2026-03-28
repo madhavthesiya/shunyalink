@@ -95,8 +95,8 @@ public class DbUrlService implements UrlService {
         // This ensures private/temporary links always get a unique ID.
         if (expiryDays == null && (password == null || password.isBlank())) {
             Optional<UrlEntity> existing = (userId != null)
-                    ? urlRepository.findFirstByLongUrlAndUserIdAndIsCustomFalse(longUrl, userId)
-                    : urlRepository.findFirstByLongUrlAndUserIdIsNullAndIsCustomFalse(longUrl);
+                    ? urlRepository.findFirstByLongUrlAndUserIdAndIsCustomFalseAndExpiryTimeIsNullAndPasswordIsNull(longUrl, userId)
+                    : urlRepository.findFirstByLongUrlAndUserIdIsNullAndIsCustomFalseAndExpiryTimeIsNullAndPasswordIsNull(longUrl);
             if (existing.isPresent()) {
                 return existing.get();
             }

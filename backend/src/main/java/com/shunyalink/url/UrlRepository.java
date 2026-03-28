@@ -21,9 +21,9 @@ public interface UrlRepository extends JpaRepository<UrlEntity, Long> {
 
     Optional<UrlEntity> findFirstByLongUrlAndIsCustomFalse(String longUrl);
 
-    Optional<UrlEntity> findFirstByLongUrlAndUserIdAndIsCustomFalse(String longUrl, Long userId);
+    Optional<UrlEntity> findFirstByLongUrlAndUserIdAndIsCustomFalseAndExpiryTimeIsNullAndPasswordIsNull(String longUrl, Long userId);
 
-    Optional<UrlEntity> findFirstByLongUrlAndUserIdIsNullAndIsCustomFalse(String longUrl);
+    Optional<UrlEntity> findFirstByLongUrlAndUserIdIsNullAndIsCustomFalseAndExpiryTimeIsNullAndPasswordIsNull(String longUrl);
 
     @Query(value = "SELECT nextval('url_id_seq')", nativeQuery = true)
     Long getNextId();

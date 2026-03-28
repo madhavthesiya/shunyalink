@@ -110,9 +110,17 @@ export default function PasswordPage() {
           </Button>
         </form>
 
-        <p className="mt-8 text-[11px] text-center text-muted-foreground/60">
-            Securely powered by <span className="text-primary font-medium">ShunyaLink</span>
-        </p>
+        <div className="mt-10 pt-6 border-t border-primary/5 text-center space-y-2">
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground/40 font-semibold">
+                Securely powered by <span className="text-primary/60">ShunyaLink</span>
+            </p>
+            <a 
+                href="/" 
+                className="inline-block text-xs font-medium text-primary/70 hover:text-primary transition-all hover:scale-105 active:scale-95"
+            >
+                Create your own password protected link →
+            </a>
+        </div>
       </div>
     </div>
   );
