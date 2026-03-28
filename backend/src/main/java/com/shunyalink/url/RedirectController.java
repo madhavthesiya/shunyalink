@@ -15,6 +15,7 @@ import java.net.URI;
 import com.shunyalink.analytics.AnalyticsService;
 
 @RestController
+@Tag(name = "Redirect & Previews", description = "Endpoints for handling short URL redirects and social media rich previews (OG tags)")
 public class RedirectController {
 
     private final UrlService urlService;
@@ -38,6 +39,7 @@ public class RedirectController {
         return request.getRemoteAddr();
     }
 
+    @Operation(summary = "Redirect or Social Preview", description = "Handles the core redirection logic. Detects social media bots (WhatsApp, Twitter, FB) and returns OG tags for rich previews. Otherwise, redirects to the target URL (or password challenge).")
     @GetMapping("/{shortId}")
     public ResponseEntity<?> redirect(@PathVariable String shortId, HttpServletRequest request) {
         UrlEntity entity = urlRepository.findByShortId(shortId)

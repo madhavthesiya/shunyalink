@@ -121,7 +121,7 @@ public class UrlController {
         return urlService.getMyLinks(userId, pageable);
     }
 
-    @Operation(summary = "Get link stats", description = "Returns click analytics and metadata for a specific short ID.")
+    @Operation(summary = "Get link stats", description = "Returns click analytics and metadata for a specific short ID. Supports time ranges: '24h', '7d', and 'all'.")
     @GetMapping("/stats/{shortId}")
     public UrlStatsResponse getStats(
             @PathVariable String shortId,

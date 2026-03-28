@@ -2,6 +2,7 @@ package com.shunyalink.auth;
 
 import com.shunyalink.rate.RateLimiterService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -85,7 +86,7 @@ public class AuthController {
         return authService.resetPassword(request.get("token"), request.get("newPassword"));
     }
 
-    @Operation(summary = "Logout user", description = "Invalidates the current JWT token.")
+    @Operation(summary = "Logout user", description = "Invalidates the current JWT token by adding it to the Redis blacklist.", security = @SecurityRequirement(name = "Bearer Authentication"))
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(HttpServletRequest request) {
         String authHeader = request.getHeader("Authorization");
