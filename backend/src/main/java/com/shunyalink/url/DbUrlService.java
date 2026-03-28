@@ -8,6 +8,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -178,9 +180,9 @@ public class DbUrlService implements UrlService {
     }
 
     @Override
-    public List<UrlStatsResponse> getMyLinks(Long userId) {
-        List<UrlEntity> entities = urlRepository.findByUserIdOrderByCreatedAtDesc(userId);
-        return entities.stream().map(entity -> {
+    public Page<UrlStatsResponse> getMyLinks(Long userId, Pageable pageable) {
+        Page<UrlEntity> entities = urlRepository.findByUserId(userId, pageable);
+        return entities.map(entity -> {
             long dbClicks = entity.getClickCount();
             long redisClicks = 0;
             Object redisClicksObj = redisTemplate.opsForHash().get("analytics:click_counts", entity.getShortId());
@@ -188,6 +190,7 @@ public class DbUrlService implements UrlService {
                 redisClicks = Long.parseLong(redisClicksObj.toString());
             }
             long totalClicks = dbClicks + redisClicks;
+
             LocalDateTime lastAccessed = entity.getLastAccessedTime();
             String redisTimestamp = redisTemplate.opsForValue().get("last_access:" + entity.getShortId());
             if (redisTimestamp != null) {
@@ -198,6 +201,7 @@ public class DbUrlService implements UrlService {
                     }
                 } catch (Exception e) {}
             }
+
             return new UrlStatsResponse(
                     entity.getShortId(),
                     entity.getLongUrl(),
@@ -208,8 +212,9 @@ public class DbUrlService implements UrlService {
                     entity.getTitle(),
                     entity.getPassword() != null
             );
-        }).toList();
+        });
     }
+
 
     public List<UrlStatsResponse> getBioLinks(Long userId) {
         List<UrlEntity> entities = urlRepository.findByUserIdAndShowOnBioTrueOrderByCreatedAtDesc(userId);

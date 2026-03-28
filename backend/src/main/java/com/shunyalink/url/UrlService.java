@@ -1,12 +1,14 @@
 package com.shunyalink.url;
 
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 public interface UrlService {
     UrlEntity shortenUrl(String longUrl, String customAlias, Integer expiryDays, Long userId, String title, String password);
     String getLongUrl(String shortId);
     UrlStatsResponse getStats(String shortId);
-    List<UrlStatsResponse> getMyLinks(Long userId);
+    Page<UrlStatsResponse> getMyLinks(Long userId, Pageable pageable);
     void deleteUrl(String shortId, Long userId);
     
     void toggleShowOnBio(String shortId, Long userId, boolean showOnBio);

@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { LogOut, Copy, QrCode, Loader2, AlertCircle, TrendingUp, Link2, Trash2, Smartphone, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ShortenerForm } from "@/components/shortener-form";
+import { ShortenSuccessModal } from "@/components/shorten-success-modal";
+import { ResultBox } from "@/components/result-box";
 import { QRModal } from "@/components/qr-modal";
 import { StatsModal } from "@/components/stats-modal";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
@@ -39,6 +41,9 @@ export default function DashboardPage() {
   const router = useRouter();
   const [userName, setUserName] = useState<string>("");
   const [urls, setUrls] = useState<UrlData[]>([]);
+  const [totalUrls, setTotalUrls] = useState(0);
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -47,6 +52,9 @@ export default function DashboardPage() {
   const [selectedShortId, setSelectedShortId] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"links" | "settings">("links");
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
+  const [recentResult, setRecentResult] = useState<ShortenResponse | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const feedbackRef = useRef<HTMLDivElement>(null);
 
   // Verification state
   const [isEmailVerified, setIsEmailVerified] = useState(true);
@@ -64,15 +72,15 @@ export default function DashboardPage() {
     }
 
     setUserName(name || "User");
-    loadUserUrls(token);
+    loadUserUrls(token, true, page);
     loadProfile(token);
 
     const intervalId = setInterval(() => {
-      loadUserUrls(token, false);
+      loadUserUrls(token, false, page);
     }, 5000);
 
     return () => clearInterval(intervalId);
-  }, [router]);
+  }, [router, page]);
 
   const loadProfile = async (token: string) => {
     try {
@@ -111,10 +119,10 @@ export default function DashboardPage() {
     }
   };
 
-  const loadUserUrls = async (token: string, showLoading: boolean = true) => {
+  const loadUserUrls = async (token: string, showLoading: boolean = true, targetPage = page) => {
     try {
       if (showLoading) setIsLoading(true);
-      const response = await fetch(`${API_URL}/api/v1/url/my-links`, {
+      const response = await fetch(`${API_URL}/api/v1/url/my-links?page=${targetPage}&size=10`, {
         headers: { Authorization: `Bearer ${token}` },
         cache: 'no-store',
       });
@@ -127,7 +135,10 @@ export default function DashboardPage() {
 
       const data = await response.json();
       if (response.ok) {
-        setUrls(data);
+        setUrls(data.content);
+        setTotalPages(data.totalPages);
+        setTotalUrls(data.totalElements);
+        setPage(data.number);
         // Only clear the error state on active page loads, not silent background polls.
         // This prevents the 5-sec poller from erasing form errors like "403 Forbidden".
         if (showLoading) {
@@ -146,7 +157,18 @@ export default function DashboardPage() {
     }
   };
 
+  useEffect(() => {
+    if ((recentResult || error) && feedbackRef.current) {
+      feedbackRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [recentResult, error]);
+
   const handleSuccess = (data: ShortenResponse) => {
+    // Check if the URL already exists in the list to avoid duplicate key errors
+    if (urls.some(u => u.shortId === data.shortId)) {
+        return;
+    }
+
     // Add newly created URL to the top of the list
     setUrls([
       {
@@ -162,6 +184,8 @@ export default function DashboardPage() {
       ...urls,
     ]);
     setError(null);
+    setRecentResult(data);
+    setShowSuccessModal(true);
   };
 
   const handleError = (message: string) => {
@@ -290,7 +314,7 @@ export default function DashboardPage() {
             <div className="text-right hidden sm:block">
               <p className="text-sm font-medium text-foreground">{userName}</p>
               <p className="text-xs text-muted-foreground">
-                {urls.length} shortened URL{urls.length !== 1 ? "s" : ""}
+                {totalUrls} shortened URL{totalUrls !== 1 ? "s" : ""}
               </p>
             </div>
             
@@ -390,23 +414,24 @@ export default function DashboardPage() {
           {activeTab === "links" ? (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               {/* Create Short URL Section */}
-              <div>
+              <div ref={feedbackRef}>
                 <h2 className="text-2xl font-bold text-foreground mb-6">Create New Short URL</h2>
+                
+                {/* Error Alert (Moved Above Form) */}
+                {error && (
+                  <div className="flex items-start gap-3 p-4 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive animate-in fade-in-0 slide-in-from-bottom-4 duration-300 mb-8">
+                    <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold">Error</p>
+                      <p className="text-sm opacity-80 mt-0.5">{error}</p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="glass-card rounded-2xl shadow-2xl shadow-primary/5 p-8 sm:p-10">
                   <ShortenerForm onSuccess={handleSuccess} onError={handleError} />
                 </div>
               </div>
-
-              {/* Error Alert */}
-              {error && (
-                <div className="flex items-start gap-3 p-4 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive animate-in fade-in-0 slide-in-from-bottom-4 duration-300">
-                  <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-semibold">Error</p>
-                    <p className="text-sm opacity-80 mt-0.5">{error}</p>
-                  </div>
-                </div>
-              )}
 
               {/* Analytics Chart */}
               {urls.length > 0 && (
@@ -606,6 +631,35 @@ export default function DashboardPage() {
                         </tbody>
                       </table>
                     </div>
+                    <div className="flex justify-between items-center px-6 py-4 border-t border-border/50 bg-secondary/20">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={page === 0 || isLoading}
+                        onClick={() => {
+                          const token = localStorage.getItem("authToken");
+                          if (token) loadUserUrls(token, true, page - 1);
+                        }}
+                      >
+                        Previous
+                      </Button>
+                      
+                      <div className="text-sm font-medium text-muted-foreground">
+                        Page <span className="text-foreground">{page + 1}</span> of {totalPages}
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={page >= totalPages - 1 || isLoading}
+                        onClick={() => {
+                          const token = localStorage.getItem("authToken");
+                          if (token) loadUserUrls(token, true, page + 1);
+                        }}
+                      >
+                        Next
+                      </Button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -619,6 +673,23 @@ export default function DashboardPage() {
       </main>
 
       {/* Modals */}
+      {recentResult && (
+        <ShortenSuccessModal
+          isOpen={showSuccessModal}
+          onClose={() => setShowSuccessModal(false)}
+          shortId={recentResult.shortId}
+          shortUrl={`${API_URL}/${recentResult.shortId}`}
+          onViewStats={() => {
+            setSelectedShortId(recentResult.shortId);
+            setShowStats(true);
+          }}
+          onGenerateQR={() => {
+            setSelectedShortId(recentResult.shortId);
+            setShowQR(true);
+          }}
+        />
+      )}
+
       {selectedShortId && (
         <>
           <StatsModal

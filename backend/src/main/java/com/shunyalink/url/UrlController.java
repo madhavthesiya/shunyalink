@@ -8,12 +8,17 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import com.shunyalink.auth.UserRepository;
 import com.shunyalink.auth.UserEntity;
 import com.shunyalink.exception.ForbiddenException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.data.domain.Sort;
 
 import java.util.List;
 
@@ -47,6 +52,12 @@ public class UrlController {
         if (auth != null && auth.getPrincipal() instanceof Number n) {
             return n.longValue();
         }
+        return null;
+    }
+
+    private Long getUserIdFromPrincipal(Object principal) {
+        if (principal instanceof Long) return (Long) principal;
+        if (principal instanceof Integer) return ((Integer) principal).longValue();
         return null;
     }
 
@@ -100,10 +111,11 @@ public class UrlController {
     }
 
     @GetMapping("/my-links")
-    public List<UrlStatsResponse> getMyLinks() {
-        Long userId = getCurrentUserId();
-        if (userId == null) throw new BadRequestException("Authentication required");
-        return urlService.getMyLinks(userId);
+    public Page<UrlStatsResponse> getMyLinks(
+            @AuthenticationPrincipal Object principal,
+            @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        Long userId = getUserIdFromPrincipal(principal);
+        return urlService.getMyLinks(userId, pageable);
     }
 
     @DeleteMapping("/{shortId}")

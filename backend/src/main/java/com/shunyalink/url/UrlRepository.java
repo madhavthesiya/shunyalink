@@ -1,5 +1,7 @@
 package com.shunyalink.url;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -46,7 +48,9 @@ public interface UrlRepository extends JpaRepository<UrlEntity, Long> {
 """)
     int deleteExpiredUrls();
 
-    List<UrlEntity> findByUserIdOrderByCreatedAtDesc(Long userId);
+        List<UrlEntity> findByUserIdOrderByCreatedAtDesc(Long userId);
+        Page<UrlEntity> findByUserId(Long userId, Pageable pageable);
+
 
     List<UrlEntity> findByUserIdAndShowOnBioTrueOrderByCreatedAtDesc(Long userId);
 
