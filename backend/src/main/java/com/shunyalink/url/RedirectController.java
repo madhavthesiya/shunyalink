@@ -43,6 +43,14 @@ public class RedirectController {
         UrlEntity entity = urlRepository.findByShortId(shortId)
                 .orElseThrow(() -> new NotFoundException("URL not found"));
         
+        // NEW: Social Bot Detection for Rich Previews (WhatsApp, Twitter, FB, etc.)
+        String userAgent = request.getHeader("User-Agent");
+        if (isSocialBot(userAgent)) {
+            return ResponseEntity.ok()
+                    .header("Content-Type", "text/html; charset=UTF-8")
+                    .body(generateSocialHtml(entity));
+        }
+
         // If password is set, don't redirect yet. Tell the frontend to ask for a password.
         if (entity.getPassword() != null) {
             // Redirect to the frontend password challenge page
@@ -60,5 +68,46 @@ public class RedirectController {
         return ResponseEntity.status(HttpStatus.FOUND)
                 .location(URI.create(longUrl))
                 .build();
+    }
+
+    private boolean isSocialBot(String ua) {
+        if (ua == null) return false;
+        String lowerUa = ua.toLowerCase();
+        return lowerUa.contains("whatsapp") || 
+               lowerUa.contains("facebookexternalhit") || 
+               lowerUa.contains("twitterbot") || 
+               lowerUa.contains("slackbot") || 
+               lowerUa.contains("linkedinbot") || 
+               lowerUa.contains("discordbot") ||
+               lowerUa.contains("telegrambot");
+    }
+
+    private String generateSocialHtml(UrlEntity entity) {
+        String title = entity.getTitle() != null ? entity.getTitle() : "ShunyaLink - Shorten & Brand";
+        String description = "Shortened & Secured by ShunyaLink. Build your online identity with professional links.";
+        String url = frontendUrl + "/" + entity.getShortId();
+        // We use a high-quality Shunya branding image for the preview card
+        String imageUrl = "https://shunya.so/preview-card.png"; // Placeholder for production branding
+
+        return "<!DOCTYPE html>\n" +
+                "<html>\n" +
+                "<head>\n" +
+                "    <title>" + title + "</title>\n" +
+                "    <meta name=\"description\" content=\"" + description + "\">\n" +
+                "    <meta property=\"og:title\" content=\"" + title + "\">\n" +
+                "    <meta property=\"og:description\" content=\"" + description + "\">\n" +
+                "    <meta property=\"og:image\" content=\"" + imageUrl + "\">\n" +
+                "    <meta property=\"og:url\" content=\"" + url + "\">\n" +
+                "    <meta property=\"og:type\" content=\"website\">\n" +
+                "    <meta name=\"twitter:card\" content=\"summary_large_image\">\n" +
+                "    <meta name=\"twitter:title\" content=\"" + title + "\">\n" +
+                "    <meta name=\"twitter:description\" content=\"" + description + "\">\n" +
+                "    <meta name=\"twitter:image\" content=\"" + imageUrl + "\">\n" +
+                "    <meta http-equiv=\"refresh\" content=\"0;url=" + entity.getLongUrl() + "\">\n" +
+                "</head>\n" +
+                "<body>\n" +
+                "    <p>Redirecting to <a href=\"" + entity.getLongUrl() + "\">" + entity.getLongUrl() + "</a>...</p>\n" +
+                "</body>\n" +
+                "</html>";
     }
 }

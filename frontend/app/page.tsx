@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { AlertCircle, Sparkles, Zap, BarChart3, Settings2, ArrowRight, User } from "lucide-react";
+import { AlertCircle, Sparkles, Zap, BarChart3, Settings2, ArrowRight, User, ShieldCheck, Lock } from "lucide-react";
 import { Header } from "@/components/header";
 import { ShortenerForm } from "@/components/shortener-form";
 import { ResultBox } from "@/components/result-box";
@@ -227,55 +227,91 @@ export default function Home() {
         </section>
 
         {/* Features Section */}
-        <section className="py-12 sm:py-16 border-t border-border/50">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6">
+        <section className="py-20 sm:py-32 border-t border-border/50 bg-secondary/5">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6">
             <div className="text-center mb-16">
               <span className="inline-block px-3 py-1 rounded-full bg-primary/5 border border-primary/10 text-primary text-xs font-semibold uppercase tracking-wider mb-4">
-                The Platform
+                Enterprise Mastery
               </span>
-              <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4 text-balance">
-                Everything you need to <span className="text-gradient">Grow.</span>
+              <h2 className="text-3xl sm:text-5xl font-bold text-foreground mb-4 text-balance">
+                The absolute <span className="text-gradient">Gold Standard</span> of Link Management.
               </h2>
-              <p className="text-muted-foreground max-w-lg mx-auto">
-                ShunyaLink isn't just a tool; it's the ultimate productivity & branding 
-                platform for your online identity.
+              <p className="text-muted-foreground max-w-2xl mx-auto text-lg">
+                ShunyaLink puts the power of a MAANG-grade infrastructure in your hands. 
+                Built for scale, security, and professional branding.
               </p>
             </div>
             
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-              {/* Feature 1 */}
-              <div className="group p-8 rounded-2xl bg-card/50 border border-border/50 hover:border-primary/20 hover:bg-card transition-all duration-300">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
-                  <Zap className="w-6 h-6 text-primary" />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {/* Feature 1: AI Metadata */}
+              <div className="group p-8 rounded-3xl bg-card border border-border/50 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5 transition-all duration-500">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center mb-6 group-hover:rotate-6 transition-transform">
+                  <Sparkles className="w-7 h-7 text-primary" />
                 </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">Brand Consistency</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  Every link you share reinforces your brand. ShunyaLink ensures your 
-                  digital presence is unified and professional.
+                <h3 className="text-xl font-bold text-foreground mb-3">Smart AI Metadata</h3>
+                <p className="text-muted-foreground leading-relaxed">
+                  Automatic link titles and descriptions. Our AI-powered scraping 
+                  engine ensures your links look professional without manual effort.
                 </p>
               </div>
               
-              {/* Feature 2 */}
-              <div className="group p-8 rounded-2xl bg-card/50 border border-border/50 hover:border-primary/20 hover:bg-card transition-all duration-300">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
-                  <BarChart3 className="w-6 h-6 text-primary" />
+              {/* Feature 2: High-Fi Analytics */}
+              <div className="group p-8 rounded-3xl bg-card border border-border/50 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5 transition-all duration-500">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center mb-6 group-hover:rotate-6 transition-transform">
+                  <BarChart3 className="w-7 h-7 text-primary" />
                 </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">Growth Insights</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  Understand your audience. Track clicks, geography, and engagement 
-                  to scale your online identity effectively.
+                <h3 className="text-xl font-bold text-foreground mb-3">Time-Series Analytics</h3>
+                <p className="text-muted-foreground leading-relaxed">
+                  Go beyond total counts. Visualize click patterns with millisecond 
+                  precision using high-fidelity Area and Line charts.
                 </p>
               </div>
               
-              {/* Feature 3 */}
-              <div className="group p-8 rounded-2xl bg-card/50 border border-border/50 hover:border-primary/20 hover:bg-card transition-all duration-300">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
-                  <Settings2 className="w-6 h-6 text-primary" />
+              {/* Feature 3: Geo-Distribution */}
+              <div className="group p-8 rounded-3xl bg-card border border-border/50 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5 transition-all duration-500">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center mb-6 group-hover:rotate-6 transition-transform">
+                  <Zap className="w-7 h-7 text-primary" />
                 </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">Unique Identity</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  Secure your unique @handle and customize your Bio profile with 
-                  themes that match your personality.
+                <h3 className="text-xl font-bold text-foreground mb-3">Geo-Location Tracking</h3>
+                <p className="text-muted-foreground leading-relaxed">
+                  Understand your global reach. See exactly which countries and 
+                  regions are engaging with your content in real-time.
+                </p>
+              </div>
+
+              {/* Feature 4: Secure Logout */}
+              <div className="group p-8 rounded-3xl bg-card border border-border/50 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5 transition-all duration-500">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center mb-6 group-hover:rotate-6 transition-transform">
+                  <ShieldCheck className="w-7 h-7 text-primary" />
+                </div>
+                <h3 className="text-xl font-bold text-foreground mb-3">Secure Revocation</h3>
+                <p className="text-muted-foreground leading-relaxed">
+                  Real-time session blacklisting. Your security matters—once you 
+                  log out, your session is instantly purged from our global network.
+                </p>
+              </div>
+
+              {/* Feature 5: Protection */}
+              <div className="group p-8 rounded-3xl bg-card border border-border/50 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5 transition-all duration-500">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center mb-6 group-hover:rotate-6 transition-transform">
+                  <Lock className="w-7 h-7 text-primary" />
+                </div>
+                <h3 className="text-xl font-bold text-foreground mb-3">Password Encryption</h3>
+                <p className="text-muted-foreground leading-relaxed">
+                  Protect your sensitive assets with AES-256 password protection 
+                  and link-specific security challenges.
+                </p>
+              </div>
+
+              {/* Feature 6: Identity */}
+              <div className="group p-8 rounded-3xl bg-card border border-border/50 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5 transition-all duration-500">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center mb-6 group-hover:rotate-6 transition-transform">
+                  <Settings2 className="w-7 h-7 text-primary" />
+                </div>
+                <h3 className="text-xl font-bold text-foreground mb-3">Custom Branding</h3>
+                <p className="text-muted-foreground leading-relaxed">
+                  Secure your unique @handle and customize your Bio profile storefront 
+                  to showcase your full online identity.
                 </p>
               </div>
             </div>

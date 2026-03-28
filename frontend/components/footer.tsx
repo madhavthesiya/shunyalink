@@ -52,10 +52,10 @@ export function Footer() {
             <h4 className="font-semibold text-foreground mb-6">Link Management</h4>
             <ul className="space-y-4 text-sm text-muted-foreground/80">
               {[
-                'Custom short aliases',
-                'Password protection',
+                'AI Metadata Scraping',
+                'AES-256 Encryption',
                 'Link expiration settings',
-                'QR code generation'
+                'Custom short aliases'
               ].map((feature) => (
                 <li key={feature} className="flex items-center gap-3 group cursor-default">
                   <span className="w-1.5 h-1.5 rounded-full bg-primary ring-4 ring-primary/10" />
@@ -71,9 +71,9 @@ export function Footer() {
             <ul className="space-y-4 text-sm text-muted-foreground/80">
               {[
                 'Link-in-Bio profiles',
-                'Premium Profile Cards',
-                'Claim unique @handle',
-                'Detailed Click analytics'
+                'Geo-IP Distribution',
+                'Time-Series Analytics',
+                'Secure Revocation'
               ].map((feature) => (
                 <li key={feature} className="flex items-center gap-3 group cursor-default">
                   <span className="w-1.5 h-1.5 rounded-full bg-primary ring-4 ring-primary/10" />
