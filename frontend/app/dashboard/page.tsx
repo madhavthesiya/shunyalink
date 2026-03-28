@@ -699,11 +699,10 @@ function DashboardContent() {
                                     size="sm"
                                     variant="ghost"
                                     onClick={() => {
-                                      setSelectedShortId(url.shortId);
-                                      setShowStats(true);
+                                      router.push(`/dashboard/insights/${url.shortId}`);
                                     }}
-                                    className="h-8 w-8 p-0 text-muted-foreground"
-                                    title="View stats"
+                                    className="h-8 w-8 p-0 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                                    title="View detailed insights"
                                   >
                                     <TrendingUp className="w-4 h-4" />
                                   </Button>
@@ -784,8 +783,7 @@ function DashboardContent() {
           shortId={recentResult.shortId}
           shortUrl={`${API_URL}/${recentResult.shortId}`}
           onViewStats={() => {
-            setSelectedShortId(recentResult.shortId);
-            setShowStats(true);
+            router.push(`/dashboard/insights/${recentResult.shortId}`);
           }}
           onGenerateQR={() => {
             setSelectedShortId(recentResult.shortId);

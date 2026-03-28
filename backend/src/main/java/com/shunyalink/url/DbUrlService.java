@@ -18,6 +18,9 @@ import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+import com.shunyalink.analytics.AnalyticsService;
 
 @Service
 public class DbUrlService implements UrlService {
@@ -31,6 +34,7 @@ public class DbUrlService implements UrlService {
     private final MetadataService metadataService;
 
     private final com.shunyalink.util.EncryptionUtils encryptionUtils;
+    private final AnalyticsService analyticsService;
 
     public DbUrlService(UrlRepository urlRepository,
                         IdEncoder idEncoder,
@@ -38,7 +42,8 @@ public class DbUrlService implements UrlService {
                         PasswordEncoder passwordEncoder,
                         com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository,
                         MetadataService metadataService,
-                        com.shunyalink.util.EncryptionUtils encryptionUtils) {
+                        com.shunyalink.util.EncryptionUtils encryptionUtils,
+                        AnalyticsService analyticsService) {
         this.urlRepository = urlRepository;
         this.idEncoder = idEncoder;
         this.redisTemplate = redisTemplate;
@@ -46,6 +51,7 @@ public class DbUrlService implements UrlService {
         this.globalStatsRepository = globalStatsRepository;
         this.metadataService = metadataService;
         this.encryptionUtils = encryptionUtils;
+        this.analyticsService = analyticsService;
     }
 
     private long getTtlSeconds(LocalDateTime expiryTime) {
@@ -145,7 +151,6 @@ public class DbUrlService implements UrlService {
         String cacheKey = "url:" + shortId;
         String cachedUrl = redisTemplate.opsForValue().get(cacheKey);
         if (cachedUrl != null) {
-            incrementClickCount(shortId);
             return cachedUrl;
         }
         UrlEntity entity = urlRepository.findByShortId(shortId)
@@ -156,7 +161,6 @@ public class DbUrlService implements UrlService {
         String longUrl = entity.getLongUrl();
         long ttl = getTtlSeconds(entity.getExpiryTime());
         redisTemplate.opsForValue().set(cacheKey, longUrl, ttl, TimeUnit.SECONDS);
-        incrementClickCount(shortId);
         return longUrl;
     }
 
@@ -183,7 +187,7 @@ public class DbUrlService implements UrlService {
 
     @Override
     @Transactional(readOnly = true)
-    public UrlStatsResponse getStats(String shortId) {
+    public UrlStatsResponse getStats(String shortId, long lookbackMs) {
         UrlEntity entity = urlRepository.findByShortId(shortId)
                 .orElseThrow(() -> new NotFoundException("Short URL not found"));
         long dbClicks = entity.getClickCount();
@@ -205,6 +209,13 @@ public class DbUrlService implements UrlService {
                 log.warn("Could not parse Redis timestamp for shortId={}", shortId);
             }
         }
+
+        // 2. Fetch Time-Series Click Data
+        Map<String, Long> timeSeries = analyticsService.getClickStats(shortId, lookbackMs);
+        
+        // 3. Fetch Geo-Distribution Data
+        Map<String, Long> countries = analyticsService.getGeoDistribution(shortId);
+
         return new UrlStatsResponse(
                 entity.getShortId(),
                 entity.getLongUrl(),
@@ -214,7 +225,9 @@ public class DbUrlService implements UrlService {
                 entity.isShowOnBio(),
                 entity.getTitle(),
                 entity.getPassword() != null,
-                entity.getPassword() != null ? encryptionUtils.decrypt(entity.getPassword()) : null);
+                entity.getPassword() != null ? encryptionUtils.decrypt(entity.getPassword()) : null,
+                timeSeries,
+                countries);
     }
 
     @Override
@@ -249,7 +262,9 @@ public class DbUrlService implements UrlService {
                     entity.isShowOnBio(),
                     entity.getTitle(),
                     entity.getPassword() != null,
-                    entity.getPassword() != null ? encryptionUtils.decrypt(entity.getPassword()) : null
+                    entity.getPassword() != null ? encryptionUtils.decrypt(entity.getPassword()) : null,
+                    new HashMap<>(), // No time-series
+                    new HashMap<>()  // No geo-distribution
             );
         });
     }
@@ -274,7 +289,9 @@ public class DbUrlService implements UrlService {
                     entity.isShowOnBio(),
                     entity.getTitle(),
                     entity.getPassword() != null,
-                    entity.getPassword() != null ? encryptionUtils.decrypt(entity.getPassword()) : null
+                    entity.getPassword() != null ? encryptionUtils.decrypt(entity.getPassword()) : null,
+                    new HashMap<>(),
+                    new HashMap<>()
             );
         }).toList();
     }

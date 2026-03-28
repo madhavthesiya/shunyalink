@@ -42,6 +42,7 @@ public class UrlController {
     private final CsvExportService csvExportService;
     private final com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository;
     private final EncryptionUtils encryptionUtils;
+    private final com.shunyalink.analytics.AnalyticsService analyticsService;
 
     @Value("${app.base-url}")
     private String baseUrl;
@@ -50,7 +51,8 @@ public class UrlController {
                          UrlRepository urlRepository, UserRepository userRepository,
                          PasswordEncoder passwordEncoder, CsvExportService csvExportService,
                          com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository,
-                         EncryptionUtils encryptionUtils) {
+                         EncryptionUtils encryptionUtils,
+                         com.shunyalink.analytics.AnalyticsService analyticsService) {
         this.urlService = urlService;
         this.rateLimiterService = rateLimiterService;
         this.urlRepository = urlRepository;
@@ -59,6 +61,7 @@ public class UrlController {
         this.csvExportService = csvExportService;
         this.globalStatsRepository = globalStatsRepository;
         this.encryptionUtils = encryptionUtils;
+        this.analyticsService = analyticsService;
     }
 
     private String getClientIp(HttpServletRequest request) {
@@ -120,8 +123,17 @@ public class UrlController {
 
     @Operation(summary = "Get link stats", description = "Returns click analytics and metadata for a specific short ID.")
     @GetMapping("/stats/{shortId}")
-    public UrlStatsResponse getStats(@PathVariable String shortId) {
-        return urlService.getStats(shortId);
+    public UrlStatsResponse getStats(
+            @PathVariable String shortId,
+            @RequestParam(defaultValue = "all") String range) {
+        
+        long lookbackMs = switch (range) {
+            case "24h" -> 86400000L;
+            case "7d" -> 604800000L;
+            default -> 0L; // All time
+        };
+        
+        return urlService.getStats(shortId, lookbackMs);
     }
 
     @Operation(summary = "Export link stats to CSV", description = "Downloads analytics for a specific short ID as CSV.", security = @SecurityRequirement(name = "Bearer Authentication"))
@@ -193,7 +205,7 @@ public class UrlController {
 
     @Operation(summary = "Resolve password-protected link", description = "Verifies password and returns the original long URL.")
     @PostMapping("/resolve/{shortId}")
-    public ResponseEntity<?> resolvePassword(@PathVariable String shortId, @RequestBody Map<String, String> body) {
+    public ResponseEntity<?> resolvePassword(@PathVariable String shortId, @RequestBody Map<String, String> body, HttpServletRequest request) {
         String password = body.get("password");
         UrlEntity entity = urlRepository.findByShortId(shortId)
                 .orElseThrow(() -> new com.shunyalink.exception.NotFoundException("URL not found"));
@@ -212,7 +224,8 @@ public class UrlController {
         }
 
         if (matches) {
-            urlService.incrementClickCount(shortId);
+            // NEW: Record Analytics with IP
+            analyticsService.recordClick(shortId, getClientIp(request));
             return ResponseEntity.ok(Map.of("longUrl", entity.getLongUrl()));
         } else {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Incorrect password");
