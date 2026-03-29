@@ -9,7 +9,7 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'ShunyaLink | Pro-Tier URL Shortener & Bio-Link Platform',
+  title: 'ShunyaLink',
   description: 'ShunyaLink is the ultimate distributed URL management tool. Shorten links, track geo-analytics, and build professional Bio-Link profiles for your brand.',
   keywords: ['ShunyaLink', 'URL Shortener', 'Bio Link', 'Link Management', 'Geo Analytics', 'Distributed Systems'],
   generator: 'ShunyaLink Engine',
@@ -35,7 +35,7 @@ export const metadata: Metadata = {
     canonical: '/',
   },
   openGraph: {
-    title: 'ShunyaLink | URL Shortener & Bio-Link Platform',
+    title: 'ShunyaLink',
     description: 'Transform long URLs into clean links and build your personalized Bio-Link profile. Ultimate link management for professionals.',
     url: 'https://shunyalink.madhavv.me',
     siteName: 'ShunyaLink',
@@ -52,7 +52,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'ShunyaLink | Shorten & Brand',
+    title: 'ShunyaLink',
     description: 'The distributed URL management platform for professionals.',
     images: ['/logo-social.png'],
   },
