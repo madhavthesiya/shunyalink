@@ -1,7 +1,8 @@
 import { MetadataRoute } from 'next'
  
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = 'https://shunyalink.com'
+  // Updated to your EXACT domain to pass Google validation
+  const baseUrl = 'https://shunyalink.madhavv.me'
   
   return [
     {
