@@ -9,9 +9,10 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'ShunyaLink - Make Your Links Beautifully Short',
-  description: 'Free URL shortener. Paste any long URL and generate a clean, shareable link instantly.',
-  generator: 'v0.app',
+  title: 'ShunyaLink | Pro-Tier URL Shortener & Bio-Link Platform',
+  description: 'ShunyaLink is the ultimate distributed URL management tool. Shorten links, track geo-analytics, and build professional Bio-Link profiles for your brand.',
+  keywords: ['ShunyaLink', 'URL Shortener', 'Bio Link', 'Link Management', 'Geo Analytics', 'Distributed Systems'],
+  generator: 'ShunyaLink Engine',
   icons: {
     icon: [
       {

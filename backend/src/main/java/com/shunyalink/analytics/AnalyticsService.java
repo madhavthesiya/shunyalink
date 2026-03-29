@@ -109,12 +109,12 @@ public class AnalyticsService {
                     // "Repair" history: Shift one count from Unknown to the Real Country
                     redisTemplate.opsForHash().increment(key, "Unknown", -1);
                     redisTemplate.opsForHash().increment(key, country, 1);
-                    return;
+                    // WE NO LONGER RETURN EARLY HERE — MUST CONTINUE TO COUNT THE CURRENT CLICK
                 }
             }
         }
         
-        // Standard increment if no healing needed
+        // Standard increment: Always record the CURRENT click
         redisTemplate.opsForHash().increment(key, country, 1);
     }
 
