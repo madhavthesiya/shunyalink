@@ -281,8 +281,8 @@ public class AuthService {
         if (request.getBioText() != null) {
             user.setBioText(request.getBioText().trim());
         }
-        
-        user.setThemeColor(request.getThemeColor().trim());
+        if (request.getThemeColor() != null) {
+            user.setThemeColor(request.getThemeColor().trim());
         }
 
         userRepository.save(user);
