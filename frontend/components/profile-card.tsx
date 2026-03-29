@@ -135,8 +135,8 @@ export function ProfileCard({
           {/* Promotional Watermark */}
           {showWatermark && (
             <div className="mt-12 flex flex-col items-center justify-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-1000 delay-500">
-              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.2em] text-muted-foreground/30 font-bold">
-                <Sparkles className="h-3 w-3" />
+              <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-muted-foreground/30 font-bold">
+                <img src="/logo.png" alt="Logo" className="h-3 w-3 object-contain grayscale opacity-30" />
                 <span>Powered by ShunyaLink</span>
               </div>
               <Link 

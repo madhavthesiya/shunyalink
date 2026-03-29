@@ -451,8 +451,8 @@ export function UserProfileSettings() {
                   </div>
 
                   {/* Branded Footer */}
-                  <div className="mt-4 flex items-center justify-center gap-1 text-[10px] text-muted-foreground/50">
-                    <Sparkles className="h-2.5 w-2.5" />
+                  <div className="mt-4 flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground/50">
+                    <img src="/logo.png" alt="Logo" className="h-2.5 w-2.5 object-contain grayscale opacity-50" />
                     shunyalink.madhavv.me
                   </div>
                 </div>

@@ -172,8 +172,8 @@ export function StatsModal({ shortId, isOpen, onClose }: StatsModalProps) {
                 </div>
 
                 <div className="flex items-start gap-4 p-4 rounded-xl bg-muted/30 border border-border/30">
-                  <div className="w-10 h-10 rounded-lg bg-background flex items-center justify-center flex-shrink-0">
-                    <Link2 className="w-5 h-5 text-muted-foreground" />
+                  <div className="w-10 h-10 rounded-lg bg-background flex items-center justify-center flex-shrink-0 overflow-hidden p-2">
+                    <img src="/logo.png" alt="Logo" className="w-full h-full object-contain grayscale opacity-30" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Original URL</p>

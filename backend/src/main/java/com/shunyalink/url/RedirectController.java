@@ -93,8 +93,8 @@ public class RedirectController {
         String serverName = request.getServerName();
         String url = scheme + "://" + serverName + "/" + entity.getShortId();
         
-        // Branded image remains on the main frontend domain
-        String imageUrl = "https://shunyalink.madhavv.me/placeholder-logo.png"; 
+        // Branded social image remains on the main frontend domain
+        String imageUrl = "https://shunyalink.madhavv.me/logo-social.png"; 
 
         return "<!DOCTYPE html>\n" +
                 "<html>\n" +

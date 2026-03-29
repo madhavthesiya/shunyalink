@@ -387,8 +387,8 @@ function DashboardContent() {
       <header className="glass-card sticky top-0 z-50 border-b border-border/50">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-            <div className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-primary/80 shadow-lg shadow-primary/25">
-              <Link2 className="w-4 h-4 text-primary-foreground" />
+            <div className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-primary/80 shadow-lg shadow-primary/25 overflow-hidden p-1.5">
+              <img src="/logo.png" alt="Logo" className="w-full h-full object-contain brightness-0 invert" />
               <div className="absolute inset-0 rounded-xl bg-primary/20 blur-md -z-10" />
             </div>
             <span className="text-xl font-semibold tracking-tight text-foreground">

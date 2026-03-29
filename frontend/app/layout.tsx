@@ -24,8 +24,8 @@ export const metadata: Metadata = {
         media: '(prefers-color-scheme: dark)',
       },
       {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
+        url: '/icon.png',
+        type: 'image/png',
       },
     ],
     apple: '/apple-icon.png',
@@ -41,7 +41,7 @@ export const metadata: Metadata = {
     siteName: 'ShunyaLink',
     images: [
       {
-        url: '/placeholder-logo.png', // Fallback until a dedicated OG image is added
+        url: '/logo-social.png', 
         width: 1200,
         height: 630,
         alt: 'ShunyaLink Dashboard Preview',
@@ -54,7 +54,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'ShunyaLink | Shorten & Brand',
     description: 'The distributed URL management platform for professionals.',
-    images: ['/placeholder-logo.png'],
+    images: ['/logo-social.png'],
   },
 }
 

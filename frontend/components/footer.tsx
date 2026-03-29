@@ -10,8 +10,8 @@ export function Footer() {
           {/* Brand */}
           <div>
             <div className="flex items-center gap-2.5 mb-5">
-              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary shadow-md">
-                <Link2 className="w-4 h-4 text-primary-foreground" />
+              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary shadow-md overflow-hidden p-1.5">
+                <img src="/logo.png" alt="Logo" className="w-full h-full object-contain brightness-0 invert" />
               </div>
               <span className="text-xl font-bold text-foreground tracking-tight">
                 ShunyaLink
