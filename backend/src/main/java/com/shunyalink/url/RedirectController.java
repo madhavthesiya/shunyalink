@@ -50,7 +50,7 @@ public class RedirectController {
         if (isSocialBot(userAgent)) {
             return ResponseEntity.ok()
                     .header("Content-Type", "text/html; charset=UTF-8")
-                    .body(generateSocialHtml(entity));
+                    .body(generateSocialHtml(entity, request));
         }
 
         // If password is set, don't redirect yet. Tell the frontend to ask for a password.
@@ -84,12 +84,17 @@ public class RedirectController {
                lowerUa.contains("telegrambot");
     }
 
-    private String generateSocialHtml(UrlEntity entity) {
-        String title = entity.getTitle() != null ? entity.getTitle() : "ShunyaLink - Shorten & Brand";
-        String description = "Shortened & Secured by ShunyaLink. Build your online identity with professional links.";
-        String url = frontendUrl + "/" + entity.getShortId();
-        // We use a high-quality Shunya branding image for the preview card
-        String imageUrl = "https://shunya.so/preview-card.png"; // Placeholder for production branding
+    private String generateSocialHtml(UrlEntity entity, HttpServletRequest request) {
+        String title = entity.getTitle() != null && !entity.getTitle().isBlank() ? entity.getTitle() : "ShunyaLink | Shorten & Brand";
+        String description = "This link was shortened and secured by ShunyaLink. Build your own professional Bio-Link profile for free.";
+        
+        // Dynamically detect the host (sl.madhavv.me vs shunyalink.madhavv.me)
+        String scheme = request.getScheme();
+        String serverName = request.getServerName();
+        String url = scheme + "://" + serverName + "/" + entity.getShortId();
+        
+        // Branded image remains on the main frontend domain
+        String imageUrl = "https://shunyalink.madhavv.me/placeholder-logo.png"; 
 
         return "<!DOCTYPE html>\n" +
                 "<html>\n" +

@@ -30,6 +30,32 @@ export const metadata: Metadata = {
     ],
     apple: '/apple-icon.png',
   },
+  metadataBase: new URL('https://shunyalink.madhavv.me'),
+  alternates: {
+    canonical: '/',
+  },
+  openGraph: {
+    title: 'ShunyaLink | URL Shortener & Bio-Link Platform',
+    description: 'Transform long URLs into clean links and build your personalized Bio-Link profile. Ultimate link management for professionals.',
+    url: 'https://shunyalink.madhavv.me',
+    siteName: 'ShunyaLink',
+    images: [
+      {
+        url: '/placeholder-logo.png', // Fallback until a dedicated OG image is added
+        width: 1200,
+        height: 630,
+        alt: 'ShunyaLink Dashboard Preview',
+      },
+    ],
+    locale: 'en_US',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'ShunyaLink | Shorten & Brand',
+    description: 'The distributed URL management platform for professionals.',
+    images: ['/placeholder-logo.png'],
+  },
 }
 
 export default function RootLayout({
