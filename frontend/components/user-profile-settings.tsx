@@ -170,7 +170,7 @@ export function UserProfileSettings() {
               <span className="text-[10px] font-bold text-primary/60 uppercase tracking-widest">Public Bio Link</span>
             </div>
             <code className="text-sm font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md">
-              {typeof window !== 'undefined' ? window.location.host : 'shunyalink.com'}/@{username}
+              {typeof window !== 'undefined' ? window.location.host : 'shunyalink.madhavv.me'}/@{username}
             </code>
             <div className="flex items-center gap-1 ml-2">
               <Button 
@@ -453,7 +453,7 @@ export function UserProfileSettings() {
                   {/* Branded Footer */}
                   <div className="mt-4 flex items-center justify-center gap-1 text-[10px] text-muted-foreground/50">
                     <Sparkles className="h-2.5 w-2.5" />
-                    shunyalink.com
+                    shunyalink.madhavv.me
                   </div>
                 </div>
               </div>

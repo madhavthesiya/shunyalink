@@ -3,7 +3,7 @@
 > A production-grade URL shortener built with Spring Boot, Redis, and React.  
 > **3,578 requests · 0% error rate · 355ms avg response time.**
 
-🔗 **Live:** [https://shunyalink.vercel.app](https://shunyalink.vercel.app)
+🔗 **Live:** [https://shunyalink.madhavv.me](https://shunyalink.madhavv.me)
 
 ---
 
@@ -16,7 +16,7 @@ ShunyaLink is a full-stack URL shortener engineered for production — not just 
 ## Features
 
 - **URL Shortening** — Base62 encoding on sequential DB IDs for compact, ordered short codes
-- **Custom Aliases** — Choose your own slug (e.g. `shunyalink.com/my-brand`)
+- **Custom Aliases** — Choose your own slug (e.g. `shunyalink.madhavv.me/my-brand`)
 - **Expiring Links** — Set TTL in days; expired links return `410 Gone`
 - **Click Analytics** — Total clicks, last accessed time, created date per link
 - **Idempotency** — Same permanent URL always returns the same short ID (enforced via partial DB index)

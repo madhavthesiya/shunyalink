@@ -157,7 +157,7 @@ export default function Home() {
                     <div className="w-6 h-6 rounded-full bg-success/20 flex items-center justify-center">
                       <Zap className="w-3.5 h-3.5 text-success" />
                     </div>
-                    Claim your unique handle: shunyalink.me/@name
+                    Claim your unique handle: shunyalink.madhavv.me/@name
                   </div>
                   <div className="flex items-center gap-3 text-foreground font-medium">
                     <div className="w-6 h-6 rounded-full bg-success/20 flex items-center justify-center">
@@ -212,7 +212,7 @@ export default function Home() {
                       {/* Brand Footer */}
                       <div className="flex items-center gap-1.5 opacity-40 mt-6 group-hover:opacity-60 transition-opacity">
                         <Sparkles className="w-3 h-3 text-primary" />
-                        <span className="text-[10px] font-bold tracking-tight">shunyalink.com</span>
+                        <span className="text-[10px] font-bold tracking-tight">shunyalink.madhavv.me</span>
                       </div>
                     </div>
                   </div>

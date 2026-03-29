@@ -142,7 +142,7 @@ export default function InsightsPage() {
           )}
           <p className="text-muted-foreground flex items-center gap-2">
             <Globe className="w-4 h-4" />
-            shunyalink.com/{shortId}
+            shunyalink.madhavv.me/{shortId}
           </p>
         </div>
 

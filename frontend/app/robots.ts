@@ -7,6 +7,6 @@ export default function robots(): MetadataRoute.Robots {
       allow: '/',
       disallow: ['/api/', '/dashboard/'],
     },
-    sitemap: 'https://shunyalink.com/sitemap.xml',
+    sitemap: 'https://shunyalink.madhavv.me/sitemap.xml',
   }
 }
