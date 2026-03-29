@@ -282,10 +282,17 @@ public class AuthService {
             user.setBioText(request.getBioText().trim());
         }
         
-        if (request.getThemeColor() != null) {
-            user.setThemeColor(request.getThemeColor().trim());
+        user.setThemeColor(request.getThemeColor().trim());
         }
 
         userRepository.save(user);
+    }
+
+    public boolean isUsernameAvailable(String username, Long currentUserId) {
+        String cleanUsername = username.toLowerCase().trim();
+        Optional<UserEntity> existing = userRepository.findByUsername(cleanUsername);
+        
+        // Available if no one has it OR if the current user already owns it
+        return existing.isEmpty() || existing.get().getId().equals(currentUserId);
     }
 }

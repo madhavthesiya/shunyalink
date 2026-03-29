@@ -10,8 +10,13 @@ import {
   Smartphone,
   Palette,
   Type,
-  Sparkles
+  Sparkles,
+  Link,
+  Copy,
+  ExternalLink
 } from "lucide-react"
+import { toast } from "sonner"
+import { motion, AnimatePresence } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -39,6 +44,7 @@ export function UserProfileSettings() {
   const [availabilityStatus, setAvailabilityStatus] = useState<AvailabilityStatus>("idle")
   const [isSaving, setIsSaving] = useState(false)
   const [displayName, setDisplayName] = useState("")
+  const [showSuccess, setShowSuccess] = useState(false)
 
   // Load initial data
   useEffect(() => {
@@ -52,7 +58,6 @@ export function UserProfileSettings() {
         });
         if (res.ok) {
           const data = await res.json();
-          // Restoring prefill as requested
           setUsername(data.username || "");
           setDisplayName(data.name || "");
           setBio(data.bioText || "");
@@ -65,21 +70,34 @@ export function UserProfileSettings() {
     fetchProfile();
   }, []);
 
-  // Username availability check logic (keep existing simulated check or connect to backend if needed)
+  // Professional Debounced Availability Check
   useEffect(() => {
-    if (username.length < 3) {
+    if (!username || username.length < 3) {
       setAvailabilityStatus("idle")
       return
     }
 
     setAvailabilityStatus("checking")
-    const timer = setTimeout(() => {
-        // Here we could call backend to check if username is taken
-        setAvailabilityStatus("idle") // For now, let backend handle conflict on save
-    }, 800)
+    
+    const checkUsername = async () => {
+      const token = localStorage.getItem("authToken");
+      try {
+        const res = await fetch(`${API_URL}/api/v1/profile/username-check?username=${username}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setAvailabilityStatus(data.available ? "available" : "taken");
+        }
+      } catch (err) {
+        console.error("Username check failed", err);
+        setAvailabilityStatus("idle");
+      }
+    };
 
-    return () => clearTimeout(timer)
-  }, [username])
+    const timer = setTimeout(checkUsername, 400); // 400ms debounce
+    return () => clearTimeout(timer);
+  }, [username]);
 
   const handleCustomHexChange = (value: string) => {
     setCustomHex(value)
@@ -108,14 +126,19 @@ export function UserProfileSettings() {
 
       if (!response.ok) {
         const data = await response.json();
-        alert(data.message || "Failed to update profile");
+        toast.error(data.message || "Failed to update profile");
       } else {
         localStorage.setItem("userHandle", username); // Save username for Dashboard navigation
-        alert("Profile saved successfully!");
+        setShowSuccess(true);
+        toast.success("Profile updated successfully!", {
+          description: "Your public bio-link is now live.",
+          icon: <Sparkles className="h-4 w-4 text-emerald-500" />
+        });
+        setTimeout(() => setShowSuccess(false), 3000);
       }
     } catch (err) {
       console.error("Save error", err);
-      alert("An error occurred while saving profile");
+      toast.error("An error occurred while saving profile");
     } finally {
       setIsSaving(false)
     }
@@ -136,23 +159,43 @@ export function UserProfileSettings() {
             Customize your public profile appearance
           </p>
           
-          {username && (
-            <div className="mt-4 flex items-center gap-2 p-3 bg-primary/5 rounded-xl border border-primary/10 w-fit">
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Your Public Link:</span>
-              <code className="text-sm font-semibold text-primary">shunyalink.com/@{username}</code>
+        {username && (
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-4 flex flex-wrap items-center gap-2 p-3 bg-primary/5 rounded-xl border border-primary/10 w-fit"
+          >
+            <div className="flex items-center gap-1.5 mr-2">
+              <Link className="h-3.5 w-3.5 text-primary" />
+              <span className="text-[10px] font-bold text-primary/60 uppercase tracking-widest">Public Bio Link</span>
+            </div>
+            <code className="text-sm font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md">
+              {typeof window !== 'undefined' ? window.location.host : 'shunyalink.com'}/@{username}
+            </code>
+            <div className="flex items-center gap-1 ml-2">
               <Button 
                 variant="ghost" 
                 size="sm" 
-                className="h-8 px-2 text-xs"
+                className="h-8 w-8 p-0 rounded-full hover:bg-primary/20"
                 onClick={() => {
-                  navigator.clipboard.writeText(`${window.location.origin}/@${username}`);
-                  alert("Link copied!");
+                  const url = `${window.location.protocol}//${window.location.host}/@${username}`;
+                  navigator.clipboard.writeText(url);
+                  toast.success("Link copied to clipboard!");
                 }}
               >
-                Copy
+                <Copy className="h-3.5 w-3.5 text-primary" />
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-8 w-8 p-0 rounded-full hover:bg-primary/20"
+                onClick={() => window.open(`/@${username}`, '_blank')}
+              >
+                <ExternalLink className="h-3.5 w-3.5 text-primary" />
               </Button>
             </div>
-          )}
+          </motion.div>
+        )}
         </div>
 
         <div className="flex flex-col gap-8 lg:flex-row lg:items-start">
@@ -315,6 +358,15 @@ export function UserProfileSettings() {
                   <Loader2 className="h-5 w-5 animate-spin" />
                   Saving Changes...
                 </span>
+              ) : showSuccess ? (
+                <motion.span 
+                  initial={{ scale: 0.5, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="flex items-center gap-2"
+                >
+                  <Check className="h-5 w-5" />
+                  All Saved!
+                </motion.span>
               ) : (
                 <span className="flex items-center gap-2">
                   <Sparkles className="h-5 w-5" />

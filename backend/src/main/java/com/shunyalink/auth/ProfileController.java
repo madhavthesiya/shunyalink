@@ -97,4 +97,21 @@ public class ProfileController {
         authService.updateProfile(userId, request);
         return ResponseEntity.ok(Map.of("message", "Profile updated successfully"));
     }
+
+    @Operation(summary = "Check username availability", description = "Checks if a username is available for a given user ID.")
+    @GetMapping("/username-check")
+    public ResponseEntity<Map<String, Boolean>> checkUsername(
+            @RequestParam String username,
+            @AuthenticationPrincipal Object principal) {
+        
+        Long userId = null;
+        if (principal instanceof Long) {
+            userId = (Long) principal;
+        } else if (principal instanceof Integer) {
+            userId = ((Integer) principal).longValue();
+        }
+
+        boolean isAvailable = authService.isUsernameAvailable(username, userId);
+        return ResponseEntity.ok(Map.of("available", isAvailable));
+    }
 }
