@@ -3,7 +3,7 @@
 > A distributed URL management platform with write-behind analytics, Geo-IP tracking, and Link-in-Bio profiles.
 > Engineered with distributed caching, horizontal scaling, and real-world engineering trade-offs.
 
-🔗 **Live:** [shunyalink.madhavv.me](https://shunyalink.madhavv.me) &nbsp;·&nbsp; 📡 **Short Domain:** [sl.madhavv.me](https://sl.madhavv.me)
+🔗 **Live:** [shunyalink.madhavv.me](https://shunyalink.madhavv.me) &nbsp;
 
 ---
 
