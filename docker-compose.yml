@@ -56,6 +56,8 @@ services:
       SPRING_DATA_REDIS_PORT: 6379
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost}
       ALLOWED_ORIGIN: ${ALLOWED_ORIGIN:-http://localhost:3000}
+      MAIL_USERNAME: ${MAIL_USERNAME:-noreply.shunyalink@gmail.com}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
     # No direct port exposure — only Nginx can talk to backend
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
