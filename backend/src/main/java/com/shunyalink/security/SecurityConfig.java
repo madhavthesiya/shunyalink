@@ -50,7 +50,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/profile/me").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/v1/profile/settings").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/v1/profile/**").permitAll()
-                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/actuator/**").permitAll()
+                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/actuator/health").permitAll()
                         // Everything else needs auth
                         .anyRequest().authenticated()
                 )
