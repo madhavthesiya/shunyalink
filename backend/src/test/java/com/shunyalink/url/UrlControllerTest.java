@@ -141,7 +141,8 @@ class UrlControllerTest {
                 "abc123", "https://google.com", 42L,
                 LocalDateTime.now(), LocalDateTime.now(),
                 false, "Title", false, null,
-                Collections.emptyMap(), Collections.emptyMap()
+                Collections.emptyMap(), Collections.emptyMap(),
+                0
         );
         when(urlService.getStats(eq("abc123"), anyLong())).thenReturn(stats);
 
