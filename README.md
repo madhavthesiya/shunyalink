@@ -120,7 +120,7 @@ One backend node killed mid-traffic — Nginx reroutes to surviving replicas wit
 | **Core** | Base62 short codes · Custom aliases · Link expiration · Password protection |
 | **Analytics** | Write-behind click tracking · Time-series charts · Geo-IP distribution with self-healing |
 | **Identity** | JWT auth · Google OAuth 2.0 · Email verification · Password reset |
-| **Bio-Link** | Public `/@username` profiles · Theme customization · Show/hide links toggle |
+| **Bio-Link** | Drag-and-Drop Link Reordering · Public `/@username` profiles · Theme customization · Show/hide links toggle |
 | **Infra** | 3-node cluster · Nginx LB · Lua rate limiting · Cache warmup (top 1000) · QR generation · Actuator lockdown |
 | **Security** | On-demand password reveal · AES-256 encryption · Scoped actuator endpoints |
 | **SEO** | Social bot detection (OG tags) · Sitemap · robots.txt · Canonical URLs |
@@ -135,7 +135,7 @@ One backend node killed mid-traffic — Nginx reroutes to surviving replicas wit
 
 **Write-Behind over Write-Through** — Writing to PostgreSQL on every click would bottleneck the hot redirect path. Buffering in Redis and batch-flushing every 30s decouples read latency from write durability.
 
-**Flyway over `ddl-auto=update`** — Hibernate's auto-update silently modifies production schemas. Flyway gives versioned, auditable migrations (9 migrations across users, auth, profiles, analytics).
+**Flyway over `ddl-auto=update`** — Hibernate's auto-update silently modifies production schemas. Flyway gives versioned, auditable migrations (10 migrations across users, auth, profiles, analytics, and ordering).
 
 **Partial unique index** — Idempotency for permanent URLs is enforced at the database level. Same URL → same short ID. No application-level dedup logic needed.
 
@@ -153,7 +153,7 @@ One backend node killed mid-traffic — Nginx reroutes to surviving replicas wit
 | Frontend | Next.js 15, React 19, TypeScript |
 | Database | PostgreSQL 16 |
 | Cache | Redis 7 |
-| Migrations | Flyway 10 (9 versioned migrations) |
+| Migrations | Flyway 10 (10 versioned migrations) |
 | Auth | JWT + Google OAuth 2.0 |
 | Load Balancer | Nginx (Docker, 3 upstream replicas) |
 | Docs | SpringDoc OpenAPI (Swagger) |
@@ -172,6 +172,7 @@ One backend node killed mid-traffic — Nginx reroutes to surviving replicas wit
 | `GET` | `/api/v1/url/my-links` | ✅ | Paginated user links |
 | `POST` | `/api/v1/url/bulk-delete` | ✅ | Bulk delete links |
 | `GET` | `/api/v1/url/export/csv` | ✅ | CSV export |
+| `PUT` | `/api/v1/url/reorder` | ✅ | Drag-and-drop link reordering |
 | `GET` | `/api/v1/url/qr/{shortId}` | — | QR code image |
 | `POST` | `/api/v1/auth/register` | — | Register |
 | `POST` | `/api/v1/auth/login` | — | Login (JWT) |
@@ -222,6 +223,7 @@ backend/src/main/java/com/shunyalink/
     ├── Base62IdEncoder.java          # Sequential ID → Base62
     ├── RedirectController.java       # /{shortId} redirect + social bot OG tags
     ├── UrlController.java            # REST API endpoints
+    ├── ReorderRequest.java           # DTO for drag-and-drop ordering
     ├── MetadataService.java          # Thread-safe URL title scraping
     ├── QrController.java             # QR code generation
     └── CsvExportService.java         # CSV data export
@@ -237,6 +239,7 @@ frontend/
 └── components/
     ├── header.tsx & footer.tsx        # Site chrome
     ├── shortener-form.tsx            # URL shortening form
+    ├── sortable-url-row.tsx          # Drag-and-drop link table row
     ├── user-profile-settings.tsx     # Bio-link editor + live preview
     ├── profile-card.tsx              # Public bio-link card
     └── stats-modal.tsx               # Click analytics modal
@@ -274,7 +277,7 @@ docker-compose up --build
 | PostgreSQL | `localhost:5432` |
 | Redis | `localhost:6379` |
 
-Flyway runs all 9 migrations automatically on first startup.
+Flyway runs all 10 migrations automatically on first startup.
 
 ---
 

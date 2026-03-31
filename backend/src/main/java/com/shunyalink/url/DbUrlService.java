@@ -10,6 +10,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.PageRequest;
 
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -232,7 +233,14 @@ public class DbUrlService implements UrlService {
 
     @Override
     public Page<UrlStatsResponse> getMyLinks(Long userId, Pageable pageable) {
-        Page<UrlEntity> entities = urlRepository.findByUserId(userId, pageable);
+        // Override sort to always be orderIndex ASC, then createdAt DESC
+        PageRequest sortedPage = PageRequest.of(
+                pageable.getPageNumber(),
+                pageable.getPageSize(),
+                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.ASC, "orderIndex")
+                        .and(org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt"))
+        );
+        Page<UrlEntity> entities = urlRepository.findByUserId(userId, sortedPage);
         return entities.map(entity -> {
             long dbClicks = entity.getClickCount();
             long redisClicks = 0;
@@ -271,7 +279,7 @@ public class DbUrlService implements UrlService {
 
 
     public List<UrlStatsResponse> getBioLinks(Long userId) {
-        List<UrlEntity> entities = urlRepository.findByUserIdAndShowOnBioTrueOrderByCreatedAtDesc(userId);
+        List<UrlEntity> entities = urlRepository.findByUserIdAndShowOnBioTrueOrderByOrderIndexAscCreatedAtDesc(userId);
         return entities.stream().map(entity -> {
             long dbClicks = entity.getClickCount();
             long redisClicks = 0;
@@ -329,5 +337,13 @@ public class DbUrlService implements UrlService {
     public void incrementClickCount(String shortId) {
         redisTemplate.opsForHash().increment("analytics:click_counts", shortId, 1);
         redisTemplate.opsForValue().set("last_access:" + shortId, LocalDateTime.now().toString());
+    }
+
+    @Override
+    @Transactional
+    public void reorderLinks(Long userId, List<String> shortIds) {
+        for (int i = 0; i < shortIds.size(); i++) {
+            urlRepository.updateOrderIndex(shortIds.get(i), userId, i);
+        }
     }
 }

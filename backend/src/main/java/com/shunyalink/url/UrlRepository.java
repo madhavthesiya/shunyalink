@@ -56,7 +56,12 @@ public interface UrlRepository extends JpaRepository<UrlEntity, Long> {
         Page<UrlEntity> findByUserId(Long userId, Pageable pageable);
 
 
-    List<UrlEntity> findByUserIdAndShowOnBioTrueOrderByCreatedAtDesc(Long userId);
+    List<UrlEntity> findByUserIdAndShowOnBioTrueOrderByOrderIndexAscCreatedAtDesc(Long userId);
+
+    @Modifying
+    @Transactional
+    @Query("UPDATE UrlEntity u SET u.orderIndex = :orderIndex WHERE u.shortId = :shortId AND u.userId = :userId")
+    void updateOrderIndex(@Param("shortId") String shortId, @Param("userId") Long userId, @Param("orderIndex") int orderIndex);
 
     Optional<UrlEntity> findByShortIdAndUserId(String shortId, Long userId);
 

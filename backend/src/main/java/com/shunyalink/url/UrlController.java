@@ -121,6 +121,16 @@ public class UrlController {
         return urlService.getMyLinks(userId, pageable);
     }
 
+    @Operation(summary = "Reorder links", description = "Updates the sequence of links for the authenticated user.", security = @SecurityRequirement(name = "Bearer Authentication"))
+    @PutMapping("/reorder")
+    public ResponseEntity<Void> reorderLinks(
+            @AuthenticationPrincipal Object principal,
+            @RequestBody ReorderRequest request) {
+        Long userId = getUserIdFromPrincipal(principal);
+        urlService.reorderLinks(userId, request.getShortIds());
+        return ResponseEntity.ok().build();
+    }
+
     @Operation(summary = "Get link stats", description = "Returns click analytics and metadata for a specific short ID. Supports time ranges: '24h', '7d', and 'all'.")
     @GetMapping("/stats/{shortId}")
     public UrlStatsResponse getStats(

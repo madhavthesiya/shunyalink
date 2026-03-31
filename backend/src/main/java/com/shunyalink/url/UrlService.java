@@ -15,4 +15,5 @@ public interface UrlService {
     void toggleShowOnBio(String shortId, Long userId, boolean showOnBio);
     void updateUrlMetadata(String shortId, Long userId, String title, String password);
     void incrementClickCount(String shortId);
+    void reorderLinks(Long userId, List<String> shortIds);
 }

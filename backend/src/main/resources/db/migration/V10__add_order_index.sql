@@ -1,0 +1,1 @@
+ALTER TABLE urls ADD COLUMN order_index INTEGER DEFAULT 0;

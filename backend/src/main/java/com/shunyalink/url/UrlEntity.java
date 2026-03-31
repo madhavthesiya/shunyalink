@@ -45,6 +45,9 @@ public class UrlEntity {
     @Column(name = "show_on_bio", nullable = false)
     private boolean showOnBio = false;
 
+    @Column(name = "order_index", nullable = false)
+    private int orderIndex = 0;
+
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();
@@ -142,5 +145,9 @@ public class UrlEntity {
     public String getPassword() { return password; }
 
     public void setPassword(String password) { this.password = password; }
+
+    public int getOrderIndex() { return orderIndex; }
+
+    public void setOrderIndex(int orderIndex) { this.orderIndex = orderIndex; }
 
 }
