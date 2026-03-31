@@ -111,6 +111,10 @@ function DashboardContent() {
         const data = await res.json();
         setIsEmailVerified(data.emailVerified);
         setUserEmail(data.email);
+        // Fix: Save username to localStorage so "View Profile" button works on any device/session
+        if (data.username) {
+          localStorage.setItem("userHandle", data.username);
+        }
       }
     } catch (err) {
       console.error("Failed to load profile", err);
