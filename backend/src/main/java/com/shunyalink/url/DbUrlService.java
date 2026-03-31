@@ -225,7 +225,7 @@ public class DbUrlService implements UrlService {
                 entity.isShowOnBio(),
                 entity.getTitle(),
                 entity.getPassword() != null,
-                entity.getPassword() != null ? encryptionUtils.decrypt(entity.getPassword()) : null,
+                null, // Use /reveal-password endpoint instead
                 timeSeries,
                 countries);
     }
@@ -262,7 +262,7 @@ public class DbUrlService implements UrlService {
                     entity.isShowOnBio(),
                     entity.getTitle(),
                     entity.getPassword() != null,
-                    entity.getPassword() != null ? encryptionUtils.decrypt(entity.getPassword()) : null,
+                    null, // Use /reveal-password endpoint instead
                     new HashMap<>(), // No time-series
                     new HashMap<>()  // No geo-distribution
             );
@@ -289,7 +289,7 @@ public class DbUrlService implements UrlService {
                     entity.isShowOnBio(),
                     entity.getTitle(),
                     entity.getPassword() != null,
-                    entity.getPassword() != null ? encryptionUtils.decrypt(entity.getPassword()) : null,
+                    null, // Use /reveal-password endpoint instead
                     new HashMap<>(),
                     new HashMap<>()
             );

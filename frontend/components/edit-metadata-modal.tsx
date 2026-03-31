@@ -28,16 +28,19 @@ export function EditMetadataModal({
   onUpdate
 }: EditMetadataModalProps) {
   const [title, setTitle] = useState(initialTitle || "");
-  const [password, setPassword] = useState(initialPassword || "");
+  const [password, setPassword] = useState("");
   const [removePassword, setRemovePassword] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isRevealing, setIsRevealing] = useState(false);
+  const [passwordRevealed, setPasswordRevealed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setTitle(initialTitle || "");
-      setPassword(initialPassword || "");
+      setPassword("");
+      setPasswordRevealed(false);
       setRemovePassword(false);
       setError(null);
     }
@@ -56,6 +59,28 @@ export function EditMetadataModal({
       document.body.style.overflow = "";
     };
   }, [isOpen, onClose]);
+
+  const handleRevealPassword = async () => {
+    setIsRevealing(true);
+    const token = localStorage.getItem("authToken");
+    try {
+      const response = await fetch(`${API_URL}/api/v1/url/${shortId}/reveal-password`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setPassword(data.password || "");
+        setPasswordRevealed(true);
+        setShowPassword(true);
+      } else {
+        setError("Failed to reveal password.");
+      }
+    } catch {
+      setError("Network error.");
+    } finally {
+      setIsRevealing(false);
+    }
+  };
 
   const handleSave = async () => {
     setIsUpdating(true);
@@ -196,19 +221,31 @@ export function EditMetadataModal({
                   <Input
                     id="edit-password"
                     type={showPassword ? "text" : "password"}
-                    placeholder={initialPasswordProtected ? "Enter new password to update" : "Enter password"}
+                    placeholder={initialPasswordProtected ? (passwordRevealed ? "" : "Click 'Reveal' to see current password") : "Enter password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="h-12 bg-background/50 border-border/50 rounded-xl premium-input focus:border-primary/50 focus:ring-2 focus:ring-primary/10 transition-all pr-12"
+                    className="h-12 bg-background/50 border-border/50 rounded-xl premium-input focus:border-primary/50 focus:ring-2 focus:ring-primary/10 transition-all pr-24"
                     disabled={isUpdating}
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
+                  <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                    {initialPasswordProtected && !passwordRevealed && (
+                      <button
+                        type="button"
+                        onClick={handleRevealPassword}
+                        disabled={isRevealing}
+                        className="px-2 py-1 rounded-lg text-[10px] font-bold text-primary hover:bg-primary/10 transition-colors uppercase tracking-wider"
+                      >
+                        {isRevealing ? <Loader2 className="w-3 h-3 animate-spin" /> : "Reveal"}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="p-2 rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="h-12 flex items-center px-4 bg-destructive/5 border border-dashed border-destructive/30 rounded-xl text-destructive text-xs font-medium">

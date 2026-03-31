@@ -245,6 +245,23 @@ public class UrlController {
         }
     }
 
+    @Operation(summary = "Reveal link password", description = "Returns the decrypted password for a link owned by the authenticated user.", security = @SecurityRequirement(name = "Bearer Authentication"))
+    @GetMapping("/{shortId}/reveal-password")
+    public ResponseEntity<?> revealPassword(@PathVariable String shortId) {
+        Long userId = getCurrentUserId();
+        if (userId == null) throw new BadRequestException("Authentication required");
+
+        UrlEntity entity = urlRepository.findByShortIdAndUserId(shortId, userId)
+                .orElseThrow(() -> new com.shunyalink.exception.NotFoundException("URL not found or not owned by you"));
+
+        if (entity.getPassword() == null) {
+            return ResponseEntity.ok(Map.of("password", ""));
+        }
+
+        String decrypted = encryptionUtils.decrypt(entity.getPassword());
+        return ResponseEntity.ok(Map.of("password", decrypted));
+    }
+
     @Operation(summary = "Export all user links to CSV", description = "Downloads all user links as a CSV file.", security = @SecurityRequirement(name = "Bearer Authentication"))
     @GetMapping("/export/csv")
     public ResponseEntity<byte[]> exportCsv() {
