@@ -13,9 +13,7 @@ import { StatsModal } from "@/components/stats-modal";
 import { EditMetadataModal } from "@/components/edit-metadata-modal";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { cn } from "@/lib/utils";
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
-import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { SortableUrlRow } from '@/components/sortable-url-row';
+import { BioLinksReorder } from '@/components/bio-links-reorder';
 import { UserProfileSettings } from "@/components/user-profile-settings";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
@@ -84,46 +82,7 @@ function DashboardContent() {
   const [userEmail, setUserEmail] = useState("");
   const [isResending, setIsResending] = useState(false);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
 
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-
-    if (active.id !== over?.id) {
-      const oldIndex = urls.findIndex((url) => url.shortId === active.id);
-      const newIndex = urls.findIndex((url) => url.shortId === over?.id);
-      
-      const nextUrls = arrayMove(urls, oldIndex, newIndex);
-      setUrls(nextUrls);
-
-      const token = localStorage.getItem("authToken");
-      if (!token) return;
-      try {
-        const res = await fetch(`${API_URL}/api/v1/url/reorder`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`
-          },
-          body: JSON.stringify({ shortIds: nextUrls.map(u => u.shortId) })
-        });
-        if (!res.ok) {
-          toast.error("Failed to save new order");
-        }
-      } catch (err) {
-        toast.error("Network error while saving order");
-      }
-    }
-  };
 
   // Check authentication and load data
   useEffect(() => {
@@ -638,11 +597,6 @@ function DashboardContent() {
                   </div>
                 ) : (
                   <div className="glass-card rounded-2xl shadow-2xl shadow-primary/5 overflow-hidden">
-                    <DndContext 
-                      sensors={sensors}
-                      collisionDetection={closestCenter}
-                      onDragEnd={handleDragEnd}
-                    >
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead className="border-b border-border/50 bg-secondary/50">
@@ -672,34 +626,133 @@ function DashboardContent() {
                             </th>
                           </tr>
                         </thead>
-                        <SortableContext 
-                          items={urls.map(u => u.shortId)}
-                          strategy={verticalListSortingStrategy}
-                        >
                         <tbody>
                           {urls.map((url) => (
-                            <SortableUrlRow
+                            <tr
                               key={url.shortId}
-                              url={url}
-                              API_URL={API_URL}
-                              isSelected={selectedIds.has(url.shortId)}
-                              isTogglingBio={togglingIds.has(url.shortId)}
-                              isCopied={copiedId === url.shortId}
-                              onToggleSelect={() => toggleSelect(url.shortId)}
-                              onToggleBio={() => toggleBioVisibility(url.shortId, url.showOnBio)}
-                              onCopy={() => copyToClipboard(url.shortId)}
-                              onEdit={() => { setEditingUrl(url); setShowEdit(true); }}
-                              onInsights={() => router.push(`/dashboard/insights/${url.shortId}`)}
-                              onQR={() => { setSelectedShortId(url.shortId); setShowQR(true); }}
-                              onDelete={() => deleteUrl(url.shortId)}
-                              formatDate={formatDate}
-                            />
+                              className={cn(
+                                "border-b border-border/50 hover:bg-secondary/30 transition-colors",
+                                selectedIds.has(url.shortId) && "bg-primary/5 hover:bg-primary/10"
+                              )}
+                            >
+                              <td className="px-6 py-4">
+                                <Checkbox 
+                                  checked={selectedIds.has(url.shortId)}
+                                  onCheckedChange={() => toggleSelect(url.shortId)}
+                                  aria-label={`Select ${url.shortId}`}
+                                  className="data-[state=checked]:bg-primary"
+                                />
+                              </td>
+                              <td className="px-6 py-4">
+                                <a
+                                  href={`${API_URL}/${url.shortId}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-primary hover:underline font-medium truncate flex items-center gap-2"
+                                >
+                                  {url.title || url.shortId}
+                                  {url.passwordProtected && (
+                                    <Lock className="w-3 h-3 text-muted-foreground/60" />
+                                  )}
+                                </a>
+                                {url.title && (
+                                  <span className="text-[10px] text-muted-foreground/60 font-mono">
+                                    /{url.shortId}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="truncate text-muted-foreground max-w-[300px]" title={url.longUrl}>
+                                  {url.longUrl}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 text-center font-semibold">
+                                {url.clickCount}
+                              </td>
+                              <td className="px-6 py-4 text-muted-foreground">
+                                {formatDate(url.createdAt)}
+                              </td>
+                              <td className="px-6 py-4 text-center">
+                            <button 
+                              onClick={() => toggleBioVisibility(url.shortId, url.showOnBio)}
+                              disabled={togglingIds.has(url.shortId)}
+                              className={`w-10 h-5 rounded-full transition-colors relative flex items-center ${url.showOnBio ? 'bg-primary' : 'bg-muted'} ${togglingIds.has(url.shortId) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              title={url.showOnBio ? "Hide from Bio" : "Show on Bio"}
+                            >
+                              {togglingIds.has(url.shortId) ? (
+                                <Loader2 className="w-3 h-3 animate-spin mx-auto text-white" />
+                              ) : (
+                                <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${url.showOnBio ? 'left-6' : 'left-1'}`} />
+                              )}
+                            </button>
+                          </td>
+                              <td className="px-6 py-4 text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => copyToClipboard(url.shortId)}
+                                    className="h-8 w-8 p-0"
+                                    title="Copy to clipboard"
+                                  >
+                                    <Copy
+                                      className={`w-4 h-4 ${copiedId === url.shortId
+                                          ? "text-success"
+                                          : "text-muted-foreground"
+                                        }`}
+                                    />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      setEditingUrl(url);
+                                      setShowEdit(true);
+                                    }}
+                                    className="h-8 w-8 p-0 text-muted-foreground hover:text-primary transition-colors"
+                                    title="Edit Link Metadata"
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      router.push(`/dashboard/insights/${url.shortId}`);
+                                    }}
+                                    className="h-8 w-8 p-0 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                                    title="View detailed insights"
+                                  >
+                                    <TrendingUp className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      setSelectedShortId(url.shortId);
+                                      setShowQR(true);
+                                    }}
+                                    className="h-8 w-8 p-0 text-muted-foreground"
+                                    title="Generate QR code"
+                                  >
+                                    <QrCode className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => deleteUrl(url.shortId)}
+                                    className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                                    title="Delete URL"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
                           ))}
                         </tbody>
-                        </SortableContext>
                       </table>
                     </div>
-                    </DndContext>
                     <div className="flex justify-between items-center px-6 py-4 border-t border-border/50 bg-secondary/20">
                       <Button
                         variant="outline"
@@ -736,6 +789,7 @@ function DashboardContent() {
           ) : (
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                <UserProfileSettings />
+               <BioLinksReorder urls={urls} setUrls={setUrls} API_URL={API_URL} />
             </div>
           )}
         </div>

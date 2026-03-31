@@ -239,7 +239,7 @@ frontend/
 └── components/
     ├── header.tsx & footer.tsx        # Site chrome
     ├── shortener-form.tsx            # URL shortening form
-    ├── sortable-url-row.tsx          # Drag-and-drop link table row
+    ├── bio-links-reorder.tsx         # Drag-and-drop bio-link reordering
     ├── user-profile-settings.tsx     # Bio-link editor + live preview
     ├── profile-card.tsx              # Public bio-link card
     └── stats-modal.tsx               # Click analytics modal

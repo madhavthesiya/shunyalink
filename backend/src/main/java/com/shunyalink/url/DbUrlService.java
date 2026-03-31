@@ -233,14 +233,7 @@ public class DbUrlService implements UrlService {
 
     @Override
     public Page<UrlStatsResponse> getMyLinks(Long userId, Pageable pageable) {
-        // Override sort to always be orderIndex ASC, then createdAt DESC
-        PageRequest sortedPage = PageRequest.of(
-                pageable.getPageNumber(),
-                pageable.getPageSize(),
-                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.ASC, "orderIndex")
-                        .and(org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt"))
-        );
-        Page<UrlEntity> entities = urlRepository.findByUserId(userId, sortedPage);
+        Page<UrlEntity> entities = urlRepository.findByUserId(userId, pageable);
         return entities.map(entity -> {
             long dbClicks = entity.getClickCount();
             long redisClicks = 0;
