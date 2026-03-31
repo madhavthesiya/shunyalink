@@ -17,6 +17,7 @@ interface UrlData {
   title?: string;
   passwordProtected: boolean;
   password?: string;
+  orderIndex?: number;
 }
 
 interface BioLinksReorderProps {
@@ -84,7 +85,9 @@ function SortableBioLinkItem({ url, API_URL }: { url: UrlData, API_URL: string }
 }
 
 export function BioLinksReorder({ urls, setUrls, API_URL }: BioLinksReorderProps) {
-  const bioUrls = urls.filter(u => u.showOnBio);
+  const bioUrls = [...urls]
+    .filter(u => u.showOnBio)
+    .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
   
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -97,19 +100,16 @@ export function BioLinksReorder({ urls, setUrls, API_URL }: BioLinksReorderProps
       const oldIndex = bioUrls.findIndex((url) => url.shortId === active.id);
       const newIndex = bioUrls.findIndex((url) => url.shortId === over?.id);
       
-      const nextBioUrls = arrayMove(bioUrls, oldIndex, newIndex);
+      const nextBioUrls = arrayMove(bioUrls, oldIndex, newIndex).map((url, index) => ({
+        ...url,
+        orderIndex: index
+      }));
       
-      // Update global urls explicitly reordering ONLY the bio items IN PLACE
-      setUrls(prev => {
-        const result = [...prev];
-        let bioPointer = 0;
-        for (let i = 0; i < result.length; i++) {
-          if (result[i].showOnBio) {
-            result[i] = nextBioUrls[bioPointer++];
-          }
-        }
-        return result;
-      });
+      // Update global urls explicit properties so re-sort succeeds locally
+      setUrls(prev => prev.map(u => {
+        const matchingBio = nextBioUrls.find(b => b.shortId === u.shortId);
+        return matchingBio || u;
+      }));
 
       const token = localStorage.getItem("authToken");
       if (!token) return;

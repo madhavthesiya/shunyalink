@@ -15,8 +15,9 @@ public class UrlStatsResponse {
     private String password;
     private Map<String, Long> timeSeries;
     private Map<String, Long> countries;
+    private Integer orderIndex;
 
-    public UrlStatsResponse(String shortId, String longUrl, long clickCount, LocalDateTime lastAccessedTime, LocalDateTime createdAt, boolean showOnBio, String title, boolean passwordProtected, String password, Map<String, Long> timeSeries, Map<String, Long> countries) {
+    public UrlStatsResponse(String shortId, String longUrl, long clickCount, LocalDateTime lastAccessedTime, LocalDateTime createdAt, boolean showOnBio, String title, boolean passwordProtected, String password, Map<String, Long> timeSeries, Map<String, Long> countries, Integer orderIndex) {
         this.shortId = shortId;
         this.longUrl = longUrl;
         this.clickCount = clickCount;
@@ -28,6 +29,7 @@ public class UrlStatsResponse {
         this.password = password;
         this.timeSeries = timeSeries;
         this.countries = countries;
+        this.orderIndex = orderIndex;
     }
 
     public String getTitle() {
@@ -72,5 +74,9 @@ public class UrlStatsResponse {
 
     public Map<String, Long> getCountries() {
         return countries;
+    }
+
+    public Integer getOrderIndex() {
+        return orderIndex;
     }
 }

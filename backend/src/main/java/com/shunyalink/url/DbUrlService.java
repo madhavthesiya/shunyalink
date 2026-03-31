@@ -228,7 +228,8 @@ public class DbUrlService implements UrlService {
                 entity.getPassword() != null,
                 null, // Use /reveal-password endpoint instead
                 timeSeries,
-                countries);
+                countries,
+                entity.getOrderIndex());
     }
 
     @Override
@@ -265,7 +266,8 @@ public class DbUrlService implements UrlService {
                     entity.getPassword() != null,
                     null, // Use /reveal-password endpoint instead
                     new HashMap<>(), // No time-series
-                    new HashMap<>()  // No geo-distribution
+                    new HashMap<>(), // No geo-distribution
+                    entity.getOrderIndex()
             );
         });
     }
@@ -292,7 +294,8 @@ public class DbUrlService implements UrlService {
                     entity.getPassword() != null,
                     null, // Use /reveal-password endpoint instead
                     new HashMap<>(),
-                    new HashMap<>()
+                    new HashMap<>(),
+                    entity.getOrderIndex()
             );
         }).toList();
     }
