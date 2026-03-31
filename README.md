@@ -121,7 +121,8 @@ One backend node killed mid-traffic — Nginx reroutes to surviving replicas wit
 | **Analytics** | Write-behind click tracking · Time-series charts · Geo-IP distribution with self-healing |
 | **Identity** | JWT auth · Google OAuth 2.0 · Email verification · Password reset |
 | **Bio-Link** | Public `/@username` profiles · Theme customization · Show/hide links toggle |
-| **Infra** | 3-node cluster · Nginx LB · Lua rate limiting · Cache warmup (top 1000) · QR generation |
+| **Infra** | 3-node cluster · Nginx LB · Lua rate limiting · Cache warmup (top 1000) · QR generation · Actuator lockdown |
+| **Security** | On-demand password reveal · AES-256 encryption · Scoped actuator endpoints |
 | **SEO** | Social bot detection (OG tags) · Sitemap · robots.txt · Canonical URLs |
 
 ---
@@ -139,6 +140,8 @@ One backend node killed mid-traffic — Nginx reroutes to surviving replicas wit
 **Partial unique index** — Idempotency for permanent URLs is enforced at the database level. Same URL → same short ID. No application-level dedup logic needed.
 
 **Geo-IP Self-Healing** — If the external lookup returns "Unknown" and later resolves, the system retroactively shifts one count from "Unknown" to the real country.
+
+**On-demand password reveal** — Link passwords are never included in list/stats API responses. A dedicated authenticated endpoint (`/reveal-password`) decrypts and returns the password only when the owner explicitly requests it — same pattern as Google Password Manager.
 
 ---
 
@@ -173,6 +176,7 @@ One backend node killed mid-traffic — Nginx reroutes to surviving replicas wit
 | `POST` | `/api/v1/auth/register` | — | Register |
 | `POST` | `/api/v1/auth/login` | — | Login (JWT) |
 | `POST` | `/api/v1/auth/google` | — | Google OAuth |
+| `GET` | `/api/v1/url/{shortId}/reveal-password` | ✅ | On-demand password reveal (owner only) |
 | `GET` | `/api/v1/profile/me` | ✅ | Get user profile |
 | `POST` | `/api/v1/profile/settings` | ✅ | Update bio-link profile |
 | `GET` | `/api/v1/profile/{username}` | — | Public bio-link page |
