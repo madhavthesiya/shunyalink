@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { ProfileCard } from "@/components/profile-card";
 import { Loader2, UserX } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
@@ -56,7 +57,10 @@ export default function PublicProfilePage() {
   }
 
   return (
-    <div className="bg-background min-h-screen">
+    <div className="bg-background min-h-screen relative">
+      <div className="absolute top-4 right-4 z-10">
+        <ThemeToggle />
+      </div>
       <ProfileCard 
         profile={{
           displayName: profile.name || "User",

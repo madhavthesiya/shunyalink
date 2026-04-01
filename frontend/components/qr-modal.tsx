@@ -12,11 +12,11 @@ interface QRModalProps {
 }
 
 export function QRModal({ shortUrl, shortId, isOpen, onClose }: QRModalProps) {
-
   const [isLoaded, setIsLoaded] = useState(false);
-const [imgError, setImgError] = useState(false);
-   const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
-const qrSrc = `${API_URL}/api/v1/url/qr/${shortId}?size=300`;
+  const [imgError, setImgError] = useState(false);
+  const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
+  const qrSrc = `${API_URL}/api/v1/url/qr/${shortId}?size=300`;
+
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -89,26 +89,29 @@ const handleDownload = async () => {
 
         {/* Content */}
         <div className="p-6 flex flex-col items-center gap-6">
-          <div className="p-6 bg-card rounded-2xl border border-border/50 shadow-lg
-                flex items-center justify-center min-h-[220px]">
-  {imgError ? (
-    <p className="text-sm text-destructive">Failed to load QR code</p>
-  ) : (
-    <>
-      {!isLoaded && <Loader2 className="w-8 h-8 text-primary animate-spin" />}
-      <img
-        src={qrSrc}
-        alt={`QR code for ${shortUrl}`}
-        width={220}
-        height={220}
-        className={`rounded-xl transition-opacity duration-300
-                   ${isLoaded ? "opacity-100" : "opacity-0"}`}
-        onLoad={() => setIsLoaded(true)}
-        onError={() => { setImgError(true); setIsLoaded(true); }}
-      />
-    </>
-  )}
-</div>
+          <div className="relative p-6 bg-card rounded-2xl border border-border/50 shadow-lg flex items-center justify-center min-h-[220px] min-w-[220px]">
+            {imgError ? (
+              <p className="text-sm text-destructive text-center px-2">Failed to load QR code</p>
+            ) : (
+              <>
+                {!isLoaded && (
+                  <Loader2 className="absolute inset-0 m-auto w-8 h-8 text-primary animate-spin" />
+                )}
+                <img
+                  src={qrSrc}
+                  alt={`QR code for ${shortUrl}`}
+                  width={220}
+                  height={220}
+                  className={`rounded-xl transition-opacity duration-300 ${isLoaded ? "opacity-100" : "opacity-0"}`}
+                  onLoad={() => setIsLoaded(true)}
+                  onError={() => {
+                    setImgError(true);
+                    setIsLoaded(true);
+                  }}
+                />
+              </>
+            )}
+          </div>
 
           <div className="w-full p-4 rounded-xl bg-muted/30 border border-border/30">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Link</p>
@@ -119,7 +122,7 @@ const handleDownload = async () => {
 
           <Button
             onClick={handleDownload}
-            className="w-full h-12 rounded-xl font-semibold bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 text-primary-foreground btn-glow transition-all duration-300"
+            className="w-full h-12 rounded-xl font-semibold bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 text-primary-foreground btn-glow transition-all duration-300 touch-manipulation"
           >
             <Download className="w-4 h-4 mr-2" />
             Download PNG

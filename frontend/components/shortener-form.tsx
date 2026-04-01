@@ -86,8 +86,8 @@ export function ShortenerForm({ onSuccess, onError }: ShortenerFormProps) {
       const data = await response.json();
 
       if (!response.ok) {
-      onError(resolveErrorMessage(response.status, data?.message));
-      return;
+        onError(resolveErrorMessage(response.status, data?.message));
+        return;
       }
 
       onSuccess(data);
@@ -149,6 +149,8 @@ export function ShortenerForm({ onSuccess, onError }: ShortenerFormProps) {
             placeholder={isLoggedIn ? "Enter a friendly name for this link" : "🔐 Login first to edit this field"}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
+            className="h-12 bg-background/50 border-border/50 rounded-xl premium-input focus:border-primary/50 focus:ring-2 focus:ring-primary/10 transition-all placeholder:text-muted-foreground/50"
+            disabled={!isLoggedIn || isLoading}
           />
           {!isLoggedIn && (
             <div className="absolute inset-0 z-10 cursor-not-allowed" title="Login required for premium features" />

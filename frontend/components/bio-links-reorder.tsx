@@ -128,7 +128,7 @@ export function BioLinksReorder({ urls, setUrls, API_URL }: BioLinksReorderProps
 
   if (bioUrls.length === 0) {
     return (
-      <div className="p-8 text-center bg-card rounded-2xl border border-border/50 mt-8">
+      <div className="p-8 text-center bg-card rounded-2xl border border-border/50 mt-8 max-w-lg mx-auto">
         <Link2 className="w-8 h-8 mx-auto mb-3 text-muted-foreground opacity-50" />
         <p className="text-sm text-foreground font-medium">No links on your Bio-Link profile yet.</p>
         <p className="text-xs text-muted-foreground mt-1">Go to "Your Links" and turn on the "Bio" toggle to feature them here.</p>

@@ -120,7 +120,7 @@ One backend node killed mid-traffic — Nginx reroutes to surviving replicas wit
 | **Core** | Base62 short codes · Custom aliases · Link expiration · Password protection |
 | **Analytics** | Write-behind click tracking · Time-series charts · Geo-IP distribution with self-healing |
 | **Identity** | JWT auth · Google OAuth 2.0 · Email verification · Password reset |
-| **Bio-Link** | Drag-and-Drop Link Reordering · Public `/@username` profiles · Theme customization · Show/hide links toggle |
+| **Bio-Link** | Drag-and-Drop Link Reordering · Public `/@username` profiles · Public dark/light mode toggle · Theme customization · Show/hide links toggle |
 | **Infra** | 3-node cluster · Nginx LB · Lua rate limiting · Cache warmup (top 1000) · QR generation · Actuator lockdown |
 | **Security** | On-demand password reveal · AES-256 encryption · Scoped actuator endpoints |
 | **SEO** | Social bot detection (OG tags) · Sitemap · robots.txt · Canonical URLs |
@@ -233,16 +233,21 @@ frontend/
 │   ├── layout.tsx                    # Root layout + SEO metadata
 │   ├── page.tsx                      # Landing page
 │   ├── login/ & register/           # Auth pages
+│   ├── forgot-password/ & reset-password/ # Password recovery
 │   ├── dashboard/                    # Link management + insights
 │   ├── [username]/                   # Public bio-link profiles
 │   └── p/                            # Password challenge page
 └── components/
-    ├── header.tsx & footer.tsx        # Site chrome
+    ├── header.tsx & footer.tsx       # Site chrome
+    ├── theme-toggle.tsx              # Dark/light mode switcher
     ├── shortener-form.tsx            # URL shortening form
+    ├── shorten-success-modal.tsx     # Success feedback & link options
     ├── bio-links-reorder.tsx         # Drag-and-drop bio-link reordering
     ├── user-profile-settings.tsx     # Bio-link editor + live preview
+    ├── edit-metadata-modal.tsx       # Bio-link metadata editor
     ├── profile-card.tsx              # Public bio-link card
-    └── stats-modal.tsx               # Click analytics modal
+    ├── stats-modal.tsx               # Click analytics modal
+    └── qr-modal.tsx                  # QR Code generated modal
 
 nginx/
 └── nginx.conf                        # Load balancer for 3 backend replicas

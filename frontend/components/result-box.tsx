@@ -60,7 +60,7 @@ export function ResultBox({ shortUrl, shortId, onViewStats, onGenerateQR }: Resu
         <div className="flex flex-col sm:flex-row gap-3">
           <Button
             onClick={handleCopy}
-            className={`flex-1 h-12 rounded-xl font-medium transition-all duration-300 ${
+            className={`flex-1 h-12 rounded-xl font-medium transition-all duration-300 touch-manipulation ${
               copied 
                 ? "bg-success hover:bg-success text-success-foreground" 
                 : "bg-primary hover:bg-primary/90 text-primary-foreground btn-glow"
@@ -82,7 +82,7 @@ export function ResultBox({ shortUrl, shortId, onViewStats, onGenerateQR }: Resu
           <Button
             onClick={onViewStats}
             variant="outline"
-            className="flex-1 h-12 rounded-xl font-medium border-border/50 hover:border-primary/30 hover:bg-primary/5 transition-all duration-300"
+            className="flex-1 h-12 rounded-xl font-medium border-border/50 hover:border-primary/30 hover:bg-primary/5 transition-all duration-300 touch-manipulation"
           >
             <BarChart3 className="w-4 h-4 mr-2" />
             Analytics
@@ -91,7 +91,7 @@ export function ResultBox({ shortUrl, shortId, onViewStats, onGenerateQR }: Resu
           <Button
             onClick={onGenerateQR}
             variant="outline"
-            className="flex-1 h-12 rounded-xl font-medium border-border/50 hover:border-primary/30 hover:bg-primary/5 transition-all duration-300"
+            className="flex-1 h-12 rounded-xl font-medium border-border/50 hover:border-primary/30 hover:bg-primary/5 transition-all duration-300 touch-manipulation"
           >
             <QrCode className="w-4 h-4 mr-2" />
             QR Code
