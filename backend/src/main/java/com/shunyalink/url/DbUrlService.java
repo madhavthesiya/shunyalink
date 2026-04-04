@@ -32,6 +32,7 @@ public class DbUrlService implements UrlService {
     private final MetadataService metadataService;
     private final com.shunyalink.util.EncryptionUtils encryptionUtils;
     private final AnalyticsService analyticsService;
+    private final com.shunyalink.cp.LlmIntegrationService llmIntegrationService;
 
     public DbUrlService(UrlRepository urlRepository,
                         IdEncoder idEncoder,
@@ -39,7 +40,8 @@ public class DbUrlService implements UrlService {
                         com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository,
                         MetadataService metadataService,
                         com.shunyalink.util.EncryptionUtils encryptionUtils,
-                        AnalyticsService analyticsService) {
+                        AnalyticsService analyticsService,
+                        com.shunyalink.cp.LlmIntegrationService llmIntegrationService) {
         this.urlRepository = urlRepository;
         this.idEncoder = idEncoder;
         this.redisTemplate = redisTemplate;
@@ -47,6 +49,7 @@ public class DbUrlService implements UrlService {
         this.metadataService = metadataService;
         this.encryptionUtils = encryptionUtils;
         this.analyticsService = analyticsService;
+        this.llmIntegrationService = llmIntegrationService;
     }
 
     private long getTtlSeconds(LocalDateTime expiryTime) {
@@ -68,6 +71,10 @@ public class DbUrlService implements UrlService {
     @Override
     @Transactional
     public UrlEntity shortenUrl(String longUrl, String customAlias, Integer expiryDays, Long userId, String title, String password, boolean useAutoTitle, java.util.Set<String> tags) {
+        if (llmIntegrationService.isPhishing(longUrl)) {
+            throw new com.shunyalink.exception.BadRequestException("Security Alert: This URL has been flagged as malicious or phishing by our AI monitors.");
+        }
+        
         if (customAlias != null && !customAlias.isBlank()) {
             String normalized = customAlias.toLowerCase().trim();
             validateAlias(normalized);

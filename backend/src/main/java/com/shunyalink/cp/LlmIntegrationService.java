@@ -139,6 +139,35 @@ public class LlmIntegrationService {
         return "GENERAL";
     }
 
+    /**
+     * Check if a URL is likely a phishing or malicious link.
+     * Uses Gemini primarily for better reasoning.
+     */
+    public boolean isPhishing(String url) {
+        String prompt = "Analyze this URL: " + url + ". " +
+                "Is it highly likely to be a phishing, scam, malware, or malicious link? " +
+                "(e.g., typosquatting like 'g00gle.com', 'secure-login-paypal.net', or 'free-crypto.xyz'). " +
+                "Reply with EXACTLY the word YES or NO and nothing else.";
+
+        String response = "NO";
+        if (isKeyValid(geminiApiKey)) {
+            try {
+                response = callGemini(prompt).toUpperCase().trim();
+            } catch (Exception e) {
+                // Fallback
+                if (isKeyValid(groqApiKey)) {
+                    try {
+                        response = callGroq(prompt).toUpperCase().trim();
+                    } catch (Exception ex) {
+                        // ignore
+                    }
+                }
+            }
+        }
+        
+        return response.contains("YES");
+    }
+
     private boolean isKeyValid(String key) {
         return key != null && !key.trim().isEmpty() && !key.contains("${");
     }

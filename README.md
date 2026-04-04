@@ -1,7 +1,7 @@
 # ShunyaLink
 
-> A distributed URL management platform with write-behind analytics, Geo-IP tracking, and Link-in-Bio profiles.
-> Engineered with distributed caching, horizontal scaling, and real-world engineering trade-offs.
+> An all-in-one Smart URL Shortener and Digital Identity Platform featuring write-behind analytics, Link-in-Bio profiles, and a real-time Competitive Programming dashboard.
+> Engineered with distributed caching, horizontal scaling, and real-world security AI trade-offs.
 
 🔗 **Live:** [shunyalink.madhavv.me](https://shunyalink.madhavv.me) &nbsp;
 
@@ -144,6 +144,8 @@ One backend node killed mid-traffic — Nginx reroutes to surviving replicas wit
 **Geo-IP Self-Healing** — If the external lookup returns "Unknown" and later resolves, the system retroactively shifts one count from "Unknown" to the real country.
 
 **On-demand password reveal** — Link passwords are never included in list/stats API responses. A dedicated authenticated endpoint (`/reveal-password`) decrypts and returns the password only when the owner explicitly requests it — same pattern as Google Password Manager.
+
+**Synchronous AI Phishing Detection** — Scammers abuse URL shorteners to hide malware links. By passing the long URL through a Gemini LLM prompt synchronously during the `/shorten` request, we intercept and block typosquatting and scam links before they are even created. We implemented a **Resilient Fallback Pattern**: if Gemini rate-limits or fails, the request automatically falls back to Groq (Llama 3), and if both fail, the system fails-open to prevent breaking the core shortening functionality.
 
 ---
 

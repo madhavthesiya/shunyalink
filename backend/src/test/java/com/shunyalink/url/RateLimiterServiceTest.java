@@ -1,6 +1,7 @@
-package com.shunyalink.rate;
+package com.shunyalink.url;
 
 import com.shunyalink.exception.TooManyRequestsException;
+import com.shunyalink.rate.RateLimiterService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
