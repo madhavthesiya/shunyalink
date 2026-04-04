@@ -25,7 +25,9 @@ import {
   Globe, 
   MousePointer2,
   TrendingUp,
-  ChevronRight
+  ChevronRight,
+  Monitor,
+  Share2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -41,6 +43,8 @@ interface StatsData {
   title: string;
   timeSeries: Record<string, number>;
   countries: Record<string, number>;
+  referrers: Record<string, number>;
+  devices: Record<string, number>;
 }
 
 export default function InsightsPage() {
@@ -86,6 +90,14 @@ export default function InsightsPage() {
 
   const geoData = data?.countries
     ? Object.entries(data.countries).map(([name, value]) => ({ name, value }))
+    : [];
+
+  const referrerData = data?.referrers
+    ? Object.entries(data.referrers).map(([name, value]) => ({ name, value }))
+    : [];
+
+  const deviceData = data?.devices
+    ? Object.entries(data.devices).map(([name, value]) => ({ name, value }))
     : [];
 
   if (error) {
@@ -233,6 +245,69 @@ export default function InsightsPage() {
                 <div className="h-full flex flex-col items-center justify-center text-muted-foreground py-20">
                   <Globe className="w-12 h-12 mb-4 opacity-20" />
                   <p>No geographic data available yet</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Referrer & Device Charts */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Referrer Sources */}
+          <Card className="glass-card border-border/50 overflow-hidden flex flex-col">
+            <CardHeader className="border-b border-border/50 bg-secondary/10 pb-4">
+              <CardTitle className="text-lg flex items-center gap-2"><Share2 className="w-5 h-5 text-muted-foreground" /> Referrer Sources</CardTitle>
+              <CardDescription>Where your traffic is coming from</CardDescription>
+            </CardHeader>
+            <CardContent className="flex-1 p-6 flex items-center justify-center">
+              {loading ? (
+                <Skeleton className="h-[300px] w-[300px] rounded-full" />
+              ) : referrerData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie data={referrerData} innerRadius={50} outerRadius={90} paddingAngle={5} dataKey="value">
+                      {referrerData.map((entry, index) => (
+                        <Cell key={`ref-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-muted-foreground py-20">
+                  <Share2 className="w-12 h-12 mb-4 opacity-20" />
+                  <p>No referrer data available yet</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Device / Browser */}
+          <Card className="glass-card border-border/50 overflow-hidden flex flex-col">
+            <CardHeader className="border-b border-border/50 bg-secondary/10 pb-4">
+              <CardTitle className="text-lg flex items-center gap-2"><Monitor className="w-5 h-5 text-muted-foreground" /> Device / Browser</CardTitle>
+              <CardDescription>What devices and browsers visitors use</CardDescription>
+            </CardHeader>
+            <CardContent className="flex-1 p-6 flex items-center justify-center">
+              {loading ? (
+                <Skeleton className="h-[300px] w-[300px] rounded-full" />
+              ) : deviceData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie data={deviceData} innerRadius={50} outerRadius={90} paddingAngle={5} dataKey="value">
+                      {deviceData.map((entry, index) => (
+                        <Cell key={`dev-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-muted-foreground py-20">
+                  <Monitor className="w-12 h-12 mb-4 opacity-20" />
+                  <p>No device data available yet</p>
                 </div>
               )}
             </CardContent>

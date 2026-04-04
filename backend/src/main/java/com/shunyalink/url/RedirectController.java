@@ -63,7 +63,7 @@ public class RedirectController {
         
         // NEW: Record Analytics with IP (Only for non-password links here)
         // Password links are recorded in UrlController.resolvePassword instead
-        analyticsService.recordClick(shortId, getClientIp(request));
+        analyticsService.recordClick(shortId, getClientIp(request), request.getHeader("User-Agent"), request.getHeader("Referer"));
 
         // No password -> Proceed with normal redirect
         String longUrl = urlService.getLongUrl(shortId);

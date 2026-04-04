@@ -118,7 +118,7 @@ One backend node killed mid-traffic — Nginx reroutes to surviving replicas wit
 | Category | Feature |
 |----------|---------|
 | **Core** | Base62 short codes · Custom aliases · Link expiration · Password protection · UTM builder |
-| **Analytics** | Write-behind click tracking · Time-series charts · Geo-IP distribution with self-healing |
+| **Analytics** | Write-behind click tracking · Time-series charts · Geo-IP distribution with self-healing · Referrer source tracking · Device & browser analytics |
 | **Identity** | JWT auth · Google OAuth 2.0 · Email verification · Password reset · Cloudinary profile pictures |
 | **Programmer Portfolio** | **Bento-Box UI** · Aggregated stats from **LeetCode, Codeforces, CodeChef, AtCoder** · GitHub Contribution Sync · Public `/portfolio/{username}` |
 | **AI Insights** | **AI Profile Roast** (Gemini/Groq) · **Auto-Categorization** of shortlinks · **AI Phishing Detection** |

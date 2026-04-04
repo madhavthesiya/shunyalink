@@ -20,6 +20,8 @@ public class AnalyticsService {
     private static final String CLICK_KEY_PREFIX = "analytics:clicks:";
     private static final String GEO_KEY_PREFIX = "analytics:geo:";
     private static final String GEO_CACHE_PREFIX = "geo:cache:";
+    private static final String REFERRER_KEY_PREFIX = "analytics:referrer:";
+    private static final String DEVICE_KEY_PREFIX = "analytics:device:";
 
     public AnalyticsService(StringRedisTemplate redisTemplate, RestTemplate restTemplate) {
         this.redisTemplate = redisTemplate;
@@ -32,7 +34,7 @@ public class AnalyticsService {
      * never delays the user's redirection experience.
      */
     @Async
-    public void recordClick(String shortId, String ipAddress) {
+    public void recordClick(String shortId, String ipAddress, String userAgent, String referer) {
         String key = CLICK_KEY_PREFIX + shortId;
         long timestamp = System.currentTimeMillis();
         
@@ -54,6 +56,14 @@ public class AnalyticsService {
         // 5. Record Geo-Location (with Caching, External Lookup & Self-Healing)
         String country = getCountryFromIp(ipAddress);
         recordGeoWithSelfHealing(shortId, country);
+
+        // 6. Record Referrer Source
+        String source = parseReferrerSource(referer);
+        redisTemplate.opsForHash().increment(REFERRER_KEY_PREFIX + shortId, source, 1);
+
+        // 7. Record Device & Browser
+        String device = parseDevice(userAgent);
+        redisTemplate.opsForHash().increment(DEVICE_KEY_PREFIX + shortId, device, 1);
     }
 
     private String getCountryFromIp(String ip) {
@@ -162,7 +172,18 @@ public class AnalyticsService {
     }
 
     public Map<String, Long> getGeoDistribution(String shortId) {
-        String key = GEO_KEY_PREFIX + shortId;
+        return getHashDistribution(GEO_KEY_PREFIX + shortId);
+    }
+
+    public Map<String, Long> getReferrerDistribution(String shortId) {
+        return getHashDistribution(REFERRER_KEY_PREFIX + shortId);
+    }
+
+    public Map<String, Long> getDeviceDistribution(String shortId) {
+        return getHashDistribution(DEVICE_KEY_PREFIX + shortId);
+    }
+
+    private Map<String, Long> getHashDistribution(String key) {
         Map<Object, Object> raw = redisTemplate.opsForHash().entries(key);
         if (raw == null) return new TreeMap<>();
         return raw.entrySet().stream()
@@ -172,5 +193,51 @@ public class AnalyticsService {
                         (v1, v2) -> v1,
                         TreeMap::new
                 ));
+    }
+
+    /**
+     * Extracts a human-readable referrer source from the raw Referer header.
+     * Example: "https://twitter.com/user/status/123" → "twitter.com"
+     */
+    private String parseReferrerSource(String referer) {
+        if (referer == null || referer.isBlank()) return "Direct";
+        try {
+            java.net.URI uri = new java.net.URI(referer);
+            String host = uri.getHost();
+            if (host == null) return "Direct";
+            // Strip www. prefix for cleaner labels
+            return host.startsWith("www.") ? host.substring(4) : host;
+        } catch (Exception e) {
+            return "Direct";
+        }
+    }
+
+    /**
+     * Parses User-Agent string into a human-readable "Browser / OS" label.
+     * Uses simple substring matching — no external library needed.
+     */
+    private String parseDevice(String ua) {
+        if (ua == null || ua.isBlank()) return "Unknown";
+        String lower = ua.toLowerCase();
+
+        // Detect browser
+        String browser;
+        if (lower.contains("edg/") || lower.contains("edga/")) browser = "Edge";
+        else if (lower.contains("opr/") || lower.contains("opera")) browser = "Opera";
+        else if (lower.contains("chrome") && !lower.contains("edg")) browser = "Chrome";
+        else if (lower.contains("firefox")) browser = "Firefox";
+        else if (lower.contains("safari") && !lower.contains("chrome")) browser = "Safari";
+        else browser = "Other";
+
+        // Detect OS
+        String os;
+        if (lower.contains("iphone") || lower.contains("ipad")) os = "iOS";
+        else if (lower.contains("android")) os = "Android";
+        else if (lower.contains("windows")) os = "Windows";
+        else if (lower.contains("macintosh") || lower.contains("mac os")) os = "macOS";
+        else if (lower.contains("linux")) os = "Linux";
+        else os = "Other";
+
+        return browser + " / " + os;
     }
 }

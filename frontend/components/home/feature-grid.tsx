@@ -35,7 +35,7 @@ const features = [
   {
     icon: PieChart,
     title: "Advanced Analytics",
-    body: "Track every click with real-time geographical mapping, referrer, and device-level logs.",
+    body: "Track every click with real-time geographical mapping, referrer source tracking, and device-level analytics.",
     className: "md:col-span-1 md:row-span-1 bg-gradient-to-bl from-emerald-500/10 via-white dark:via-[#0a0a0f] to-transparent",
     iconColor: "text-emerald-600 dark:text-emerald-400",
     gradient: "from-emerald-500/20 to-teal-500/20"

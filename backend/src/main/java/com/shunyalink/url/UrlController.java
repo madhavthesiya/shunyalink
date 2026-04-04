@@ -261,7 +261,7 @@ public class UrlController {
 
         if (matches) {
             // NEW: Record Analytics with IP
-            analyticsService.recordClick(shortId, getClientIp(request));
+            analyticsService.recordClick(shortId, getClientIp(request), request.getHeader("User-Agent"), request.getHeader("Referer"));
             return ResponseEntity.ok(Map.of("longUrl", entity.getLongUrl()));
         } else {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Incorrect password");

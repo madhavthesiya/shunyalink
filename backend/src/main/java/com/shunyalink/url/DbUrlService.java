@@ -241,6 +241,10 @@ public class DbUrlService implements UrlService {
         // 3. Fetch Geo-Distribution Data
         Map<String, Long> countries = analyticsService.getGeoDistribution(shortId);
 
+        // 4. Fetch Referrer & Device Distribution
+        Map<String, Long> referrers = analyticsService.getReferrerDistribution(shortId);
+        Map<String, Long> devices = analyticsService.getDeviceDistribution(shortId);
+
         return new UrlStatsResponse(
                 entity.getShortId(),
                 entity.getLongUrl(),
@@ -253,6 +257,8 @@ public class DbUrlService implements UrlService {
                 null, // Use /reveal-password endpoint instead
                 timeSeries,
                 countries,
+                referrers,
+                devices,
                 entity.getOrderIndex(),
                 entity.getCategory(),
                 entity.getTags());
@@ -298,6 +304,8 @@ public class DbUrlService implements UrlService {
                     null, // Use /reveal-password endpoint instead
                     new HashMap<>(), // No time-series
                     new HashMap<>(), // No geo-distribution
+                    new HashMap<>(), // No referrers
+                    new HashMap<>(), // No devices
                     entity.getOrderIndex(),
                     entity.getCategory(),
                     entity.getTags()
@@ -326,6 +334,8 @@ public class DbUrlService implements UrlService {
                     entity.getTitle(),
                     entity.getPassword() != null,
                     null, // Use /reveal-password endpoint instead
+                    new HashMap<>(),
+                    new HashMap<>(),
                     new HashMap<>(),
                     new HashMap<>(),
                     entity.getOrderIndex(),
