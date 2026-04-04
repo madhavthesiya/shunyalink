@@ -66,7 +66,7 @@ class DbUrlServiceTest {
         when(idEncoder.encode(1001L)).thenReturn("abc123");
         when(urlRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        UrlEntity result = dbUrlService.shortenUrl("https://google.com", null, null, null, null, null, false);
+        UrlEntity result = dbUrlService.shortenUrl("https://google.com", null, null, null, null, null, false, null);
         assertEquals("abc123", result.getShortId());
         verify(urlRepository).save(any(UrlEntity.class));
         verify(valueOperations).set(eq("url:abc123"), eq("https://google.com"), anyLong(), eq(TimeUnit.SECONDS));
@@ -76,7 +76,7 @@ class DbUrlServiceTest {
     void shortenUrl_customAlias_returnAlias() {
         when(urlRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        UrlEntity result = dbUrlService.shortenUrl("https://google.com", "myalias", null, null, null, null, false);
+        UrlEntity result = dbUrlService.shortenUrl("https://google.com", "myalias", null, null, null, null, false, null);
         assertEquals("myalias", result.getShortId());
         verify(valueOperations).set(eq("url:myalias"), eq("https://google.com"), anyLong(), eq(TimeUnit.SECONDS));
     }
@@ -85,7 +85,7 @@ class DbUrlServiceTest {
     void shortenUrl_customAlias_normalizedToLowercase() {
         when(urlRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        UrlEntity result = dbUrlService.shortenUrl("https://google.com", "myalias", null, null, null, null, false);
+        UrlEntity result = dbUrlService.shortenUrl("https://google.com", "myalias", null, null, null, null, false, null);
 
         assertEquals("myalias", result.getShortId());
     }
@@ -105,7 +105,7 @@ class DbUrlServiceTest {
         when(urlRepository.findByShortId("myalias")).thenReturn(Optional.of(existing));
 
         assertThrows(ConflictException.class, () ->
-                dbUrlService.shortenUrl("https://google.com", "myalias", null, null, null, null, false)
+                dbUrlService.shortenUrl("https://google.com", "myalias", null, null, null, null, false, null)
         );
     }
 
@@ -115,7 +115,7 @@ class DbUrlServiceTest {
         when(idEncoder.encode(1001L)).thenReturn("abc123");
         when(urlRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        UrlEntity result = dbUrlService.shortenUrl("https://google.com", null, 7, null, null, null, false);
+        UrlEntity result = dbUrlService.shortenUrl("https://google.com", null, 7, null, null, null, false, null);
 
         assertEquals("abc123", result.getShortId());
         verify(valueOperations).set(eq("url:abc123"), eq("https://google.com"), anyLong(), eq(TimeUnit.SECONDS));
@@ -138,7 +138,7 @@ class DbUrlServiceTest {
         when(idEncoder.encode(9999L)).thenReturn("newp123");
         when(urlRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        UrlEntity result = dbUrlService.shortenUrl("https://google.com", null, null, null, null, "mypass", false);
+        UrlEntity result = dbUrlService.shortenUrl("https://google.com", null, null, null, null, "mypass", false, null);
 
         assertEquals("newp123", result.getShortId());
         assertNotEquals("public123", result.getShortId());

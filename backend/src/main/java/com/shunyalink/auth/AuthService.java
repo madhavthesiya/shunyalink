@@ -241,6 +241,13 @@ public class AuthService {
             user.isEmailVerified(),
             user.getBioText(),
             user.getThemeColor(),
+            user.getProfileType(),
+            user.getGithubUsername(),
+            user.getLeetcodeUsername(),
+            user.getCodeforcesUsername(),
+            user.getCodeChefHandle(),
+            user.getAtCoderHandle(),
+            user.getProfilePictureUrl(),
             null
         );
     }
@@ -256,6 +263,13 @@ public class AuthService {
             false,
             user.getBioText(),
             user.getThemeColor(),
+            user.getProfileType(),
+            user.getGithubUsername(),
+            user.getLeetcodeUsername(),
+            user.getCodeforcesUsername(),
+            user.getCodeChefHandle(),
+            user.getAtCoderHandle(),
+            user.getProfilePictureUrl(),
             null
         );
     }
@@ -283,6 +297,24 @@ public class AuthService {
         }
         if (request.getThemeColor() != null) {
             user.setThemeColor(request.getThemeColor().trim());
+        }
+        if (request.getProfileType() != null) {
+            user.setProfileType(request.getProfileType().trim());
+        }
+        if (request.getGithubUsername() != null) {
+            user.setGithubUsername(request.getGithubUsername().trim());
+        }
+        if (request.getLeetcodeUsername() != null) {
+            user.setLeetcodeUsername(request.getLeetcodeUsername().trim());
+        }
+        if (request.getCodeforcesUsername() != null) {
+            user.setCodeforcesUsername(request.getCodeforcesUsername().trim());
+        }
+        if (request.getCodeChefHandle() != null) {
+            user.setCodeChefHandle(request.getCodeChefHandle().trim());
+        }
+        if (request.getAtCoderHandle() != null) {
+            user.setAtCoderHandle(request.getAtCoderHandle().trim());
         }
 
         userRepository.save(user);

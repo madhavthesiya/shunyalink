@@ -117,13 +117,15 @@ One backend node killed mid-traffic — Nginx reroutes to surviving replicas wit
 
 | Category | Feature |
 |----------|---------|
-| **Core** | Base62 short codes · Custom aliases · Link expiration · Password protection |
+| **Core** | Base62 short codes · Custom aliases · Link expiration · Password protection · UTM builder |
 | **Analytics** | Write-behind click tracking · Time-series charts · Geo-IP distribution with self-healing |
-| **Identity** | JWT auth · Google OAuth 2.0 · Email verification · Password reset |
-| **Bio-Link** | Drag-and-Drop Link Reordering · Public `/@username` profiles · Public dark/light mode toggle · Theme customization · Show/hide links toggle |
+| **Identity** | JWT auth · Google OAuth 2.0 · Email verification · Password reset · Cloudinary profile pictures |
+| **Programmer Portfolio** | **Bento-Box UI** · Aggregated stats from **LeetCode, Codeforces, CodeChef, AtCoder** · GitHub Contribution Sync · Public `/portfolio/{username}` |
+| **AI Insights** | **AI Profile Roast** (Gemini/Groq) · **Auto-Categorization** of shortlinks · **AI Phishing Detection** |
+| **Bio-Link** | Drag-and-Drop Link Reordering · Public `/@username` profiles · Dynamic OG tags for social sharing · Theme customization · Show/hide links toggle |
+| **Data** | CSV bulk import (drag-and-drop) · CSV export · Global dashboard search (title, URL, short ID, tags) · Custom tags |
 | **Infra** | 3-node cluster · Nginx LB · Lua rate limiting · Cache warmup (top 1000) · QR generation · Actuator lockdown |
-| **Security** | On-demand password reveal · AES-256 encryption · Scoped actuator endpoints |
-| **SEO** | Social bot detection (OG tags) · Sitemap · robots.txt · Canonical URLs |
+| **Security** | On-demand password reveal · AES-256 encryption · AI-driven URL safety verification |
 
 ---
 
@@ -135,7 +137,7 @@ One backend node killed mid-traffic — Nginx reroutes to surviving replicas wit
 
 **Write-Behind over Write-Through** — Writing to PostgreSQL on every click would bottleneck the hot redirect path. Buffering in Redis and batch-flushing every 30s decouples read latency from write durability.
 
-**Flyway over `ddl-auto=update`** — Hibernate's auto-update silently modifies production schemas. Flyway gives versioned, auditable migrations (10 migrations across users, auth, profiles, analytics, and ordering).
+**Flyway over `ddl-auto=update`** — Hibernate's auto-update silently modifies production schemas. Flyway gives versioned, auditable migrations (13 migrations across users, auth, profiles, analytics, ordering, tags, and cloud storage).
 
 **Partial unique index** — Idempotency for permanent URLs is enforced at the database level. Same URL → same short ID. No application-level dedup logic needed.
 
@@ -150,11 +152,13 @@ One backend node killed mid-traffic — Nginx reroutes to surviving replicas wit
 | Layer | Technology |
 |-------|-----------|
 | Backend | Java 21, Spring Boot 3.3 |
-| Frontend | Next.js 15, React 19, TypeScript |
+| Frontend | Next.js 16, React 19, TypeScript |
 | Database | PostgreSQL 16 |
 | Cache | Redis 7 |
-| Migrations | Flyway 10 (10 versioned migrations) |
+| Migrations | Flyway 10 (13 versioned migrations) |
 | Auth | JWT + Google OAuth 2.0 |
+| AI | Gemini 2.0 Flash + Groq (Llama 3) — categorization, roasts, phishing detection |
+| Cloud Storage | Cloudinary CDN (profile pictures, auto-compression to WebP) |
 | Load Balancer | Nginx (Docker, 3 upstream replicas) |
 | Docs | SpringDoc OpenAPI (Swagger) |
 | Build | Maven · Docker Compose |
@@ -165,22 +169,31 @@ One backend node killed mid-traffic — Nginx reroutes to surviving replicas wit
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| `POST` | `/api/v1/url/shorten` | ✅ | Shorten a URL |
-| `GET` | `/{shortId}` | — | Redirect (or OG preview for bots) |
-| `GET` | `/api/v1/url/stats/{shortId}` | — | Click count + timestamps |
-| `GET` | `/api/v1/url/insights/{shortId}` | ✅ | Time-series + Geo-IP analytics |
-| `GET` | `/api/v1/url/my-links` | ✅ | Paginated user links |
+| `POST` | `/api/v1/url/shorten` | ✅ | Shorten a URL (supports custom alias, password, tags, auto-title) |
+| `GET` | `/{shortId}` | — | Redirect (or OG preview for social bots) |
+| `GET` | `/api/v1/url/stats/{shortId}` | — | Click count + timestamps (supports `?range=24h\|7d\|all`) |
+| `GET` | `/api/v1/url/my-links` | ✅ | Paginated user links (supports `?search=` full-text) |
 | `POST` | `/api/v1/url/bulk-delete` | ✅ | Bulk delete links |
-| `GET` | `/api/v1/url/export/csv` | ✅ | CSV export |
+| `POST` | `/api/v1/url/bulk-import` | ✅ | CSV bulk import (drag-and-drop) |
+| `GET` | `/api/v1/url/export/csv` | ✅ | CSV export of all user links |
 | `PUT` | `/api/v1/url/reorder` | ✅ | Drag-and-drop link reordering |
-| `GET` | `/api/v1/url/qr/{shortId}` | — | QR code image |
+| `PUT` | `/api/v1/url/{shortId}/bio-visibility` | ✅ | Toggle show/hide on bio profile |
+| `PATCH` | `/api/v1/url/{shortId}/metadata` | ✅ | Update link title and password |
+| `PATCH` | `/api/v1/url/{shortId}/tags` | ✅ | Update link tags |
+| `GET` | `/api/v1/url/{shortId}/reveal-password` | ✅ | On-demand password reveal (owner only) |
+| `POST` | `/api/v1/url/resolve/{shortId}` | — | Verify password and resolve long URL |
+| `GET` | `/api/v1/url/qr/{shortId}` | — | QR code image (PNG) |
+| `GET` | `/api/v1/url/stats/public` | — | Public system stats (links, users, clicks) |
 | `POST` | `/api/v1/auth/register` | — | Register |
 | `POST` | `/api/v1/auth/login` | — | Login (JWT) |
 | `POST` | `/api/v1/auth/google` | — | Google OAuth |
-| `GET` | `/api/v1/url/{shortId}/reveal-password` | ✅ | On-demand password reveal (owner only) |
-| `GET` | `/api/v1/profile/me` | ✅ | Get user profile |
-| `POST` | `/api/v1/profile/settings` | ✅ | Update bio-link profile |
+| `GET` | `/api/v1/profile/me` | ✅ | Get authenticated user's profile |
+| `POST` | `/api/v1/profile/settings` | ✅ | Update bio-link profile settings |
+| `POST` | `/api/v1/profile/picture` | ✅ | Upload profile picture (Cloudinary) |
+| `GET` | `/api/v1/profile/username-check` | ✅ | Check username availability |
 | `GET` | `/api/v1/profile/{username}` | — | Public bio-link page |
+| `GET` | `/api/v1/portfolio/{username}` | — | Public CP Portfolio stats |
+| `GET` | `/api/v1/portfolio/{username}/roast` | — | AI profile roast (Gemini/Groq) |
 
 Error codes: `400` invalid input · `404` not found · `409` alias taken · `410` expired · `429` rate limited
 
@@ -198,8 +211,9 @@ backend/src/main/java/com/shunyalink/
 ├── auth/
 │   ├── AuthController.java           # Register, Login, Google OAuth, Email verification
 │   ├── AuthService.java              # Core auth logic + password reset
+│   ├── CloudinaryService.java        # Profile picture upload + auto-compression
 │   ├── EmailService.java             # Transactional emails (verification, reset)
-│   ├── ProfileController.java        # Bio-link CRUD
+│   ├── ProfileController.java        # Bio-link CRUD + profile picture upload
 │   └── UserEntity.java               # JPA user model
 ├── cache/
 │   └── CacheWarmup.java              # Top 1000 URLs preloaded on startup
@@ -207,8 +221,16 @@ backend/src/main/java/com/shunyalink/
 │   ├── AppConfig.java                # RestTemplate + async config
 │   ├── RedisConfig.java              # RedisTemplate serialization
 │   └── OpenApiConfig.java            # Swagger UI config
+├── cp/
+│   ├── CpController.java             # Multi-platform stats aggregator + roast endpoint
+│   ├── LeetCodeService.java          # LeetCode GraphQL integration
+│   ├── CodeforcesService.java        # Codeforces API integration
+│   ├── GithubService.java            # GitHub API integration
+│   ├── CodeChefService.java          # JSoup-based CodeChef scraper
+│   ├── AtCoderService.java           # JSoup-based AtCoder scraper
+│   └── LlmIntegrationService.java    # Hybrid Groq/Gemini AI for roasts & categorization
 ├── exception/
-│   └── GlobalExceptionHandler.java   # Centralized error handling
+│   └── GlobalExceptionHandler.java   # Centralized error handling (400/403/404/409/410/429)
 ├── rate/
 │   └── RateLimiterService.java       # Atomic Lua rate limiting (fail-open)
 ├── scheduler/
@@ -218,41 +240,42 @@ backend/src/main/java/com/shunyalink/
 │   ├── JwtService.java               # JWT creation + validation
 │   ├── JwtBlacklistService.java      # Token revocation via Redis
 │   └── JwtAuthenticationFilter.java  # Per-request JWT filter
-└── url/
-    ├── DbUrlService.java             # Core business logic
-    ├── Base62IdEncoder.java          # Sequential ID → Base62
-    ├── RedirectController.java       # /{shortId} redirect + social bot OG tags
-    ├── UrlController.java            # REST API endpoints
-    ├── ReorderRequest.java           # DTO for drag-and-drop ordering
-    ├── MetadataService.java          # Thread-safe URL title scraping
-    ├── QrController.java             # QR code generation
-    └── CsvExportService.java         # CSV data export
+├── url/
+│   ├── DbUrlService.java             # Core business logic + AI categorization
+│   ├── Base62IdEncoder.java          # Sequential ID → Base62
+│   ├── RedirectController.java       # /{shortId} redirect + social bot OG tags
+│   ├── UrlController.java            # REST API endpoints (25+ routes)
+│   ├── CsvImportService.java         # Bulk CSV import with validation
+│   ├── CsvExportService.java         # CSV data export
+│   ├── MetadataService.java          # Thread-safe URL title scraping
+│   ├── QrController.java             # QR code generation
+│   └── ReorderRequest.java           # DTO for drag-and-drop ordering
+└── util/
+    └── EncryptionUtils.java          # AES-256 encryption/decryption
 
 frontend/
 ├── app/
-│   ├── layout.tsx                    # Root layout + SEO metadata
+│   ├── layout.tsx                    # Root layout + SEO/OG metadata
 │   ├── page.tsx                      # Landing page
-│   ├── login/ & register/           # Auth pages
+│   ├── login/ & register/            # Auth pages
 │   ├── forgot-password/ & reset-password/ # Password recovery
-│   ├── dashboard/                    # Link management + insights
-│   ├── [username]/                   # Public bio-link profiles
+│   ├── dashboard/                    # Link management + insights + settings
+│   ├── [username]/                   # Public bio-link profiles (server-side OG tags)
+│   ├── cp/[username]/                # CP portfolio page (server-side OG tags)
 │   └── p/                            # Password challenge page
 └── components/
-    ├── header.tsx & footer.tsx       # Site chrome
-    ├── theme-toggle.tsx              # Dark/light mode switcher
-    ├── shortener-form.tsx            # URL shortening form
-    ├── shorten-success-modal.tsx     # Success feedback & link options
-    ├── bio-links-reorder.tsx         # Drag-and-drop bio-link reordering
-    ├── user-profile-settings.tsx     # Bio-link editor + live preview
-    ├── edit-metadata-modal.tsx       # Bio-link metadata editor
-    ├── profile-card.tsx              # Public bio-link card
-    ├── stats-modal.tsx               # Click analytics modal
-    └── qr-modal.tsx                  # QR Code generated modal
+    ├── header.tsx & footer.tsx        # Site chrome
+    ├── shortener-form.tsx             # URL shortening form + UTM builder
+    ├── user-profile-settings.tsx      # Bio-link editor + live preview + avatar upload
+    ├── profile-card.tsx               # Public bio-link card (Normal + Programmer modes)
+    ├── dashboard/                     # Dashboard panels (links, analytics, import modal)
+    ├── cp/                            # CP widgets (LeetCode, Codeforces, CodeChef, AtCoder, GitHub, Roast)
+    └── home/                          # Homepage sections (hero, features, bio showcase, stats)
 
 nginx/
-└── nginx.conf                        # Load balancer for 3 backend replicas
+└── nginx.conf                         # Load balancer for 3 backend replicas
 
-docker-compose.yml                    # Full stack: PG + Redis + 3×Backend + Nginx + Frontend
+docker-compose.yml                     # Full stack: PG + Redis + 3×Backend + Nginx + Frontend (10 containers)
 ```
 
 ---
@@ -268,11 +291,27 @@ cd shunyalink
 
 # 2. Set environment variables
 cp .env.example .env
-# Edit .env with your DB_USERNAME, DB_PASSWORD, JWT_SECRET
+# Edit .env — fill in ALL values (see table below)
 
-# 3. Start everything
+# 3. Start everything (PostgreSQL + Redis + 3×Backend + Nginx + Frontend)
 docker-compose up --build
 ```
+
+### Required Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `DB_USERNAME` | PostgreSQL username |
+| `DB_PASSWORD` | PostgreSQL password |
+| `APP_BASE_URL` | Public backend URL (`http://localhost` for local) |
+| `ALLOWED_ORIGIN` | Frontend origin for CORS (`http://localhost:3000` for local) |
+| `JWT_SECRET` | 256-bit secret for JWT signing (`openssl rand -base64 32`) |
+| `ENCRYPTION_SECRET` | 32-char key for AES-256 link password encryption |
+| `MAIL_USERNAME` | Gmail address for transactional emails |
+| `MAIL_PASSWORD` | Gmail App Password ([generate here](https://myaccount.google.com/apppasswords)) |
+| `GEMINI_API_KEY` | Google Gemini API key (AI categorization + phishing detection) |
+| `GROQ_API_KEY` | Groq API key (AI profile roasts) |
+| `CLOUDINARY_URL` | Cloudinary environment URL (profile picture uploads) |
 
 | Service | URL |
 |---------|-----|
@@ -282,7 +321,7 @@ docker-compose up --build
 | PostgreSQL | `localhost:5432` |
 | Redis | `localhost:6379` |
 
-Flyway runs all 10 migrations automatically on first startup.
+Flyway runs all 13 migrations automatically on first startup.
 
 ---
 

@@ -65,6 +65,15 @@ public interface UrlRepository extends JpaRepository<UrlEntity, Long> {
 
     Optional<UrlEntity> findByShortIdAndUserId(String shortId, Long userId);
 
+    @Query("SELECT DISTINCT u FROM UrlEntity u LEFT JOIN u.tags t " +
+           "WHERE u.userId = :userId AND (" +
+           "LOWER(u.title) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+           "LOWER(u.shortId) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+           "LOWER(u.longUrl) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+           "LOWER(t) LIKE LOWER(CONCAT('%', :search, '%'))" +
+           ")")
+    Page<UrlEntity> searchByUserIdAndKeyword(@Param("userId") Long userId, @Param("search") String search, Pageable pageable);
+
     @Query("SELECT COALESCE(SUM(u.clickCount), 0) FROM UrlEntity u")
     long sumTotalClicks();
 

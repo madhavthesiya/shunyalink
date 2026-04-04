@@ -47,6 +47,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/url/stats/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/url/qr/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/url/resolve/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/portfolio/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/profile/me").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/v1/profile/settings").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/v1/profile/**").permitAll()
@@ -74,6 +75,7 @@ public class SecurityConfig {
         // Always allow local development origins
         config.addAllowedOrigin("http://localhost:3000");
         config.addAllowedOrigin("http://localhost:5173");
+        config.addAllowedOrigin("http://localhost");
         
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         config.setAllowedHeaders(List.of("*"));

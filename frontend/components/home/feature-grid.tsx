@@ -1,95 +1,163 @@
 import Link from "next/link";
 import {
-  Sparkles,
-  Zap,
   BarChart3,
   Settings2,
   ArrowRight,
-  ShieldCheck,
   Lock,
+  Globe2,
+  QrCode,
+  Tag,
+  PieChart,
+  Search,
+  Image,
+  FileDown,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const features = [
   {
-    icon: Sparkles,
-    title: "Smart AI Metadata",
-    body:
-      "Automatic link titles and descriptions. Our AI-powered scraping engine ensures your links look professional without manual effort.",
-  },
-  {
     icon: BarChart3,
-    title: "Time-Series Analytics",
-    body:
-      "Go beyond total counts. Visualize click patterns with millisecond precision using high-fidelity Area and Line charts.",
+    title: "CP Stats Aggregator",
+    body: "Connect your LeetCode, Codeforces, CodeChef, and AtCoder handles. We fetch and aggregate your solving data into a single verified score.",
+    className: "md:col-span-2 md:row-span-2 bg-gradient-to-br from-indigo-500/10 via-white dark:via-[#0a0a0f] to-indigo-500/5",
+    iconColor: "text-indigo-600 dark:text-indigo-400",
+    gradient: "from-indigo-500/20 to-violet-500/20"
   },
   {
-    icon: Zap,
-    title: "Geo-Location Tracking",
-    body:
-      "Understand your global reach. See exactly which countries and regions are engaging with your content in real-time.",
+    icon: Tag,
+    title: "AI Auto-Categorization",
+    body: "Gemini AI analyzes URL metadata to automatically tag links as GITHUB, VIDEO, or DOCS for organized curation.",
+    className: "md:col-span-1 md:row-span-1 bg-gradient-to-br from-pink-500/10 via-white dark:via-[#0a0a0f] to-transparent",
+    iconColor: "text-pink-600 dark:text-pink-400",
+    gradient: "from-pink-500/20 to-rose-500/20"
   },
   {
-    icon: ShieldCheck,
-    title: "Secure Revocation",
-    body:
-      "Real-time session blacklisting. Your security matters—once you log out, your session is instantly purged from our global network.",
+    icon: PieChart,
+    title: "Advanced Analytics",
+    body: "Track every click with real-time geographical mapping, referrer, and device-level logs.",
+    className: "md:col-span-1 md:row-span-1 bg-gradient-to-bl from-emerald-500/10 via-white dark:via-[#0a0a0f] to-transparent",
+    iconColor: "text-emerald-600 dark:text-emerald-400",
+    gradient: "from-emerald-500/20 to-teal-500/20"
   },
   {
     icon: Lock,
-    title: "Password Encryption",
-    body:
-      "Protect your sensitive assets with AES-256 password protection and link-specific security challenges.",
+    title: "Password Gates",
+    body: "Protect your sensitive links mathematically with AES-256 password challenges.",
+    className: "md:col-span-1 md:row-span-1 bg-gradient-to-tr from-blue-500/10 via-white dark:via-[#0a0a0f] to-transparent",
+    iconColor: "text-blue-600 dark:text-blue-400",
+    gradient: "from-blue-500/20 to-cyan-500/20"
+  },
+  {
+    icon: Search,
+    title: "Global Dashboard Search",
+    body: "Instantly search all your links by title, short ID, original URL, or custom tags. Powered by a PostgreSQL full-text join query.",
+    className: "md:col-span-1 md:row-span-1 bg-gradient-to-t from-amber-500/10 via-white dark:via-[#0a0a0f] to-transparent",
+    iconColor: "text-amber-600 dark:text-amber-400",
+    gradient: "from-amber-500/20 to-orange-500/20",
+  },
+  {
+    icon: Image,
+    title: "Cloud Profile Pictures",
+    body: "Upload a profile photo that auto-compresses to WebP via Cloudinary CDN. Persistent across Azure deployments.",
+    className: "md:col-span-1 md:row-span-1 bg-gradient-to-l from-red-500/10 via-white dark:via-[#0a0a0f] to-transparent",
+    iconColor: "text-red-600 dark:text-red-400",
+    gradient: "from-red-500/20 to-pink-500/20",
+  },
+  {
+    icon: FileDown,
+    title: "CSV Bulk Import & Export",
+    body: "Bulk-upload hundreds of URLs via drag-and-drop CSV, or export your entire link library with tags and categories.",
+    className: "md:col-span-1 md:row-span-1 bg-gradient-to-r from-purple-500/10 via-white dark:via-[#0a0a0f] to-transparent",
+    iconColor: "text-purple-600 dark:text-purple-400",
+    gradient: "from-purple-500/20 to-fuchsia-500/20",
+  },
+  {
+    icon: Globe2,
+    title: "Custom Aliases",
+    body: "Create memorable, branded short vanity URLs with UTM campaign builder integration that never expire.",
+    className: "md:col-span-1 md:row-span-1 bg-gradient-to-l from-rose-500/10 via-white dark:via-[#0a0a0f] to-transparent",
+    iconColor: "text-rose-600 dark:text-rose-400",
+    gradient: "from-rose-500/20 to-pink-500/20"
+  },
+  {
+    icon: QrCode,
+    title: "Instant QR Codes",
+    body: "Generate completely free, downloadable QR codes for offline sharing.",
+    className: "md:col-span-1 md:row-span-1 bg-gradient-to-t from-sky-500/10 via-white dark:via-[#0a0a0f] to-transparent",
+    iconColor: "text-sky-600 dark:text-sky-400",
+    gradient: "from-sky-500/20 to-cyan-500/20"
   },
   {
     icon: Settings2,
-    title: "Custom Branding",
-    body:
-      "Secure your unique @handle and customize your Bio profile storefront to showcase your full online identity.",
+    title: "Developer Bio-Link Builder",
+    body: "Build a professional storefront for your identity. Drag and drop to reorder links, customize themes, and host an integrated portfolio.",
+    className: "md:col-span-2 md:row-span-1 bg-gradient-to-tl from-cyan-500/10 via-white dark:via-[#0a0a0f] to-transparent",
+    iconColor: "text-cyan-600 dark:text-cyan-400",
+    gradient: "from-cyan-500/20 to-sky-500/20"
   },
-] as const;
+];
+
 
 export function FeatureGrid() {
   return (
-    <section className="py-20 sm:py-28 border-t border-border/60 bg-muted/30">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <div className="text-center mb-14 sm:mb-20 max-w-3xl mx-auto">
-          <span className="inline-block px-3 py-1 rounded-full bg-primary/10 border border-primary/15 text-primary text-xs font-semibold uppercase tracking-wider mb-4">
-            Platform
+    <section className="py-16 sm:py-20 border-t border-border/30 bg-background dark:bg-[#060609] relative overflow-hidden">
+      {/* Background Glows */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-[1000px] h-[300px] bg-primary/10 blur-[120px] rounded-full pointer-events-none" />
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 relative z-10">
+        <div className="text-center mb-16 sm:mb-24 max-w-3xl mx-auto">
+          <span className="inline-block px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-bold uppercase tracking-wider mb-6">
+            The Ultimate Toolkit
           </span>
-          <h2 className="text-3xl sm:text-5xl font-bold text-foreground mb-4 text-balance tracking-tight">
-            Everything you need for{" "}
+          <h2 className="text-4xl sm:text-6xl font-bold text-foreground mb-6 text-balance tracking-tight leading-tight">
+            Everything you need for <br />
             <span className="text-gradient">links & identity</span>
           </h2>
-          <p className="text-muted-foreground text-lg leading-relaxed">
-            Infrastructure-grade tooling with a product experience that stays out of your way.
+          <p className="text-muted-foreground text-lg sm:text-xl leading-relaxed">
+            Infrastructure-grade URL shortening combined with a developer-first link-in-bio platform. Built for performance and security.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
-          {features.map(({ icon: Icon, title, body }) => (
+        {/* Bento Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 auto-rows-[220px] md:auto-rows-[260px]">
+          {features.map(({ icon: Icon, title, body, className, iconColor, gradient }, index) => (
             <div
               key={title}
-              className="group relative p-7 sm:p-8 rounded-3xl bg-card border border-border/70 shadow-sm hover:shadow-xl hover:shadow-primary/[0.07] hover:border-primary/25 transition-all duration-300 hover:-translate-y-0.5"
+              className={cn(
+                "group relative p-6 sm:p-8 rounded-[2rem] border border-border/40 bg-card dark:bg-transparent shadow-2xl overflow-hidden transition-all duration-300 hover:border-primary/40 hover:-translate-y-1 flex flex-col justify-between",
+                className
+              )}
             >
-              <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-primary/[0.03] to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
-              <div className="relative">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary/15 to-violet-500/10 flex items-center justify-center mb-5 group-hover:scale-105 transition-transform">
-                  <Icon className="w-6 h-6 text-primary" />
+              {/* Mesh background effect for big cells */}
+              {className.includes("col-span-2") && (
+                <div className="absolute inset-0 opacity-[0.03] grid-pattern pointer-events-none" />
+              )}
+
+              <div className="relative z-10 flex-1">
+                <div className={cn("w-14 h-14 rounded-2xl bg-gradient-to-br flex items-center justify-center mb-5 group-hover:scale-110 transition-transform duration-500 shadow-inner border border-white/5", gradient)}>
+                  <Icon className={cn("w-7 h-7", iconColor)} />
                 </div>
-                <h3 className="text-lg font-bold text-foreground mb-2 tracking-tight">{title}</h3>
-                <p className="text-muted-foreground text-sm leading-relaxed">{body}</p>
+                <h3 className={cn("font-bold text-foreground mb-3 tracking-tight", className.includes("md:row-span-2") ? "text-3xl" : "text-xl")}>{title}</h3>
+                <p className={cn("text-muted-foreground leading-relaxed", className.includes("md:row-span-2") ? "text-lg max-w-md" : "text-sm")}>{body}</p>
               </div>
+
+              {/* Decorative elements for the master card */}
+              {index === 0 && (
+                <div className="absolute right-0 bottom-0 pointer-events-none opacity-20 group-hover:opacity-40 transition-opacity duration-700">
+                  <BarChart3 className="w-64 h-64 -mb-16 -mr-12" />
+                </div>
+              )}
             </div>
           ))}
         </div>
 
-        <div className="mt-14 text-center">
+        <div className="mt-20 text-center">
           <Link
             href="/register"
-            className="inline-flex items-center gap-2 text-primary font-semibold hover:underline underline-offset-4 decoration-primary/40 group"
+            className="inline-flex items-center gap-2 px-8 py-4 rounded-full bg-foreground text-background font-bold hover:scale-105 transition-all duration-300 shadow-xl shadow-foreground/10 group"
           >
-            Create a free account
-            <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+            Start building for free
+            <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
           </Link>
         </div>
       </div>

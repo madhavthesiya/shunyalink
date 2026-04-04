@@ -3,6 +3,8 @@ package com.shunyalink.url;
 import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
+import java.util.Set;
+import java.util.HashSet;
 
 @Entity
 @Table(name = "urls")
@@ -47,6 +49,14 @@ public class UrlEntity {
 
     @Column(name = "order_index", nullable = false)
     private int orderIndex = 0;
+
+    @Column(length = 20)
+    private String category = "GENERAL";
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "url_tags", joinColumns = @JoinColumn(name = "url_id"))
+    @Column(name = "tag")
+    private Set<String> tags = new HashSet<>();
 
     @PrePersist
     protected void onCreate() {
@@ -149,5 +159,13 @@ public class UrlEntity {
     public int getOrderIndex() { return orderIndex; }
 
     public void setOrderIndex(int orderIndex) { this.orderIndex = orderIndex; }
+
+    public String getCategory() { return category; }
+
+    public void setCategory(String category) { this.category = category; }
+
+    public Set<String> getTags() { return tags; }
+
+    public void setTags(Set<String> tags) { this.tags = tags; }
 
 }

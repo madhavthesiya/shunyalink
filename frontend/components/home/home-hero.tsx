@@ -1,42 +1,58 @@
 import Link from "next/link";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, Code2, Link2, Sparkles } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export function HomeHero({ isLoggedIn }: { isLoggedIn: boolean }) {
   return (
-    <section className="pt-4 sm:pt-8 pb-14 px-4 sm:px-6 relative">
-      <div className="max-w-3xl mx-auto text-center">
+    <section className="pt-8 sm:pt-12 pb-12 sm:pb-16 px-4 sm:px-6 relative overflow-hidden">
+      {/* Background dynamic glow */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-3xl h-[400px] bg-gradient-to-b from-primary/15 to-transparent blur-[120px] rounded-full pointer-events-none -z-10" />
 
-        <h1 className="text-4xl sm:text-6xl md:text-7xl font-bold tracking-tight text-foreground mb-6 animate-in fade-in-0 slide-in-from-bottom-4 duration-700 delay-100">
-          <span className="text-balance">Shorten links.</span>
+      <div className="max-w-4xl mx-auto text-center relative z-10">
+
+        {/* Main Heading */}
+        <h1 className="text-5xl sm:text-7xl lg:text-[5.5rem] font-black tracking-tighter text-foreground mb-6 animate-in fade-in-0 slide-in-from-bottom-6 duration-700 delay-100 leading-[1.1]">
+          <span className="text-balance text-foreground">Secure short links &</span>
           <br />
-          <span className="text-gradient">Own your identity.</span>
+          <span className="text-balance text-gradient">developer portfolios.</span>
         </h1>
 
-        <p className="text-base sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-10 animate-in fade-in-0 slide-in-from-bottom-4 duration-700 delay-200 text-pretty leading-relaxed">
-          Turn long URLs into clean short links and showcase them on a polished{" "}
-          <strong className="text-foreground font-semibold">link-in-bio</strong> built for
-          creators and teams.
+        {/* Subtitle */}
+        <p className="text-lg sm:text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto mb-10 animate-in fade-in-0 slide-in-from-bottom-6 duration-700 delay-200 text-balance leading-relaxed">
+          Generate AI-categorized, password-protected short URLs while building a stunning bio profile that automatically aggregates your live LeetCode, Codeforces, and GitHub stats.
         </p>
 
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-8 animate-in fade-in-0 slide-in-from-bottom-4 duration-700 delay-300">
-          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
-            <span className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-success shadow-[0_0_8px_rgba(5,150,105,0.5)]" />
-              No signup to shorten
-            </span>
-            <span className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-success shadow-[0_0_8px_rgba(5,150,105,0.5)]" />
-              Fast redirects
-            </span>
-          </div>
-          <div className="hidden sm:block w-px h-5 bg-border" />
+        {/* CTA Buttons */}
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6 animate-in fade-in-0 slide-in-from-bottom-6 duration-700 delay-300">
           <Link
             href={isLoggedIn ? "/dashboard?tab=settings" : "/register"}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-foreground text-background text-sm font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-foreground/10 group"
+            className="flex items-center justify-center gap-2 w-full sm:w-auto px-8 py-4 rounded-full bg-foreground text-background text-base font-bold hover:scale-105 transition-all shadow-xl shadow-foreground/15 group"
           >
-            {isLoggedIn ? "Edit bio profile" : "Claim your handle"}
-            <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+            {isLoggedIn ? "Edit bio profile" : "Claim your free handle"}
+            <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
           </Link>
+          
+          <Link
+            href="/@madhavthesiya"
+            className="flex items-center justify-center gap-2 w-full sm:w-auto px-8 py-4 rounded-full border-2 border-border/60 bg-muted/20 backdrop-blur text-foreground text-base font-bold hover:bg-muted/40 transition-colors"
+          >
+            <Code2 className="w-5 h-5 opacity-50" />
+            View demo profile
+          </Link>
+        </div>
+        
+        {/* Metric markers */}
+        <div className="mt-16 pt-10 border-t border-border/40 flex flex-wrap justify-center gap-x-12 gap-y-6 animate-in fade-in-0 duration-1000 delay-500">
+          {[
+            { label: "Short Links", value: "Unlimited" },
+            { label: "CP Integrations", value: "5 Platforms" },
+            { label: "QR Codes", value: "Instant" }
+          ].map((stat) => (
+            <div key={stat.label} className="flex flex-col items-center">
+              <span className="text-3xl font-black text-foreground tracking-tight">{stat.value}</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground mt-1">{stat.label}</span>
+            </div>
+          ))}
         </div>
       </div>
     </section>

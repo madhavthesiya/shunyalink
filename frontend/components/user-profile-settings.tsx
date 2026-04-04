@@ -13,7 +13,10 @@ import {
   Sparkles,
   Link,
   Copy,
-  ExternalLink
+  ExternalLink,
+  Code2,
+  Github,
+  Camera
 } from "lucide-react"
 import { toast } from "sonner"
 import { motion, AnimatePresence } from "framer-motion"
@@ -44,7 +47,15 @@ export function UserProfileSettings() {
   const [availabilityStatus, setAvailabilityStatus] = useState<AvailabilityStatus>("idle")
   const [isSaving, setIsSaving] = useState(false)
   const [displayName, setDisplayName] = useState("")
+  const [profileType, setProfileType] = useState("NORMAL")
+  const [githubUsername, setGithubUsername] = useState("")
+  const [leetcodeUsername, setLeetcodeUsername] = useState("")
+  const [codeforcesUsername, setCodeforcesUsername] = useState("")
+  const [codeChefHandle, setCodeChefHandle] = useState("")
+  const [atCoderHandle, setAtCoderHandle] = useState("")
   const [showSuccess, setShowSuccess] = useState(false)
+  const [profilePictureUrl, setProfilePictureUrl] = useState<string | null>(null)
+  const [isUploadingPicture, setIsUploadingPicture] = useState(false)
 
   // Load initial data
   useEffect(() => {
@@ -62,6 +73,13 @@ export function UserProfileSettings() {
           setDisplayName(data.name || "");
           setBio(data.bioText || "");
           setThemeColor(data.themeColor || PRESET_COLORS[0].value);
+          setProfileType(data.profileType || "NORMAL");
+          setGithubUsername(data.githubUsername || "");
+          setLeetcodeUsername(data.leetcodeUsername || "");
+          setCodeforcesUsername(data.codeforcesUsername || "");
+          setCodeChefHandle(data.codeChefHandle || "");
+          setAtCoderHandle(data.atCoderHandle || "");
+          setProfilePictureUrl(data.profilePictureUrl || null);
         }
       } catch (err) {
         console.error("Failed to fetch profile", err);
@@ -106,6 +124,36 @@ export function UserProfileSettings() {
     }
   }
 
+  const handlePictureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const token = localStorage.getItem("authToken");
+    if (!token) return;
+    setIsUploadingPicture(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`${API_URL}/api/v1/profile/picture`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setProfilePictureUrl(data.profilePictureUrl);
+        toast.success("Profile picture updated!");
+      } else {
+        const err = await res.json();
+        toast.error(err.message || "Upload failed, please try again.");
+      }
+    } catch {
+      toast.error("Network error during upload.");
+    } finally {
+      setIsUploadingPicture(false);
+      e.target.value = "";
+    }
+  };
+
   const handleSave = async () => {
     setIsSaving(true)
     const token = localStorage.getItem("authToken");
@@ -120,7 +168,13 @@ export function UserProfileSettings() {
           username: username,
           bioText: bio,
           themeColor: themeColor,
-          name: displayName
+          name: displayName,
+          profileType: profileType,
+          githubUsername: githubUsername || null,
+          leetcodeUsername: leetcodeUsername || null,
+          codeforcesUsername: codeforcesUsername || null,
+          codeChefHandle: codeChefHandle || null,
+          atCoderHandle: atCoderHandle || null
         })
       });
 
@@ -203,6 +257,41 @@ export function UserProfileSettings() {
           <div className="flex-1 space-y-6">
             {/* Glass Card Container */}
             <div className="rounded-2xl border border-border/50 bg-card/40 p-6 backdrop-blur-xl">
+              {/* Profile Picture Upload */}
+              <div className="mb-6 flex flex-col items-center gap-3">
+                <label htmlFor="avatar-upload" className="group relative cursor-pointer">
+                  <div
+                    className="relative flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-[3px] transition-all duration-200 group-hover:opacity-80"
+                    style={{ borderColor: themeColor }}
+                  >
+                    {profilePictureUrl ? (
+                      <img src={profilePictureUrl} alt="Profile" className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center" style={{ background: `linear-gradient(135deg, ${themeColor}40, ${themeColor}15)` }}>
+                        <User className="h-10 w-10 text-foreground/50" />
+                      </div>
+                    )}
+                    {/* Camera overlay on hover */}
+                    <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                      {isUploadingPicture ? (
+                        <Loader2 className="h-6 w-6 animate-spin text-white" />
+                      ) : (
+                        <Camera className="h-6 w-6 text-white" />
+                      )}
+                    </div>
+                  </div>
+                  <input
+                    id="avatar-upload"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={handlePictureUpload}
+                    disabled={isUploadingPicture}
+                  />
+                </label>
+                <p className="text-xs text-muted-foreground">Click avatar to upload (JPEG/PNG/WEBP, max 5MB)</p>
+              </div>
+
               {/* Display Name */}
               <div className="mb-6">
                 <Label htmlFor="displayName" className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
@@ -341,6 +430,75 @@ export function UserProfileSettings() {
                   </div>
                 </div>
               </div>
+
+              {/* Profile Type Toggle */}
+              <div className="mb-6 pt-6 border-t border-border/50">
+                <Label className="mb-3 flex items-center gap-2 text-sm font-medium text-foreground">
+                  <Code2 className="h-4 w-4 text-muted-foreground" />
+                  Profile Mode
+                </Label>
+                <div className="flex items-center gap-4 p-4 rounded-xl border border-border/50 bg-input/30">
+                  <button
+                    onClick={() => setProfileType("NORMAL")}
+                    className={cn(
+                      "flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all",
+                      profileType === "NORMAL"
+                        ? "bg-foreground text-background shadow-md"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                    )}
+                  >
+                    Normal
+                  </button>
+                  <button
+                    onClick={() => setProfileType("PROGRAMMER")}
+                    className={cn(
+                      "flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all",
+                      profileType === "PROGRAMMER"
+                        ? "bg-foreground text-background shadow-md"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                    )}
+                  >
+                    🧑‍💻 Programmer
+                  </button>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {profileType === "PROGRAMMER"
+                    ? "Your profile will show CP stats, charts, and AI roast"
+                    : "Your profile shows a classic bio-link page"}
+                </p>
+              </div>
+
+              {/* Developer Platforms */}
+              {profileType === "PROGRAMMER" && (
+                <div className="mb-6 pt-4 border-t border-border/50">
+                  <Label className="mb-4 flex items-center gap-2 text-sm font-medium text-foreground">
+                    <Github className="h-4 w-4 text-muted-foreground" />
+                    Developer Platforms
+                  </Label>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="githubUser" className="text-xs text-muted-foreground mb-1.5 block">GitHub Username</Label>
+                      <Input id="githubUser" value={githubUsername} onChange={(e) => setGithubUsername(e.target.value)} placeholder="e.g. torvalds" className="h-10 border-border/50 bg-input/50" />
+                    </div>
+                    <div>
+                      <Label htmlFor="lcUser" className="text-xs text-muted-foreground mb-1.5 block">LeetCode Username</Label>
+                      <Input id="lcUser" value={leetcodeUsername} onChange={(e) => setLeetcodeUsername(e.target.value)} placeholder="e.g. neal_wu" className="h-10 border-border/50 bg-input/50" />
+                    </div>
+                    <div>
+                      <Label htmlFor="cfUser" className="text-xs text-muted-foreground mb-1.5 block">Codeforces Handle</Label>
+                      <Input id="cfUser" value={codeforcesUsername} onChange={(e) => setCodeforcesUsername(e.target.value)} placeholder="e.g. tourist" className="h-10 border-border/50 bg-input/50" />
+                    </div>
+                    <div>
+                      <Label htmlFor="ccUser" className="text-xs text-muted-foreground mb-1.5 block">CodeChef Handle</Label>
+                      <Input id="ccUser" value={codeChefHandle} onChange={(e) => setCodeChefHandle(e.target.value)} placeholder="e.g. admin" className="h-10 border-border/50 bg-input/50" />
+                    </div>
+                    <div>
+                      <Label htmlFor="acUser" className="text-xs text-muted-foreground mb-1.5 block">AtCoder Handle</Label>
+                      <Input id="acUser" value={atCoderHandle} onChange={(e) => setAtCoderHandle(e.target.value)} placeholder="e.g. chokudai" className="h-10 border-border/50 bg-input/50" />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Save Button */}
@@ -374,6 +532,36 @@ export function UserProfileSettings() {
                 </span>
               )}
             </Button>
+
+            {/* Profile Links */}
+            {username && (
+              <div className="mt-4 space-y-2">
+                <a
+                  href={`/@${username}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl border border-border/50 bg-muted/30 hover:bg-muted/60 transition-all group"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Link className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <span className="text-xs text-muted-foreground truncate">/@{username}</span>
+                  </div>
+                  <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-wider shrink-0 ml-2">Bio</span>
+                </a>
+                <a
+                  href={`/cp/@${username}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl border border-border/50 bg-muted/30 hover:bg-muted/60 transition-all group"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Code2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <span className="text-xs text-muted-foreground truncate">/cp/@{username}</span>
+                  </div>
+                  <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-wider shrink-0 ml-2">CP</span>
+                </a>
+              </div>
+            )}
           </div>
 
           {/* Live Preview */}
@@ -396,7 +584,7 @@ export function UserProfileSettings() {
                     background: `linear-gradient(135deg, ${themeColor}20 0%, transparent 50%)` 
                   }}
                 >
-                  {/* Avatar Placeholder with Glow */}
+                  {/* Avatar with Glow */}
                   <div className="relative mx-auto mb-3 h-20 w-20">
                     <div 
                       className="absolute inset-0 animate-spin-slow rounded-full opacity-70"
@@ -406,10 +594,14 @@ export function UserProfileSettings() {
                       }}
                     />
                     <div 
-                      className="absolute inset-0.5 rounded-full bg-background flex items-center justify-center border-2"
+                      className="absolute inset-0.5 rounded-full bg-background flex items-center justify-center border-2 overflow-hidden"
                       style={{ borderColor: `${themeColor}40` }}
                     >
-                      <User className="h-8 w-8 text-foreground/60" />
+                      {profilePictureUrl ? (
+                        <img src={profilePictureUrl} alt="Preview" className="h-full w-full object-cover rounded-full" />
+                      ) : (
+                        <User className="h-8 w-8 text-foreground/60" />
+                      )}
                     </div>
                   </div>
 

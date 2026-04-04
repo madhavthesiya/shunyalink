@@ -1,79 +1,74 @@
-"use client";
+import type { Metadata } from "next";
+import PublicProfilePage from "./_client";
 
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
-import { ProfileCard } from "@/components/profile-card";
-import { Loader2, UserX } from "lucide-react";
-import { ThemeToggle } from "@/components/theme-toggle";
+// Server-side API URL — uses nginx service name inside Docker
+const SERVER_API = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const SITE_URL = "https://shunyalink.madhavv.me";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+type Props = { params: Promise<{ username: string }> };
 
-export default function PublicProfilePage() {
-  const params = useParams();
-  const rawUsername = params.username as string;
-  // Remove the @ prefix if it exists (e.g., /@madhav -> madhav)
-  const username = rawUsername.startsWith("%40") 
-    ? rawUsername.slice(3) 
-    : rawUsername.startsWith("@") ? rawUsername.slice(1) : rawUsername;
+async function fetchProfile(username: string) {
+  try {
+    const res = await fetch(`${SERVER_API}/api/v1/profile/${username}`, {
+      next: { revalidate: 60 }, // cache for 60s — profile changes are not instant
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
 
-  const [profile, setProfile] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { username } = await params;
+  const cleanUsername = username.startsWith("%40")
+    ? username.slice(3)
+    : username.startsWith("@") ? username.slice(1) : username;
 
-  useEffect(() => {
-    async function fetchProfile() {
-      try {
-        const res = await fetch(`${API_URL}/api/v1/profile/${username}`, {
-          cache: 'no-store'
-        });
-        if (!res.ok) throw new Error("Not found");
-        const data = await res.json();
-        setProfile(data);
-      } catch (err) {
-        setError(true);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchProfile();
-  }, [username]);
+  const profile = await fetchProfile(cleanUsername);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-10 h-10 animate-spin text-primary" />
-      </div>
-    );
+  if (!profile) {
+    return {
+      title: "Profile Not Found | ShunyaLink",
+      description: "This profile doesn't exist yet. Build your own free bio-link profile on ShunyaLink!",
+    };
   }
 
-  if (error || !profile) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center text-center p-4">
-        <UserX className="w-16 h-16 text-muted-foreground mb-4" />
-        <h1 className="text-2xl font-bold">Profile Not Found</h1>
-        <p className="text-muted-foreground mt-2">The user @{username} hasn't claimed this page yet.</p>
-      </div>
-    );
-  }
+  const displayName = profile.name || cleanUsername;
+  const bio = profile.bioText
+    ? `${profile.bioText} • Build your own free profile on ShunyaLink!`
+    : `Check out ${displayName}'s bio-link profile. Build your own for free on ShunyaLink!`;
 
-  return (
-    <div className="bg-background min-h-screen relative">
-      <div className="absolute top-4 right-4 z-10">
-        <ThemeToggle />
-      </div>
-      <ProfileCard 
-        profile={{
-          displayName: profile.name || "User",
-          username: profile.username,
-          bio: profile.bioText || "",
-          themeColor: profile.themeColor || "#6366f1",
-          links: profile.links.map((link: any) => ({
-            id: link.shortId,
-            label: link.title || link.shortId, 
-            href: `${API_URL}/${link.shortId}`
-          }))
-        }} 
-      />
-    </div>
-  );
+  // Use user's uploaded profile picture if available, else fall back to ShunyaLink banner
+  const ogImage = profile.profilePictureUrl || `${SITE_URL}/logo-social.png`;
+
+  return {
+    title: `${displayName} | ShunyaLink`,
+    description: bio,
+    openGraph: {
+      title: `${displayName} | ShunyaLink`,
+      description: bio,
+      url: `${SITE_URL}/@${cleanUsername}`,
+      siteName: "ShunyaLink",
+      images: [
+        {
+          url: ogImage,
+          width: 400,
+          height: 400,
+          alt: `${displayName}'s profile picture`,
+        },
+      ],
+      type: "profile",
+    },
+    twitter: {
+      card: "summary",
+      title: `${displayName} | ShunyaLink`,
+      description: bio,
+      images: [ogImage],
+    },
+  };
+}
+
+export default function Page() {
+  return <PublicProfilePage />;
 }

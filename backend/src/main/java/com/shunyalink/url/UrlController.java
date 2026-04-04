@@ -43,6 +43,7 @@ public class UrlController {
     private final com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository;
     private final EncryptionUtils encryptionUtils;
     private final com.shunyalink.analytics.AnalyticsService analyticsService;
+    private final CsvImportService csvImportService;
 
     @Value("${app.base-url}")
     private String baseUrl;
@@ -52,7 +53,8 @@ public class UrlController {
                          PasswordEncoder passwordEncoder, CsvExportService csvExportService,
                          com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository,
                          EncryptionUtils encryptionUtils,
-                         com.shunyalink.analytics.AnalyticsService analyticsService) {
+                         com.shunyalink.analytics.AnalyticsService analyticsService,
+                         CsvImportService csvImportService) {
         this.urlService = urlService;
         this.rateLimiterService = rateLimiterService;
         this.urlRepository = urlRepository;
@@ -62,6 +64,7 @@ public class UrlController {
         this.globalStatsRepository = globalStatsRepository;
         this.encryptionUtils = encryptionUtils;
         this.analyticsService = analyticsService;
+        this.csvImportService = csvImportService;
     }
 
     private String getClientIp(HttpServletRequest request) {
@@ -100,7 +103,7 @@ public class UrlController {
             }
         }
 
-        UrlEntity entity = urlService.shortenUrl(request.getLongUrl(), request.getCustomAlias(), request.getExpiryDays(), userId, request.getTitle(), request.getPassword(), request.isUseAutoTitle());
+        UrlEntity entity = urlService.shortenUrl(request.getLongUrl(), request.getCustomAlias(), request.getExpiryDays(), userId, request.getTitle(), request.getPassword(), request.isUseAutoTitle(), request.getTags());
         return new ShortenResponse(
                 entity.getShortId(),
                 baseUrl + "/" + entity.getShortId(),
@@ -108,7 +111,9 @@ public class UrlController {
                 entity.getCreatedAt(),
                 entity.getTitle(),
                 entity.getPassword() != null,
-                entity.getPassword() != null ? encryptionUtils.decrypt(entity.getPassword()) : null
+                entity.getPassword() != null ? encryptionUtils.decrypt(entity.getPassword()) : null,
+                entity.getCategory(),
+                entity.getTags()
         );
     }
 
@@ -116,9 +121,10 @@ public class UrlController {
     @GetMapping("/my-links")
     public Page<UrlStatsResponse> getMyLinks(
             @AuthenticationPrincipal Object principal,
+            @RequestParam(required = false) String search,
             @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
         Long userId = getUserIdFromPrincipal(principal);
-        return urlService.getMyLinks(userId, pageable);
+        return urlService.getMyLinks(userId, search, pageable);
     }
 
     @Operation(summary = "Reorder links", description = "Updates the sequence of links for the authenticated user.", security = @SecurityRequirement(name = "Bearer Authentication"))
@@ -181,6 +187,19 @@ public class UrlController {
         return ResponseEntity.ok(Map.of("message", "URLs deleted successfully", "count", shortIds.size()));
     }
 
+    @PostMapping("/bulk-import")
+    @Operation(summary = "Bulk import short URLs via CSV", security = @SecurityRequirement(name = "Bearer Authentication"))
+    public ResponseEntity<?> bulkImport(@org.springframework.web.bind.annotation.RequestParam("file") org.springframework.web.multipart.MultipartFile file, HttpServletRequest httpRequest) {
+        Long userId = getCurrentUserId();
+        if (userId == null) throw new BadRequestException("Authentication required");
+        
+        String ip = getClientIp(httpRequest);
+        rateLimiterService.checkLimit("rate:import:" + ip, 5, 3600); // 5 imports per hour max
+
+        Map<String, Object> result = csvImportService.importCsv(file, userId);
+        return ResponseEntity.ok(result);
+    }
+
     @Operation(summary = "Toggle Bio Link visibility", description = "Shows or hides a link on your public Bio Profile.", security = @SecurityRequirement(name = "Bearer Authentication"))
     @PutMapping("/{shortId}/bio-visibility")
     public void toggleBioVisibility(@PathVariable String shortId, @RequestBody Map<String, Boolean> request) {
@@ -201,6 +220,16 @@ public class UrlController {
         String password = request.get("password");
         
         urlService.updateUrlMetadata(shortId, userId, title, password);
+    }
+
+    @Operation(summary = "Update link tags", description = "Allows editing the tags of an existing link.", security = @SecurityRequirement(name = "Bearer Authentication"))
+    @PatchMapping("/{shortId}/tags")
+    public void updateTags(@PathVariable String shortId, @RequestBody Map<String, java.util.Set<String>> request) {
+        Long userId = getCurrentUserId();
+        if (userId == null) throw new BadRequestException("Authentication required");
+        
+        java.util.Set<String> tags = request.get("tags");
+        urlService.updateTags(shortId, userId, tags);
     }
 
     @Operation(summary = "Get public system stats", description = "Returns total links, users, and clicks for landing pages.")
@@ -226,10 +255,7 @@ public class UrlController {
         if (storedPassword == null) {
             matches = true;
         } else {
-            // Try decryption first (new AES method)
-            // We use the service's encryption utils via reflection or just inject it
-            // Actually, I'll inject EncryptionUtils into UrlController too.
-            // Wait, I need to update the constructor in UrlController.
+            // AES-encrypted password — decrypt and compare
              matches = checkPassword(password, storedPassword);
         }
 

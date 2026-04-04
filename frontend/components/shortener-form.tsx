@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, type FormEvent } from "react";
-import { ArrowRight, Loader2, Link, Hash, Calendar, Eye, EyeOff, Lock } from "lucide-react";
+import { ArrowRight, Loader2, Link, Hash, Calendar, Eye, EyeOff, Lock, Tag, ChevronDown, ChevronUp, Megaphone, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,6 +42,17 @@ export function ShortenerForm({ onSuccess, onError }: ShortenerFormProps) {
   const [useAutoTitle, setUseAutoTitle] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showPasswordInput, setShowPasswordInput] = useState(false);
+  
+  // Advanced Features State
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [utmSource, setUtmSource] = useState("");
+  const [utmMedium, setUtmMedium] = useState("");
+  const [utmCampaign, setUtmCampaign] = useState("");
+  
+  // Tagging State
+  const [tagInput, setTagInput] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  
   const [isLoading, setIsLoading] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
@@ -70,15 +81,30 @@ export function ShortenerForm({ onSuccess, onError }: ShortenerFormProps) {
         headers["Authorization"] = `Bearer ${token}`;
       }
 
+      // Safely append UTM params if advanced section used
+      let finalLongUrl = longUrl.trim();
+      try {
+        if (utmSource || utmMedium || utmCampaign) {
+          const urlObj = new URL(finalLongUrl);
+          if (utmSource) urlObj.searchParams.set("utm_source", utmSource.trim());
+          if (utmMedium) urlObj.searchParams.set("utm_medium", utmMedium.trim());
+          if (utmCampaign) urlObj.searchParams.set("utm_campaign", utmCampaign.trim());
+          finalLongUrl = urlObj.toString();
+        }
+      } catch (e) {
+        // Fallback to exactly what user typed if parsing fails
+      }
+
       const response = await fetch(`${API_URL}/api/v1/url/shorten`, {
         method: "POST",
         headers,
         body: JSON.stringify({
-          longUrl: longUrl.trim(),
+          longUrl: finalLongUrl,
           ...(customAlias.trim() && { customAlias: customAlias.trim() }),
           ...(expiryDays && { expiryDays: parseInt(expiryDays, 10) }),
           ...(title.trim() && { title: title.trim() }),
           ...(password.trim() && { password: password.trim() }),
+          ...(tags.length > 0 && { tags: tags }),
           useAutoTitle,
         }),
       });
@@ -98,6 +124,12 @@ export function ShortenerForm({ onSuccess, onError }: ShortenerFormProps) {
       setPassword("");
       setUseAutoTitle(false);
       setShowPasswordInput(false);
+      setShowAdvanced(false);
+      setUtmSource("");
+      setUtmMedium("");
+      setUtmCampaign("");
+      setTags([]);
+      setTagInput("");
     } catch (err) {
       if (err instanceof TypeError && err.message.includes("fetch")) {
         onError("Cannot reach the server. Make sure the backend is running.");
@@ -251,6 +283,128 @@ export function ShortenerForm({ onSuccess, onError }: ShortenerFormProps) {
             >
               {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
+          </div>
+        )}
+      </div>
+
+      {/* Advanced Features Toggle */}
+      <div className="pt-2">
+        <button
+          type="button"
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors w-full p-2 rounded-lg hover:bg-muted/50"
+        >
+          {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          Advanced Settings (UTM, Tags)
+        </button>
+
+        {showAdvanced && (
+          <div className="mt-4 p-5 rounded-xl border border-border/50 bg-muted/20 space-y-5 animate-in fade-in slide-in-from-top-2 duration-300">
+            {/* Tags section */}
+            <div className="space-y-3">
+              <Label htmlFor="tags" className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <Tag className="w-4 h-4 text-primary" />
+                Tags (Folders)
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  id="tagInput"
+                  type="text"
+                  placeholder="e.g. Marketing, YouTube"
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      if (tagInput.trim() && !tags.includes(tagInput.trim())) {
+                        setTags([...tags, tagInput.trim()]);
+                        setTagInput("");
+                      }
+                    }
+                  }}
+                  className="h-10 bg-background/50 border-border/50"
+                  disabled={isLoading}
+                />
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => {
+                    if (tagInput.trim() && !tags.includes(tagInput.trim())) {
+                      setTags([...tags, tagInput.trim()]);
+                      setTagInput("");
+                    }
+                  }}
+                  disabled={isLoading}
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+              {tags.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {tags.map((tag) => (
+                    <span key={tag} className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-primary/10 text-primary rounded-full">
+                      {tag}
+                      <button type="button" onClick={() => setTags(tags.filter(t => t !== tag))} className="text-primary hover:text-primary/70">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="h-px w-full bg-border/50 my-2" />
+
+            {/* UTM Tag Builder */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <Megaphone className="w-4 h-4 text-emerald-500" />
+                UTM Parameters Builder
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="utmSource" className="text-xs text-muted-foreground">UTM Source (e.g. twitter)</Label>
+                  <Input
+                    id="utmSource"
+                    placeholder="twitter, newsletter"
+                    value={utmSource}
+                    onChange={(e) => setUtmSource(e.target.value)}
+                    className="h-10 text-sm bg-background/50 border-border/50"
+                    disabled={isLoading}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="utmMedium" className="text-xs text-muted-foreground">UTM Medium (e.g. social)</Label>
+                  <Input
+                    id="utmMedium"
+                    placeholder="social, email"
+                    value={utmMedium}
+                    onChange={(e) => setUtmMedium(e.target.value)}
+                    className="h-10 text-sm bg-background/50 border-border/50"
+                    disabled={isLoading}
+                  />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="utmCampaign" className="text-xs text-muted-foreground">UTM Campaign (e.g. summer_sale)</Label>
+                  <Input
+                    id="utmCampaign"
+                    placeholder="summer_sale"
+                    value={utmCampaign}
+                    onChange={(e) => setUtmCampaign(e.target.value)}
+                    className="h-10 text-sm bg-background/50 border-border/50"
+                    disabled={isLoading}
+                  />
+                </div>
+              </div>
+              {(utmSource || utmMedium || utmCampaign) && (
+                <div className="p-2 text-[10px] text-muted-foreground bg-background rounded-md border border-border flex items-center justify-between">
+                  <span className="truncate pr-2">
+                    Params will be appended to your destination URL.
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

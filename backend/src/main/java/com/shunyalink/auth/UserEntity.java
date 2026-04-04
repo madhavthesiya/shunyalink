@@ -36,6 +36,27 @@ public class UserEntity {
     @Column(length = 20)
     private String themeColor = "#000000";
 
+    @Column(length = 20)
+    private String profileType = "NORMAL"; // "NORMAL" or "PROGRAMMER"
+
+    @Column(length = 50)
+    private String githubUsername;
+
+    @Column(length = 50)
+    private String leetcodeUsername;
+
+    @Column(length = 50)
+    private String codeforcesUsername;
+
+    @Column(length = 50)
+    private String codeChefHandle;
+
+    @Column(length = 50)
+    private String atCoderHandle;
+
+    @Column(length = 500)
+    private String profilePictureUrl;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -65,5 +86,26 @@ public class UserEntity {
     
     public String getThemeColor() { return themeColor; }
     public void setThemeColor(String themeColor) { this.themeColor = themeColor; }
+
+    public String getProfileType() { return profileType; }
+    public void setProfileType(String profileType) { this.profileType = profileType; }
+
+    public String getGithubUsername() { return githubUsername; }
+    public void setGithubUsername(String githubUsername) { this.githubUsername = githubUsername; }
+
+    public String getLeetcodeUsername() { return leetcodeUsername; }
+    public void setLeetcodeUsername(String leetcodeUsername) { this.leetcodeUsername = leetcodeUsername; }
+
+    public String getCodeforcesUsername() { return codeforcesUsername; }
+    public void setCodeforcesUsername(String codeforcesUsername) { this.codeforcesUsername = codeforcesUsername; }
+
+    public String getCodeChefHandle() { return codeChefHandle; }
+    public void setCodeChefHandle(String codeChefHandle) { this.codeChefHandle = codeChefHandle; }
+
+    public String getAtCoderHandle() { return atCoderHandle; }
+    public void setAtCoderHandle(String atCoderHandle) { this.atCoderHandle = atCoderHandle; }
+
+    public String getProfilePictureUrl() { return profilePictureUrl; }
+    public void setProfilePictureUrl(String profilePictureUrl) { this.profilePictureUrl = profilePictureUrl; }
 
 }

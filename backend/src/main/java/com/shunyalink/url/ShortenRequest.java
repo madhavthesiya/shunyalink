@@ -1,10 +1,10 @@
 package com.shunyalink.url;
-
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.util.Set;
 
 public class ShortenRequest {
 
@@ -33,6 +33,8 @@ public class ShortenRequest {
     private String password;
 
     private boolean useAutoTitle = false;
+
+    private Set<String> tags;
 
     public String getLongUrl() {
         return longUrl;
@@ -73,5 +75,9 @@ public class ShortenRequest {
     public boolean isUseAutoTitle() { return useAutoTitle; }
 
     public void setUseAutoTitle(boolean useAutoTitle) { this.useAutoTitle = useAutoTitle; }
+
+    public Set<String> getTags() { return tags; }
+
+    public void setTags(Set<String> tags) { this.tags = tags; }
 
 }

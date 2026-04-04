@@ -8,8 +8,18 @@ import {
   QrCode,
   Trash2,
   TrendingUp,
+  Youtube,
+  Github,
+  FileText,
+  Share2,
+  User,
+  BookOpen,
+  Link2,
+  Tag,
+  UploadCloud,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { GlassPanel } from "@/components/shell/glass-panel";
 import { LoadingSpinner } from "@/components/shell/loading-block";
@@ -49,6 +59,25 @@ function BioToggle({
       )}
     </button>
   );
+}
+
+function getCategoryIcon(category?: string) {
+  switch (category?.toUpperCase()) {
+    case "VIDEO":
+      return <Youtube className="w-3.5 h-3.5 text-red-500" />;
+    case "GITHUB":
+      return <Github className="w-3.5 h-3.5" />;
+    case "DOCUMENTATION":
+      return <FileText className="w-3.5 h-3.5 text-blue-500" />;
+    case "SOCIAL_MEDIA":
+      return <Share2 className="w-3.5 h-3.5 text-purple-500" />;
+    case "PORTFOLIO":
+      return <User className="w-3.5 h-3.5 text-emerald-500" />;
+    case "BLOG":
+      return <BookOpen className="w-3.5 h-3.5 text-orange-500" />;
+    default:
+      return <Link2 className="w-3.5 h-3.5 text-muted-foreground/50" />;
+  }
 }
 
 function LinkActionButtons({
@@ -130,6 +159,8 @@ export function DashboardLinksPanel({
   isLoading,
   page,
   totalPages,
+  searchQuery,
+  onSearchChange,
   selectedIds,
   copiedId,
   togglingIds,
@@ -142,6 +173,7 @@ export function DashboardLinksPanel({
   onQr,
   onDelete,
   onExportCsv,
+  onImportCsv,
   onPagePrev,
   onPageNext,
   formatDate,
@@ -151,6 +183,8 @@ export function DashboardLinksPanel({
   isLoading: boolean;
   page: number;
   totalPages: number;
+  searchQuery: string;
+  onSearchChange: (q: string) => void;
   selectedIds: Set<string>;
   copiedId: string | null;
   togglingIds: Set<string>;
@@ -163,6 +197,7 @@ export function DashboardLinksPanel({
   onQr: (shortId: string) => void;
   onDelete: (shortId: string) => void;
   onExportCsv: () => void;
+  onImportCsv: () => void;
   onPagePrev: () => void;
   onPageNext: () => void;
   formatDate: (iso: string) => string;
@@ -171,16 +206,50 @@ export function DashboardLinksPanel({
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h2 className="text-2xl font-bold text-foreground">Your Shortened URLs</h2>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onExportCsv}
-          className="w-full sm:w-auto border-primary/20 hover:bg-primary/5 hover:text-primary transition-all duration-300"
-          disabled={isLoading || urls.length === 0}
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onImportCsv}
+            className="w-full sm:w-auto border-primary/20 hover:bg-primary/5 hover:text-primary transition-all duration-300"
+          >
+            <UploadCloud className="w-4 h-4 mr-2" />
+            Import CSV
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onExportCsv}
+            className="w-full sm:w-auto border-primary/20 hover:bg-primary/5 hover:text-primary transition-all duration-300"
+            disabled={isLoading || urls.length === 0}
+          >
+            <Copy className="w-4 h-4 mr-2" />
+            Export CSV
+          </Button>
+        </div>
+      </div>
+
+      <div className="relative">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
         >
-          <Copy className="w-4 h-4 mr-2" />
-          Export CSV
-        </Button>
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+          />
+        </svg>
+        <Input
+          placeholder="Search by title, original URL, shortlink, or tags..."
+          value={searchQuery}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => onSearchChange(e.target.value)}
+          className="pl-9 w-full bg-background/50 border-primary/20 focus:border-primary/50 transition-colors"
+        />
       </div>
 
       {isLoading ? (
@@ -217,9 +286,11 @@ export function DashboardLinksPanel({
                       href={`${apiBaseUrl}/${url.shortId}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-primary font-medium break-words flex items-center gap-2"
+                      className="text-primary font-medium flex items-center gap-2 min-w-0"
+                      title={url.title || url.shortId}
                     >
-                      {url.title || url.shortId}
+                      {getCategoryIcon(url.category)}
+                      <span className="truncate flex-1">{url.title || url.shortId}</span>
                       {url.passwordProtected && (
                         <Lock className="w-3 h-3 text-muted-foreground/60 shrink-0" />
                       )}
@@ -235,6 +306,16 @@ export function DashboardLinksPanel({
                     >
                       {url.longUrl}
                     </p>
+                    {url.tags && url.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1 font-mono">
+                        {url.tags.map(tag => (
+                          <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium bg-primary/10 text-primary border border-primary/20 rounded-md">
+                            <Tag className="w-2.5 h-2.5" />
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                       <span>
                         <span className="font-medium text-foreground">
@@ -271,34 +352,33 @@ export function DashboardLinksPanel({
             ))}
           </div>
 
-          {/* Desktop table */}
           <div className="hidden md:block overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm table-fixed">
               <thead className="border-b border-border/50 bg-secondary/50">
                 <tr>
-                  <th className="px-4 lg:px-6 py-4 text-left">
+                  <th className="px-2 py-4 text-left w-10">
                     <Checkbox
                       checked={urls.length > 0 && selectedIds.size === urls.length}
                       onCheckedChange={onToggleSelectAll}
                       aria-label="Select all"
                     />
                   </th>
-                  <th className="px-4 lg:px-6 py-4 text-left font-semibold text-foreground">
+                  <th className="px-3 py-4 text-left font-semibold text-foreground w-[200px] lg:w-[280px]">
                     Short URL
                   </th>
-                  <th className="px-4 lg:px-6 py-4 text-left font-semibold text-foreground">
+                  <th className="px-3 py-4 text-left font-semibold text-foreground">
                     Original URL
                   </th>
-                  <th className="px-4 lg:px-6 py-4 text-center font-semibold text-foreground">
+                  <th className="px-2 py-4 text-center font-semibold text-foreground w-16">
                     Clicks
                   </th>
-                  <th className="px-4 lg:px-6 py-4 text-left font-semibold text-foreground">
+                  <th className="px-2 py-4 text-left font-semibold text-foreground w-28">
                     Created
                   </th>
-                  <th className="px-4 lg:px-6 py-4 text-center font-semibold text-foreground">
+                  <th className="px-2 py-4 text-center font-semibold text-foreground w-16">
                     Bio
                   </th>
-                  <th className="px-4 lg:px-6 py-4 text-right font-semibold text-foreground">
+                  <th className="px-2 py-4 text-right font-semibold text-foreground w-[180px]">
                     Actions
                   </th>
                 </tr>
@@ -312,7 +392,7 @@ export function DashboardLinksPanel({
                       selectedIds.has(url.shortId) && "bg-primary/5 hover:bg-primary/10",
                     )}
                   >
-                    <td className="px-4 lg:px-6 py-4">
+                    <td className="px-2 py-4">
                       <Checkbox
                         checked={selectedIds.has(url.shortId)}
                         onCheckedChange={() => onToggleSelect(url.shortId)}
@@ -320,39 +400,50 @@ export function DashboardLinksPanel({
                         className="data-[state=checked]:bg-primary"
                       />
                     </td>
-                    <td className="px-4 lg:px-6 py-4">
+                    <td className="px-3 py-4 max-w-[200px] lg:max-w-[280px]">
                       <a
                         href={`${apiBaseUrl}/${url.shortId}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-primary hover:underline font-medium truncate flex items-center gap-2"
+                        className="text-primary hover:underline font-medium flex items-center gap-2 min-w-0"
+                        title={url.title || url.shortId}
                       >
-                        {url.title || url.shortId}
+                        {getCategoryIcon(url.category)}
+                        <span className="truncate flex-1">{url.title || url.shortId}</span>
                         {url.passwordProtected && (
                           <Lock className="w-3 h-3 text-muted-foreground/60 shrink-0" />
                         )}
                       </a>
                       {url.title != null && url.title !== "" && (
-                        <span className="text-[10px] text-muted-foreground/60 font-mono block">
+                        <span className="text-[10px] text-muted-foreground/60 font-mono block truncate">
                           /{url.shortId}
                         </span>
                       )}
                     </td>
-                    <td className="px-4 lg:px-6 py-4">
+                    <td className="px-3 py-4">
                       <div
-                        className="truncate text-muted-foreground max-w-[180px] lg:max-w-[300px]"
+                        className="truncate text-muted-foreground"
                         title={url.longUrl}
                       >
                         {url.longUrl}
                       </div>
+                      {url.tags && url.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1 font-mono">
+                          {url.tags.map(tag => (
+                            <span key={tag} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-medium bg-primary/10 text-primary border border-primary/20 rounded">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </td>
-                    <td className="px-4 lg:px-6 py-4 text-center font-semibold">
+                    <td className="px-2 py-4 text-center font-semibold">
                       {url.clickCount}
                     </td>
-                    <td className="px-4 lg:px-6 py-4 text-muted-foreground whitespace-nowrap">
+                    <td className="px-2 py-4 text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis">
                       {formatDate(url.createdAt)}
                     </td>
-                    <td className="px-4 lg:px-6 py-4">
+                    <td className="px-2 py-4">
                       <div className="flex justify-center">
                         <button
                           type="button"
@@ -379,8 +470,8 @@ export function DashboardLinksPanel({
                         </button>
                       </div>
                     </td>
-                    <td className="px-4 lg:px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2 flex-wrap">
+                    <td className="px-2 py-4 text-right">
+                      <div className="flex items-center justify-end gap-1 flex-nowrap">
                         <Button
                           size="sm"
                           variant="ghost"

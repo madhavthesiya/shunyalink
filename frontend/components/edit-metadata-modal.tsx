@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, Save, Key, Type, Loader2, Eye, EyeOff, ShieldCheck } from "lucide-react";
+import { X, Save, Key, Type, Loader2, Eye, EyeOff, ShieldCheck, Tag, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,9 +11,10 @@ interface EditMetadataModalProps {
   initialTitle?: string;
   initialPasswordProtected: boolean;
   initialPassword?: string;
+  initialTags?: string[];
   isOpen: boolean;
   onClose: () => void;
-  onUpdate: (shortId: string, newTitle: string, newPasswordProtected: boolean, newPassword?: string) => void;
+  onUpdate: (shortId: string, newTitle: string, newPasswordProtected: boolean, newPassword?: string, newTags?: string[]) => void;
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
@@ -23,6 +24,7 @@ export function EditMetadataModal({
   initialTitle, 
   initialPasswordProtected,
   initialPassword,
+  initialTags = [],
   isOpen, 
   onClose,
   onUpdate
@@ -34,6 +36,8 @@ export function EditMetadataModal({
   const [isUpdating, setIsUpdating] = useState(false);
   const [isRevealing, setIsRevealing] = useState(false);
   const [passwordRevealed, setPasswordRevealed] = useState(false);
+  const [tags, setTags] = useState<string[]>(initialTags);
+  const [tagInput, setTagInput] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -41,10 +45,13 @@ export function EditMetadataModal({
       setTitle(initialTitle || "");
       setPassword("");
       setPasswordRevealed(false);
+      setPasswordRevealed(false);
       setRemovePassword(false);
+      setTags(initialTags || []);
+      setTagInput("");
       setError(null);
     }
-  }, [isOpen, initialTitle, initialPasswordProtected, initialPassword]);
+  }, [isOpen, initialTitle, initialPasswordProtected, initialPassword, initialTags]);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -99,29 +106,50 @@ export function EditMetadataModal({
     }
 
     try {
-      const response = await fetch(`${API_URL}/api/v1/url/${shortId}/metadata`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          title: title.trim(),
-          password: passwordToSend,
-        }),
-      });
+        const promises = [
+          fetch(`${API_URL}/api/v1/url/${shortId}/metadata`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              title: title.trim(),
+              password: passwordToSend,
+            }),
+          })
+        ];
 
-      if (response.ok) {
-        let isNowProtected = initialPasswordProtected;
-        if (removePassword) isNowProtected = false;
-        else if (password.trim() !== "") isNowProtected = true;
+        // Also update tags if initialTags differ or just aggressively send it
+        promises.push(
+          fetch(`${API_URL}/api/v1/url/${shortId}/tags`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ tags }),
+          })
+        );
 
-        onUpdate(shortId, title.trim(), isNowProtected, passwordToSend === null ? initialPassword : passwordToSend);
-        onClose();
-      } else {
-        const data = await response.json();
-        setError(data.message || "Failed to update metadata");
-      }
+        const responses = await Promise.all(promises);
+        const failedResponse = responses.find(r => !r.ok);
+
+        if (!failedResponse) {
+          let isNowProtected = initialPasswordProtected;
+          if (removePassword) isNowProtected = false;
+          else if (password.trim() !== "") isNowProtected = true;
+
+          onUpdate(shortId, title.trim(), isNowProtected, passwordToSend === null ? initialPassword : passwordToSend, tags);
+          onClose();
+        } else {
+          try {
+            const data = await failedResponse.json();
+            setError(data.message || "Failed to update one or more fields.");
+          } catch {
+            setError("Failed to update one or more fields.");
+          }
+        }
     } catch (err) {
       setError("Network error. Please try again.");
     } finally {
@@ -185,6 +213,61 @@ export function EditMetadataModal({
                 disabled={isUpdating}
               />
               <p className="text-[10px] text-muted-foreground/60 italic">Friendly name shown on your Bio Profile.</p>
+            </div>
+
+            {/* Tags Input */}
+            <div className="space-y-2">
+              <Label htmlFor="edit-tags" className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <Tag className="w-4 h-4 text-primary" />
+                Folders & Tags
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  id="edit-tagInput"
+                  type="text"
+                  placeholder="e.g. Marketing, YouTube"
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (tagInput.trim() && !tags.includes(tagInput.trim())) {
+                        setTags([...tags, tagInput.trim()]);
+                        setTagInput("");
+                      }
+                    }
+                  }}
+                  className="h-10 bg-background/50 border-border/50 rounded-xl"
+                  disabled={isUpdating}
+                />
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => {
+                    if (tagInput.trim() && !tags.includes(tagInput.trim())) {
+                      setTags([...tags, tagInput.trim()]);
+                      setTagInput("");
+                    }
+                  }}
+                  disabled={isUpdating}
+                  className="rounded-xl"
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+              {tags.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {tags.map((tag) => (
+                    <span key={tag} className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-primary/10 text-primary border border-primary/20 rounded-full">
+                      {tag}
+                      <button type="button" onClick={() => setTags(tags.filter(t => t !== tag))} className="text-primary hover:text-primary/70">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Password Input */}

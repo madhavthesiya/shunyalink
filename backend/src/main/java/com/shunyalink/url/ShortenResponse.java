@@ -1,6 +1,7 @@
 package com.shunyalink.url;
 
 import java.time.LocalDateTime;
+import java.util.Set;
 
 public class ShortenResponse {
 
@@ -11,8 +12,10 @@ public class ShortenResponse {
     private String title;
     private boolean passwordProtected;
     private String password;
+    private String category;
+    private Set<String> tags;
 
-    public ShortenResponse(String shortId, String shortUrl, String longUrl, LocalDateTime createdAt, String title, boolean passwordProtected, String password) {
+    public ShortenResponse(String shortId, String shortUrl, String longUrl, LocalDateTime createdAt, String title, boolean passwordProtected, String password, String category, Set<String> tags) {
         this.shortId = shortId;
         this.shortUrl = shortUrl;
         this.longUrl = longUrl;
@@ -20,6 +23,8 @@ public class ShortenResponse {
         this.title = title;
         this.passwordProtected = passwordProtected;
         this.password = password;
+        this.category = category;
+        this.tags = tags;
     }
 
     public String getTitle() {
@@ -39,5 +44,9 @@ public class ShortenResponse {
     public boolean isPasswordProtected() { return passwordProtected; }
 
     public String getPassword() { return password; }
+
+    public String getCategory() { return category; }
+    
+    public Set<String> getTags() { return tags; }
 
 }

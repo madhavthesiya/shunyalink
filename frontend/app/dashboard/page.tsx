@@ -10,6 +10,7 @@ import { StatsModal } from "@/components/stats-modal";
 import { EditMetadataModal } from "@/components/edit-metadata-modal";
 import { BioLinksReorder } from "@/components/bio-links-reorder";
 import { UserProfileSettings } from "@/components/user-profile-settings";
+import { DashboardImportModal } from "@/components/dashboard/dashboard-import-modal";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -39,6 +40,8 @@ interface ShortenResponse {
   title?: string;
   passwordProtected: boolean;
   password?: string;
+  category?: string;
+  tags?: string[];
 }
 
 function DashboardContent() {
@@ -55,6 +58,8 @@ function DashboardContent() {
   const [showQR, setShowQR] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedShortId, setSelectedShortId] = useState<string>("");
   const [editingUrl, setEditingUrl] = useState<DashboardUrlData | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -82,15 +87,15 @@ function DashboardContent() {
     }
 
     setUserName(name || "User");
-    loadUserUrls(token, true, page);
+    loadUserUrls(token, true, page, searchQuery);
     loadProfile(token);
 
     const intervalId = setInterval(() => {
-      loadUserUrls(token, false, page);
+      loadUserUrls(token, false, page, searchQuery);
     }, 5000);
 
     return () => clearInterval(intervalId);
-  }, [router, page]);
+  }, [router, page, searchQuery]);
 
   const loadProfile = async (token: string) => {
     try {
@@ -138,18 +143,25 @@ function DashboardContent() {
     token: string,
     showLoading: boolean = true,
     targetPage = page,
+    search = searchQuery,
   ) => {
     try {
       if (showLoading) setIsLoading(true);
+      const urlParams = new URLSearchParams();
+      urlParams.append("page", targetPage.toString());
+      urlParams.append("size", "10");
+      if (search.trim() !== "") {
+        urlParams.append("search", search.trim());
+      }
       const response = await fetch(
-        `${API_URL}/api/v1/url/my-links?page=${targetPage}&size=10`,
+        `${API_URL}/api/v1/url/my-links?${urlParams.toString()}`,
         {
           headers: { Authorization: `Bearer ${token}` },
           cache: "no-store",
         },
       );
 
-      if (response.status === 401) {
+      if (response.status === 401 || response.status === 403) {
         localStorage.removeItem("authToken");
         router.push("/login");
         return;
@@ -198,6 +210,7 @@ function DashboardContent() {
         title: data.title,
         passwordProtected: data.passwordProtected,
         password: data.password,
+        tags: data.tags,
       },
       ...urls,
     ]);
@@ -306,6 +319,7 @@ function DashboardContent() {
     newTitle: string,
     newProtected: boolean,
     newPassword?: string,
+    newTags?: string[]
   ) => {
     setUrls((prev) =>
       prev.map((u) =>
@@ -315,6 +329,7 @@ function DashboardContent() {
               title: newTitle,
               passwordProtected: newProtected,
               password: newPassword,
+              tags: newTags !== undefined ? newTags : u.tags,
             }
           : u,
       ),
@@ -446,6 +461,11 @@ function DashboardContent() {
                 isLoading={isLoading}
                 page={page}
                 totalPages={totalPages}
+                searchQuery={searchQuery}
+                onSearchChange={(q) => {
+                  setSearchQuery(q);
+                  setPage(0);
+                }}
                 selectedIds={selectedIds}
                 copiedId={copiedId}
                 togglingIds={togglingIds}
@@ -466,6 +486,7 @@ function DashboardContent() {
                 }}
                 onDelete={deleteUrl}
                 onExportCsv={handleCsvExport}
+                onImportCsv={() => setShowImportModal(true)}
                 onPagePrev={() => {
                   const token = localStorage.getItem("authToken");
                   if (token) loadUserUrls(token, true, page - 1);
@@ -529,6 +550,7 @@ function DashboardContent() {
           initialTitle={editingUrl.title}
           initialPasswordProtected={editingUrl.passwordProtected}
           initialPassword={editingUrl.password}
+          initialTags={editingUrl.tags}
           onUpdate={handleUpdateUrl}
         />
       )}
@@ -594,6 +616,15 @@ function DashboardContent() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <DashboardImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onSuccess={() => {
+          const token = localStorage.getItem("authToken");
+          if (token) loadUserUrls(token, true, 0); // Reload data fully
+        }}
+      />
     </div>
   );
 }

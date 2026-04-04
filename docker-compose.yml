@@ -58,6 +58,9 @@ services:
       ALLOWED_ORIGIN: ${ALLOWED_ORIGIN:-http://localhost:3000}
       MAIL_USERNAME: ${MAIL_USERNAME:-noreply.shunyalink@gmail.com}
       MAIL_PASSWORD: ${MAIL_PASSWORD}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      CLOUDINARY_URL: ${CLOUDINARY_URL}
     # No direct port exposure — only Nginx can talk to backend
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
@@ -87,6 +90,8 @@ services:
         NEXT_PUBLIC_API_URL: ${APP_BASE_URL:-http://localhost}
     container_name: urlshortener-frontend
     restart: unless-stopped
+    environment:
+      INTERNAL_API_URL: http://nginx
     depends_on:
       - nginx
     ports:

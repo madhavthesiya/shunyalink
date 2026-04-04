@@ -6,7 +6,6 @@ import com.shunyalink.rate.RateLimiterService;
 import com.shunyalink.security.JwtService;
 import com.shunyalink.security.CustomUserDetailsService;
 import com.shunyalink.auth.UserRepository;
-import com.shunyalink.auth.UserEntity;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -58,6 +57,9 @@ class UrlControllerTest {
     @MockBean
     private CsvExportService csvExportService;
 
+    @MockBean
+    private CsvImportService csvImportService;
+
     // ─── POST /api/v1/url/shorten ────────────────────────────────────
 
     @Test
@@ -66,7 +68,7 @@ class UrlControllerTest {
         UrlEntity entity = new UrlEntity();
         entity.setShortId("abc123");
 
-        when(urlService.shortenUrl(eq("https://google.com"), isNull(), isNull(), any(), any(), any(), anyBoolean()))
+        when(urlService.shortenUrl(eq("https://google.com"), isNull(), isNull(), any(), any(), any(), anyBoolean(), any()))
                 .thenReturn(entity);
 
         ShortenRequest request = new ShortenRequest();
@@ -87,7 +89,7 @@ class UrlControllerTest {
         UrlEntity entity = new UrlEntity();
         entity.setShortId("myalias");
 
-        when(urlService.shortenUrl(eq("https://google.com"), eq("myalias"), isNull(), any(), any(), any(), anyBoolean()))
+        when(urlService.shortenUrl(eq("https://google.com"), eq("myalias"), isNull(), any(), any(), any(), anyBoolean(), any()))
                 .thenReturn(entity);
 
         ShortenRequest request = new ShortenRequest();
@@ -105,7 +107,7 @@ class UrlControllerTest {
     @Test
     @WithMockUser
     void shorten_duplicateAlias_returns409() throws Exception {
-        when(urlService.shortenUrl(any(), any(), any(), any(), any(), any(), anyBoolean()))
+        when(urlService.shortenUrl(any(), any(), any(), any(), any(), any(), anyBoolean(), any()))
                 .thenThrow(new ConflictException("Alias already in use"));
 
         ShortenRequest request = new ShortenRequest();
@@ -142,7 +144,7 @@ class UrlControllerTest {
                 LocalDateTime.now(), LocalDateTime.now(),
                 false, "Title", false, null,
                 Collections.emptyMap(), Collections.emptyMap(),
-                0
+                0, "GENERAL", Collections.emptySet()
         );
         when(urlService.getStats(eq("abc123"), anyLong())).thenReturn(stats);
 

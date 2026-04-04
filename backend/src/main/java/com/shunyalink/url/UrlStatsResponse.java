@@ -1,6 +1,7 @@
 package com.shunyalink.url;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.Set;
 
 public class UrlStatsResponse {
 
@@ -16,8 +17,10 @@ public class UrlStatsResponse {
     private Map<String, Long> timeSeries;
     private Map<String, Long> countries;
     private Integer orderIndex;
+    private String category;
+    private Set<String> tags;
 
-    public UrlStatsResponse(String shortId, String longUrl, long clickCount, LocalDateTime lastAccessedTime, LocalDateTime createdAt, boolean showOnBio, String title, boolean passwordProtected, String password, Map<String, Long> timeSeries, Map<String, Long> countries, Integer orderIndex) {
+    public UrlStatsResponse(String shortId, String longUrl, long clickCount, LocalDateTime lastAccessedTime, LocalDateTime createdAt, boolean showOnBio, String title, boolean passwordProtected, String password, Map<String, Long> timeSeries, Map<String, Long> countries, Integer orderIndex, String category, Set<String> tags) {
         this.shortId = shortId;
         this.longUrl = longUrl;
         this.clickCount = clickCount;
@@ -30,6 +33,8 @@ public class UrlStatsResponse {
         this.timeSeries = timeSeries;
         this.countries = countries;
         this.orderIndex = orderIndex;
+        this.category = category;
+        this.tags = tags;
     }
 
     public String getTitle() {
@@ -78,5 +83,13 @@ public class UrlStatsResponse {
 
     public Integer getOrderIndex() {
         return orderIndex;
+    }
+
+    public String getCategory() {
+        return category;
+    }
+
+    public Set<String> getTags() {
+        return tags;
     }
 }

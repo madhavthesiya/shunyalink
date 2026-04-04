@@ -8,12 +8,13 @@ import { QRModal } from "@/components/qr-modal";
 import { MarketingPageShell } from "@/components/shell/page-shell";
 import { HomeHero } from "@/components/home/home-hero";
 import { HomeShortenSection } from "@/components/home/home-shorten-section";
-import { BioShowcase } from "@/components/home/bio-showcase";
+import { ProgrammerShowcase } from "@/components/home/programmer-showcase";
 import { FeatureGrid } from "@/components/home/feature-grid";
 import {
   PublicStatsStrip,
   type PublicStats,
 } from "@/components/home/public-stats-strip";
+import { HowItWorks } from "@/components/home/how-it-works";
 
 interface ShortenResult {
   shortId: string;
@@ -71,7 +72,9 @@ export default function Home() {
           onGenerateQR={() => setShowQR(true)}
         />
 
-        <BioShowcase isLoggedIn={isLoggedIn} />
+        <ProgrammerShowcase />
+
+        <HowItWorks />
 
         <FeatureGrid />
 

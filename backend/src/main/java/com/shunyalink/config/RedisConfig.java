@@ -27,4 +27,15 @@ public class RedisConfig {
 
         return template;
     }
+
+    @Bean
+    public org.springframework.cache.CacheManager cacheManager(RedisConnectionFactory connectionFactory) {
+        org.springframework.data.redis.cache.RedisCacheConfiguration config = org.springframework.data.redis.cache.RedisCacheConfiguration.defaultCacheConfig()
+            .entryTtl(java.time.Duration.ofHours(1))
+            .disableCachingNullValues();
+
+        return org.springframework.data.redis.cache.RedisCacheManager.builder(connectionFactory)
+            .cacheDefaults(config)
+            .build();
+    }
 }

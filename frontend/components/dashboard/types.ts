@@ -8,4 +8,6 @@ export interface DashboardUrlData {
   title?: string;
   passwordProtected: boolean;
   password?: string;
+  category?: string;
+  tags?: string[];
 }

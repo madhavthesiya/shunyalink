@@ -7,10 +7,8 @@ import com.shunyalink.exception.NotFoundException;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.PageRequest;
 
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -30,17 +28,14 @@ public class DbUrlService implements UrlService {
     private final IdEncoder idEncoder;
     private final RedisTemplate<String, String> redisTemplate;
     private static final Logger log = LoggerFactory.getLogger(DbUrlService.class);
-    private final PasswordEncoder passwordEncoder;
     private final com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository;
     private final MetadataService metadataService;
-
     private final com.shunyalink.util.EncryptionUtils encryptionUtils;
     private final AnalyticsService analyticsService;
 
     public DbUrlService(UrlRepository urlRepository,
                         IdEncoder idEncoder,
                         RedisTemplate<String, String> redisTemplate,
-                        PasswordEncoder passwordEncoder,
                         com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository,
                         MetadataService metadataService,
                         com.shunyalink.util.EncryptionUtils encryptionUtils,
@@ -48,7 +43,6 @@ public class DbUrlService implements UrlService {
         this.urlRepository = urlRepository;
         this.idEncoder = idEncoder;
         this.redisTemplate = redisTemplate;
-        this.passwordEncoder = passwordEncoder;
         this.globalStatsRepository = globalStatsRepository;
         this.metadataService = metadataService;
         this.encryptionUtils = encryptionUtils;
@@ -73,7 +67,7 @@ public class DbUrlService implements UrlService {
 
     @Override
     @Transactional
-    public UrlEntity shortenUrl(String longUrl, String customAlias, Integer expiryDays, Long userId, String title, String password, boolean useAutoTitle) {
+    public UrlEntity shortenUrl(String longUrl, String customAlias, Integer expiryDays, Long userId, String title, String password, boolean useAutoTitle, java.util.Set<String> tags) {
         if (customAlias != null && !customAlias.isBlank()) {
             String normalized = customAlias.toLowerCase().trim();
             validateAlias(normalized);
@@ -82,7 +76,11 @@ public class DbUrlService implements UrlService {
                 if (!existing.get().getLongUrl().equals(longUrl)) {
                     throw new ConflictException("Alias '" + normalized + "' is already in use by a different URL");
                 }
-                return existing.get();
+                UrlEntity ext = existing.get();
+                if (ext.getCategory() == null || ext.getCategory().isBlank() || "GENERAL".equals(ext.getCategory())) {
+                    metadataService.fetchAndProcessMetadataAsync(ext.getShortId(), longUrl, useAutoTitle);
+                }
+                return ext;
             }
             UrlEntity entity = new UrlEntity();
             entity.setLongUrl(longUrl);
@@ -90,6 +88,9 @@ public class DbUrlService implements UrlService {
             entity.setCustom(true);
             entity.setUserId(userId);
             entity.setTitle(title);
+            if (tags != null && !tags.isEmpty()) {
+                entity.setTags(tags);
+            }
             if (expiryDays != null) {
                 entity.setExpiryTime(LocalDateTime.now().plusDays(expiryDays));
             }
@@ -103,10 +104,8 @@ public class DbUrlService implements UrlService {
                     getTtlSeconds(entity.getExpiryTime()),
                     TimeUnit.SECONDS);
 
-            // Phase 7: Trigger Async Metadata Fetch (Only if requested by user)
-            if (useAutoTitle && (title == null || title.isBlank())) {
-                metadataService.fetchAndSaveTitle(normalized, longUrl);
-            }
+            // Trigger Unified Smart AI Fetching (Async) - Always for categorization
+            metadataService.fetchAndProcessMetadataAsync(normalized, longUrl, useAutoTitle);
             return saved;
         }
         // Rule: Only reuse existing links if NO password and NO expiry is requested.
@@ -116,7 +115,11 @@ public class DbUrlService implements UrlService {
                     ? urlRepository.findFirstByLongUrlAndUserIdAndIsCustomFalseAndExpiryTimeIsNullAndPasswordIsNull(longUrl, userId)
                     : urlRepository.findFirstByLongUrlAndUserIdIsNullAndIsCustomFalseAndExpiryTimeIsNullAndPasswordIsNull(longUrl);
             if (existing.isPresent()) {
-                return existing.get();
+                UrlEntity ext = existing.get();
+                if (ext.getCategory() == null || ext.getCategory().isBlank() || "GENERAL".equals(ext.getCategory())) {
+                    metadataService.fetchAndProcessMetadataAsync(ext.getShortId(), longUrl, useAutoTitle);
+                }
+                return ext;
             }
         }
         Long nextId = urlRepository.getNextId();
@@ -127,6 +130,9 @@ public class DbUrlService implements UrlService {
         entity.setCustom(false);
         entity.setUserId(userId);
         entity.setTitle(title);
+        if (tags != null && !tags.isEmpty()) {
+            entity.setTags(tags);
+        }
         if (expiryDays != null) {
             entity.setExpiryTime(LocalDateTime.now().plusDays(expiryDays));
         }
@@ -139,10 +145,8 @@ public class DbUrlService implements UrlService {
                 "url:" + shortId, longUrl,
                 getTtlSeconds(entity.getExpiryTime()), TimeUnit.SECONDS);
 
-        // Phase 7: Trigger Async Metadata Fetch (Only if requested by user)
-        if (useAutoTitle && (title == null || title.isBlank())) {
-            metadataService.fetchAndSaveTitle(shortId, longUrl);
-        }
+        // Trigger Unified Smart AI Fetching (Async) - Always for categorization
+        metadataService.fetchAndProcessMetadataAsync(shortId, longUrl, useAutoTitle);
         return saved;
     }
 
@@ -183,6 +187,19 @@ public class DbUrlService implements UrlService {
             }
         }
         
+        urlRepository.save(entity);
+    }
+
+    @Override
+    @Transactional
+    public void updateTags(String shortId, Long userId, java.util.Set<String> tags) {
+        UrlEntity entity = urlRepository.findByShortIdAndUserId(shortId, userId)
+                .orElseThrow(() -> new NotFoundException("URL not found or not owned by you"));
+        if (tags != null) {
+            entity.setTags(tags);
+        } else {
+            entity.getTags().clear(); // To effectively remove all tags
+        }
         urlRepository.save(entity);
     }
 
@@ -229,12 +246,19 @@ public class DbUrlService implements UrlService {
                 null, // Use /reveal-password endpoint instead
                 timeSeries,
                 countries,
-                entity.getOrderIndex());
+                entity.getOrderIndex(),
+                entity.getCategory(),
+                entity.getTags());
     }
 
     @Override
-    public Page<UrlStatsResponse> getMyLinks(Long userId, Pageable pageable) {
-        Page<UrlEntity> entities = urlRepository.findByUserId(userId, pageable);
+    public Page<UrlStatsResponse> getMyLinks(Long userId, String search, Pageable pageable) {
+        Page<UrlEntity> entities;
+        if (search != null && !search.trim().isEmpty()) {
+            entities = urlRepository.searchByUserIdAndKeyword(userId, search.trim(), pageable);
+        } else {
+            entities = urlRepository.findByUserId(userId, pageable);
+        }
         return entities.map(entity -> {
             long dbClicks = entity.getClickCount();
             long redisClicks = 0;
@@ -267,7 +291,9 @@ public class DbUrlService implements UrlService {
                     null, // Use /reveal-password endpoint instead
                     new HashMap<>(), // No time-series
                     new HashMap<>(), // No geo-distribution
-                    entity.getOrderIndex()
+                    entity.getOrderIndex(),
+                    entity.getCategory(),
+                    entity.getTags()
             );
         });
     }
@@ -295,7 +321,9 @@ public class DbUrlService implements UrlService {
                     null, // Use /reveal-password endpoint instead
                     new HashMap<>(),
                     new HashMap<>(),
-                    entity.getOrderIndex()
+                    entity.getOrderIndex(),
+                    entity.getCategory(),
+                    entity.getTags()
             );
         }).toList();
     }
