@@ -52,6 +52,7 @@ function DashboardContent() {
   const [totalUrls, setTotalUrls] = useState(0);
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
+  const [allBioUrls, setAllBioUrls] = useState<DashboardUrlData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -72,6 +73,7 @@ function DashboardContent() {
   const [recentResult, setRecentResult] = useState<ShortenResponse | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const feedbackRef = useRef<HTMLDivElement>(null);
+  const pageRef = useRef(0);
 
   const [isEmailVerified, setIsEmailVerified] = useState(true);
   const [userEmail, setUserEmail] = useState("");
@@ -87,15 +89,18 @@ function DashboardContent() {
     }
 
     setUserName(name || "User");
-    loadUserUrls(token, true, page, searchQuery);
+    loadUserUrls(token, true, pageRef.current, searchQuery);
     loadProfile(token);
+    loadAllBioUrls(token);
 
     const intervalId = setInterval(() => {
-      loadUserUrls(token, false, page, searchQuery);
+      const currentToken = localStorage.getItem("authToken");
+      if (currentToken) loadUserUrls(currentToken, false, pageRef.current, searchQuery);
     }, 5000);
 
     return () => clearInterval(intervalId);
-  }, [router, page, searchQuery]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router, searchQuery]);
 
   const loadProfile = async (token: string) => {
     try {
@@ -185,6 +190,25 @@ function DashboardContent() {
       setError(err instanceof Error ? err.message : "Failed to load URLs");
     } finally {
       if (showLoading) setIsLoading(false);
+    }
+  };
+
+  const loadAllBioUrls = async (token: string) => {
+    try {
+      const res = await fetch(
+        `${API_URL}/api/v1/url/my-links?page=0&size=200`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        },
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const bioOnly = (data.content || []).filter((u: DashboardUrlData) => u.showOnBio);
+        setAllBioUrls(bioOnly);
+      }
+    } catch (err) {
+      console.error("Failed to load bio URLs", err);
     }
   };
 
@@ -465,6 +489,7 @@ function DashboardContent() {
                 onSearchChange={(q) => {
                   setSearchQuery(q);
                   setPage(0);
+                  pageRef.current = 0;
                 }}
                 selectedIds={selectedIds}
                 copiedId={copiedId}
@@ -488,12 +513,18 @@ function DashboardContent() {
                 onExportCsv={handleCsvExport}
                 onImportCsv={() => setShowImportModal(true)}
                 onPagePrev={() => {
+                  const newPage = page - 1;
+                  setPage(newPage);
+                  pageRef.current = newPage;
                   const token = localStorage.getItem("authToken");
-                  if (token) loadUserUrls(token, true, page - 1);
+                  if (token) loadUserUrls(token, true, newPage);
                 }}
                 onPageNext={() => {
+                  const newPage = page + 1;
+                  setPage(newPage);
+                  pageRef.current = newPage;
                   const token = localStorage.getItem("authToken");
-                  if (token) loadUserUrls(token, true, page + 1);
+                  if (token) loadUserUrls(token, true, newPage);
                 }}
                 formatDate={formatDate}
               />
@@ -501,7 +532,7 @@ function DashboardContent() {
           ) : (
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
               <UserProfileSettings />
-              <BioLinksReorder urls={urls} setUrls={setUrls} API_URL={API_URL} />
+              <BioLinksReorder urls={allBioUrls} setUrls={setAllBioUrls} API_URL={API_URL} />
             </div>
           )}
         </div>

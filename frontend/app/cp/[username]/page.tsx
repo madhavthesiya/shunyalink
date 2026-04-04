@@ -9,7 +9,7 @@ type Props = { params: Promise<{ username: string }> };
 async function fetchProfile(username: string) {
   try {
     const res = await fetch(`${SERVER_API}/api/v1/profile/${username}`, {
-      next: { revalidate: 60 },
+      cache: "no-store",
     });
     if (!res.ok) return null;
     return res.json();
