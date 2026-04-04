@@ -11,6 +11,7 @@ import {
   Search,
   Image,
   FileDown,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -78,6 +79,14 @@ const features = [
     className: "md:col-span-1 md:row-span-1 bg-gradient-to-l from-rose-500/10 via-white dark:via-[#0a0a0f] to-transparent",
     iconColor: "text-rose-600 dark:text-rose-400",
     gradient: "from-rose-500/20 to-pink-500/20"
+  },
+  {
+    icon: ShieldCheck,
+    title: "AI Phishing Detection",
+    body: "Every URL is screened by Gemini AI before shortening. Malicious and typosquatting links are blocked in real-time before they can be created.",
+    className: "md:col-span-1 md:row-span-1 bg-gradient-to-br from-green-500/10 via-white dark:via-[#0a0a0f] to-transparent",
+    iconColor: "text-green-600 dark:text-green-400",
+    gradient: "from-green-500/20 to-emerald-500/20"
   },
   {
     icon: QrCode,

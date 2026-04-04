@@ -10,7 +10,7 @@ const steps = [
   {
     icon: ShieldAlert,
     title: "2. Secure Access",
-    description: "Protect sensitive URLs with mathematical AES-level password barriers before sharing.",
+    description: "Every link is AI-screened for phishing before creation, and optionally locked with AES-256 password protection.",
   },
   {
     icon: Share2,
