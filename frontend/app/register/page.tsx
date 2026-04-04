@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { GoogleLogin } from "@react-oauth/google";
 import { AuthPageLayout, AuthCard } from "@/components/shell/auth-page-layout";
 import { InlineAlert } from "@/components/shell/inline-alert";
+import { toast } from "sonner";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
@@ -44,6 +45,8 @@ export default function RegisterPage() {
       localStorage.setItem("authToken", data.token);
       localStorage.setItem("userEmail", data.email);
       localStorage.setItem("userName", data.name);
+
+      toast.success("A verification email has been sent to your email address. Verify that to fully use the account.");
 
       router.push("/dashboard");
     } catch (err) {
