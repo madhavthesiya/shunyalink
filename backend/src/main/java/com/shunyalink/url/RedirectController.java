@@ -85,8 +85,8 @@ public class RedirectController {
     }
 
     private String generateSocialHtml(UrlEntity entity, HttpServletRequest request) {
-        String title = entity.getTitle() != null && !entity.getTitle().isBlank() ? entity.getTitle() : "ShunyaLink | Shorten & Brand";
-        String description = "This link was shortened and secured by ShunyaLink. Build your own professional Bio-Link profile for free.";
+        String title = entity.getTitle() != null && !entity.getTitle().isBlank() ? entity.getTitle() : "ShunyaLink | Smart URL Shortener & Digital Identity";
+        String description = "AI-secured short link by ShunyaLink — smart URL shortener with analytics and Bio-Link profiles.";
         
         // Dynamically detect the host (sl.madhavv.me vs shunyalink.madhavv.me)
         String scheme = request.getScheme();
