@@ -84,6 +84,11 @@ export default function CpProfilePage() {
             href: `${API_URL}/${link.shortId}`,
             category: link.category,
           })),
+          leetcodeUsername: profile.leetcodeUsername,
+          codeforcesUsername: profile.codeforcesUsername,
+          codeChefHandle: profile.codeChefHandle,
+          atCoderHandle: profile.atCoderHandle,
+          githubUsername: profile.githubUsername,
         }}
       />
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50">

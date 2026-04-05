@@ -29,6 +29,11 @@ export interface ProfileData {
   profileType?: "NORMAL" | "PROGRAMMER"
   portfolio?: any
   links: ProfileLink[]
+  leetcodeUsername?: string
+  codeforcesUsername?: string
+  codeChefHandle?: string
+  atCoderHandle?: string
+  githubUsername?: string
 }
 
 interface ProfileCardProps {
@@ -294,11 +299,31 @@ function ProgrammerProfile({ profile, showWatermark }: { profile: ProfileData; s
               className="md:col-span-2"
             />
             <RoastWidget username={username} themeColor={themeColor} />
-            <LeetCodeWidget stats={portfolio?.leetcode} themeColor={themeColor} />
-            <CodeforcesWidget stats={portfolio?.codeforces} themeColor={themeColor} />
-            <GithubWidget stats={portfolio?.github} themeColor={themeColor} />
-            <CodeChefWidget stats={portfolio?.codechef} themeColor={themeColor} />
-            <AtCoderWidget stats={portfolio?.atcoder} themeColor={themeColor} username={username} />
+            {portfolio?.leetcode && !portfolio.leetcode.error && profile.leetcodeUsername && (
+              <a href={`https://leetcode.com/u/${profile.leetcodeUsername}`} target="_blank" rel="noopener noreferrer" className="block transition-transform hover:scale-[1.02]">
+                <LeetCodeWidget stats={portfolio.leetcode} themeColor={themeColor} />
+              </a>
+            )}
+            {portfolio?.codeforces && !portfolio.codeforces.error && profile.codeforcesUsername && (
+              <a href={`https://codeforces.com/profile/${profile.codeforcesUsername}`} target="_blank" rel="noopener noreferrer" className="block transition-transform hover:scale-[1.02]">
+                <CodeforcesWidget stats={portfolio.codeforces} themeColor={themeColor} />
+              </a>
+            )}
+            {portfolio?.github && !portfolio.github.error && profile.githubUsername && (
+              <a href={`https://github.com/${profile.githubUsername}`} target="_blank" rel="noopener noreferrer" className="block transition-transform hover:scale-[1.02]">
+                <GithubWidget stats={portfolio.github} themeColor={themeColor} />
+              </a>
+            )}
+            {portfolio?.codechef && !portfolio.codechef.error && profile.codeChefHandle && (
+              <a href={`https://www.codechef.com/users/${profile.codeChefHandle}`} target="_blank" rel="noopener noreferrer" className="block transition-transform hover:scale-[1.02]">
+                <CodeChefWidget stats={portfolio.codechef} themeColor={themeColor} />
+              </a>
+            )}
+            {portfolio?.atcoder && !portfolio.atcoder.error && profile.atCoderHandle && (
+              <a href={`https://atcoder.jp/users/${profile.atCoderHandle}`} target="_blank" rel="noopener noreferrer" className="block transition-transform hover:scale-[1.02]">
+                <AtCoderWidget stats={portfolio.atcoder} themeColor={themeColor} username={username} />
+              </a>
+            )}
           </div>
         </section>
 

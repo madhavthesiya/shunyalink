@@ -81,7 +81,12 @@ export default function PublicProfilePage() {
             label: link.title || link.shortId,
             href: `${API_URL}/${link.shortId}`,
             category: link.category
-          }))
+          })),
+          leetcodeUsername: profile.leetcodeUsername,
+          codeforcesUsername: profile.codeforcesUsername,
+          codeChefHandle: profile.codeChefHandle,
+          atCoderHandle: profile.atCoderHandle,
+          githubUsername: profile.githubUsername,
         }}
       />
       {portfolio && !portfolio.error && (portfolio.leetcode || portfolio.codeforces || portfolio.codechef || portfolio.atcoder) && (
