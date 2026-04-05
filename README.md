@@ -124,7 +124,7 @@ One backend node killed mid-traffic — Nginx reroutes to surviving replicas wit
 | **AI Insights** | **AI Profile Roast** (Gemini/Groq) · **Auto-Categorization** of shortlinks · **AI Phishing Detection** |
 | **Bio-Link** | Drag-and-Drop Link Reordering · Public `/@username` profiles · Dynamic OG tags for social sharing · Theme customization · Show/hide links toggle |
 | **Data** | CSV bulk import (drag-and-drop) · CSV export · Global dashboard search (title, URL, short ID, tags) · Custom tags |
-| **Infra** | 3-node cluster · Nginx LB · Lua rate limiting · Cache warmup (top 1000) · QR generation · Actuator lockdown |
+| **Infra** | 3-node cluster · Nginx LB · Lua rate limiting · Cache warmup (top 1000) · **Branded QR Generation** (with logo overlay) · Actuator lockdown |
 | **Security** | On-demand password reveal · AES-256 encryption · AI-driven URL safety verification |
 
 ---

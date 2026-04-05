@@ -19,7 +19,7 @@ export function HomeHero({ isLoggedIn }: { isLoggedIn: boolean }) {
 
         {/* Subtitle */}
         <p className="text-lg sm:text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto mb-10 animate-in fade-in-0 slide-in-from-bottom-6 duration-700 delay-200 text-balance leading-relaxed">
-          Generate AI-categorized, password-protected short URLs while building a stunning bio profile that automatically aggregates your live LeetCode, Codeforces, and GitHub stats.
+          Generate AI-categorized, password-protected short URLs with <span className="font-bold text-foreground">AI-Phishing detection</span>, while building a stunning bio profile that aggregates your live LeetCode, Codeforces, and GitHub stats.
         </p>
 
         {/* CTA Buttons */}
@@ -46,7 +46,7 @@ export function HomeHero({ isLoggedIn }: { isLoggedIn: boolean }) {
           {[
             { label: "Short Links", value: "Unlimited" },
             { label: "CP Integrations", value: "5 Platforms" },
-            { label: "QR Codes", value: "Instant" }
+            { label: "QR Codes", value: "Branded" }
           ].map((stat) => (
             <div key={stat.label} className="flex flex-col items-center">
               <span className="text-3xl font-black text-foreground tracking-tight">{stat.value}</span>

@@ -18,8 +18,12 @@ import { cn } from "@/lib/utils";
 const features = [
   {
     icon: BarChart3,
-    title: "CP Stats Aggregator",
-    body: "Connect your LeetCode, Codeforces, CodeChef, and AtCoder handles. We fetch and aggregate your solving data into a single verified score.",
+    title: "Verified CP Stats",
+    body: (
+      <>
+        Connect your LeetCode, Codeforces, and more. We aggregate your results into <strong className="font-bold text-foreground">clickable, interactive tiles</strong> that link directly to your verified profiles.
+      </>
+    ),
     className: "md:col-span-2 md:row-span-2 bg-gradient-to-br from-indigo-500/10 via-white dark:via-[#0a0a0f] to-indigo-500/5",
     iconColor: "text-indigo-600 dark:text-indigo-400",
     gradient: "from-indigo-500/20 to-violet-500/20"
@@ -90,8 +94,12 @@ const features = [
   },
   {
     icon: QrCode,
-    title: "Instant QR Codes",
-    body: "Generate completely free, downloadable QR codes for offline sharing.",
+    title: "Branded QR Codes",
+    body: (
+      <>
+        Generate high-quality QR codes with <strong className="font-bold text-foreground">ShunyaLink branding</strong> and Level-H error correction for secure offline sharing.
+      </>
+    ),
     className: "md:col-span-1 md:row-span-1 bg-gradient-to-t from-sky-500/10 via-white dark:via-[#0a0a0f] to-transparent",
     iconColor: "text-sky-600 dark:text-sky-400",
     gradient: "from-sky-500/20 to-cyan-500/20"

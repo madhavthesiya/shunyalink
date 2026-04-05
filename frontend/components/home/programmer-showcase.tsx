@@ -218,7 +218,7 @@ export function ProgrammerShowcase() {
                     A clean, minimal page with your avatar, bio, and all your links — perfect for social media and sharing.
                   </p>
                   <div className="mt-4 flex flex-col gap-2">
-                    {["Custom themeColor", "Staggered link animations", "Spinning avatar glow", "Works on mobile"].map(f => (
+                    {["Custom themeColor", "Staggered link animations", "Dynamic Social Metadata", "Works on mobile"].map(f => (
                       <div key={f} className="flex items-center gap-2 text-sm text-muted-foreground">
                         <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
                         {f}
@@ -233,7 +233,7 @@ export function ProgrammerShowcase() {
                     A full stats dashboard showing live data from 5 coding platforms — perfect for job applications.
                   </p>
                   <div className="mt-4 flex flex-col gap-2">
-                    {["LeetCode · Codeforces · GitHub", "CodeChef · AtCoder", "AI profile roast", "Live data, Redis cached"].map(f => (
+                    {["LeetCode · Codeforces · GitHub", "Verified clickable profile tiles", "AI profile roast", "Live data, Redis cached"].map(f => (
                       <div key={f} className="flex items-center gap-2 text-sm text-muted-foreground">
                         <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
                         {f}
