@@ -1,6 +1,6 @@
 "use client"
 
-import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts"
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts"
 import { cn } from "@/lib/utils"
 
 interface LeetCodeWidgetProps {
@@ -43,6 +43,22 @@ export function LeetCodeWidget({ stats, themeColor, className }: LeetCodeWidgetP
         <div className="h-28 w-28 flex-shrink-0 relative">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
+              <Tooltip 
+                offset={80} // Move the tooltip far enough to not cover the center
+                contentStyle={{ 
+                  background: "var(--background)", 
+                  border: "2px solid hsl(var(--primary) / 0.5)", 
+                  borderRadius: "12px", 
+                  fontSize: "12px",
+                  fontWeight: "bold",
+                  color: "var(--foreground)",
+                  boxShadow: "0 20px 25px -5px rgb(0 0 0 / 0.2)",
+                  padding: "8px 12px"
+                }}
+                itemStyle={{ color: "var(--foreground)", padding: "0" }}
+                labelStyle={{ display: "none" }}
+                cursor={{ fill: 'transparent' }}
+              />
               <Pie data={data} innerRadius={36} outerRadius={50} paddingAngle={3} dataKey="value" strokeWidth={0}>
                 {data.map((entry, i) => <Cell key={i} fill={entry.color} />)}
               </Pie>

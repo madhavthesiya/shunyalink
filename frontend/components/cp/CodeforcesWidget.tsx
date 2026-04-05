@@ -56,8 +56,18 @@ export function CodeforcesWidget({ stats, themeColor, className }: CodeforcesWid
                 </linearGradient>
               </defs>
               <Tooltip
-                contentStyle={{ background: "#111", border: "1px solid #333", borderRadius: 8, fontSize: 11 }}
-                itemStyle={{ color: themeColor }}
+                contentStyle={{ 
+                  background: "var(--background)", 
+                  border: "2px solid hsl(var(--primary) / 0.5)", 
+                  borderRadius: "12px", 
+                  fontSize: "12px",
+                  fontWeight: "bold",
+                  color: "var(--foreground)",
+                  boxShadow: "0 20px 25px -5px rgb(0 0 0 / 0.2)",
+                  padding: "8px 12px"
+                }}
+                itemStyle={{ color: themeColor, fontWeight: "bold", padding: "0" }}
+                labelStyle={{ color: "var(--muted-foreground)", marginBottom: "4px" }}
               />
               <Area
                 type="monotone"

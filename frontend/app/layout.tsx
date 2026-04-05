@@ -5,6 +5,7 @@ import './globals.css'
 import { GoogleProvider } from '@/components/google-provider'
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/sonner'
+import { SystemStatus } from '@/components/dashboard/system-status'
 
 const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
@@ -73,6 +74,7 @@ export default function RootLayout({
             {children}
             <Toaster richColors position="top-right" />
             <Analytics />
+            <SystemStatus />
           </GoogleProvider>
         </ThemeProvider>
       </body>

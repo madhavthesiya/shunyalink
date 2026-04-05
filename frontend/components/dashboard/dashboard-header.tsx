@@ -50,9 +50,8 @@ export function DashboardHeader({
           </div>
 
           <Button
-            variant="outline"
             size="sm"
-            className="hidden lg:flex rounded-xl border-border/80"
+            className="hidden lg:flex rounded-xl font-semibold btn-glow"
             onClick={onViewProfile}
           >
             <Smartphone className="w-4 h-4 mr-2" />

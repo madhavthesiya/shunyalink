@@ -3,7 +3,7 @@
 > An all-in-one Smart URL Shortener and Digital Identity Platform featuring write-behind analytics, Geo-IP tracking, Link-in-Bio profiles, and a real-time Competitive Programming dashboard.
 > Engineered with distributed caching, horizontal scaling, and real-world security &amp; AI trade-offs.
 
-🔗 **Live:** [shunyalink.madhavv.me](https://shunyalink.madhavv.me) &nbsp;
+🔗 **Live:** [shunyalink.madhavv.me](https://shunyalink.madhavv.me) &nbsp; | &nbsp; 📖 **API Docs:** [/swagger-ui](https://sl.madhavv.me/swagger-ui/index.html) &nbsp; | &nbsp; 🟢 **Health:** [/actuator/health](https://sl.madhavv.me/actuator/health)
 
 ---
 
@@ -149,6 +149,15 @@ One backend node killed mid-traffic — Nginx reroutes to surviving replicas wit
 
 ---
 
+## Reliability & Observability
+
+*   **Health Monitoring**: Integrated **Spring Boot Actuator** to provide real-time status of the JVM, Hibernate connection pool, and Redis connectivity.
+*   **Live Frontend Heartbeat**: Implemented a dashboard-level monitoring component that polls the backend health status every 30 seconds, providing real-time "System Operational" feedback to the user.
+*   **Production Readiness**: Configured custom health indicators to ensure the application only accepts traffic when all downstream services (Redis/PostgreSQL) are fully operational.
+*   **Graceful Shutdown**: The platform is tuned to ensure all pending **Redis-to-PostgreSQL analytics syncs** are completed atomically before the container process exits during a deployment or scale-down event.
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -270,7 +279,7 @@ frontend/
     ├── shortener-form.tsx             # URL shortening form + UTM builder
     ├── user-profile-settings.tsx      # Bio-link editor + live preview + avatar upload
     ├── profile-card.tsx               # Public bio-link card (Normal + Programmer modes)
-    ├── dashboard/                     # Dashboard panels (links, analytics, import modal)
+    ├── dashboard/                     # Dashboard panels (links, analytics, import modal, system status)
     ├── cp/                            # CP widgets (LeetCode, Codeforces, CodeChef, AtCoder, GitHub, Roast)
     └── home/                          # Homepage sections (hero, features, bio showcase, stats)
 
@@ -317,9 +326,10 @@ docker-compose up --build
 
 | Service | URL |
 |---------|-----|
-| Frontend | `http://localhost:3000` |
+| Frontend | `https://shunyalink.madhavv.me` |
 | Backend (via Nginx) | `http://localhost` |
-| Swagger Docs | `http://localhost/swagger-ui.html` |
+| Swagger Docs | `http://localhost/swagger-ui/index.html` |
+| System Health | `http://localhost/actuator/health` |
 | PostgreSQL | `localhost:5432` |
 | Redis | `localhost:6379` |
 
