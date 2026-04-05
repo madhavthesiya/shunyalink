@@ -3,9 +3,9 @@
 > An all-in-one Smart URL Shortener and Digital Identity Platform featuring write-behind analytics, Geo-IP tracking, Link-in-Bio profiles, and a real-time Competitive Programming dashboard.
 > Engineered with distributed caching, horizontal scaling, and real-world security &amp; AI trade-offs.
 
-🔗 **Live:** [shunyalink.madhavv.me](https://shunyalink.madhavv.me) &nbsp; 
-📖 **API Docs:** [sl.madhavv.me/swagger-ui](https://sl.madhavv.me/swagger-ui/index.html) &nbsp;
-🟢 **Health:** [sl.madhavv.me/actuator/health](https://sl.madhavv.me/actuator/health) &nbsp;
+- 🔗 **Live:** https://shunyalink.madhavv.me
+- 📖 **API Docs:** https://sl.madhavv.me/swagger-ui/index.html
+- 🟢 **Health:** https://sl.madhavv.me/actuator/health
 
 ---
 
