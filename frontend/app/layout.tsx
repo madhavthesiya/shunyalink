@@ -11,7 +11,7 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: 'ShunyaLink',
-  description: 'ShunyaLink is the ultimate distributed URL management tool. Shorten links, track geo-analytics, and build professional Bio-Link profiles for your brand.',
+  description: 'AI-secured short links with real-time Geo-IP analytics and professional developer portfolios. Build your digital legacy with ShunyaLink.',
   keywords: ['ShunyaLink', 'URL Shortener', 'Bio Link', 'Link Management', 'Geo Analytics', 'Distributed Systems'],
   generator: 'ShunyaLink Engine',
   icons: {
@@ -32,12 +32,13 @@ export const metadata: Metadata = {
     apple: '/apple-icon.png',
   },
   metadataBase: new URL('https://shunyalink.madhavv.me'),
+  manifest: '/manifest.json',
   alternates: {
     canonical: '/',
   },
   openGraph: {
-    title: 'ShunyaLink',
-    description: 'Transform long URLs into clean links and build your personalized Bio-Link profile. Ultimate link management for professionals.',
+    title: 'ShunyaLink | Smart URL Shortener & Digital Identity',
+    description: 'AI-secured short links with real-time Geo-IP analytics and professional developer portfolios. Build your digital legacy with ShunyaLink.',
     url: 'https://shunyalink.madhavv.me',
     siteName: 'ShunyaLink',
     images: [
