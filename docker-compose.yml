@@ -48,6 +48,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      scraper:
+        condition: service_healthy
     environment:
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
@@ -61,12 +63,27 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GROQ_API_KEY: ${GROQ_API_KEY}
       CLOUDINARY_URL: ${CLOUDINARY_URL}
+      SCRAPER_URL: http://scraper:3001
     # No direct port exposure — only Nginx can talk to backend
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # ── Puppeteer Scraper (Headless Chrome 🔍) ──────────────────────────────────
+  scraper:
+    build:
+      context: ./scraper
+      dockerfile: Dockerfile.scraper
+    container_name: urlshortener-scraper
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   # ── Nginx Load Balancer (Entry Point ⚖️) ──────────────────────────────────
   nginx:

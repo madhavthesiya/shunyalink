@@ -1,99 +1,84 @@
 package com.shunyalink.cp;
 
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import java.util.Map;
 import java.util.HashMap;
 
 @Service
 public class CodeChefService {
 
-    private static final String CODECHEF_URL = "https://www.codechef.com/users/";
+    private final RestTemplate restTemplate;
+    private final String scraperUrl;
 
-    @Cacheable(value = "codechef-stats", key = "#handle")
-    public Map<String, Object> getStats(String handle) {
-        try {
-            Document doc = Jsoup.connect(CODECHEF_URL + handle)
-                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
-                    .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
-                    .header("Accept-Language", "en-US,en;q=0.5")
-                    .header("Accept-Encoding", "gzip, deflate, br")
-                    .header("Connection", "keep-alive")
-                    .header("Upgrade-Insecure-Requests", "1")
-                    .header("Sec-Fetch-Dest", "document")
-                    .header("Sec-Fetch-Mode", "navigate")
-                    .header("Sec-Fetch-Site", "none")
-                    .header("Sec-Fetch-User", "?1")
-                    .followRedirects(true)
-                    .timeout(15000)
-                    .get();
-
-            Map<String, Object> result = parseResponse(doc);
-            if (result.isEmpty()) {
-                System.err.println("CodeChef: Parsed empty result for " + handle + ". Page title: " + doc.title());
-            }
-            return result;
-        } catch (Exception e) {
-            System.err.println("CodeChef fetch failed for " + handle + ": " + e.getMessage());
-            return Map.of("error", "Could not fetch CodeChef stats: " + e.getMessage());
-        }
+    public CodeChefService(
+            @Value("${SCRAPER_URL:http://localhost:3001}") String scraperUrl) {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(5000);
+        factory.setReadTimeout(15000);
+        this.restTemplate = new RestTemplate(factory);
+        this.scraperUrl = scraperUrl;
     }
 
-    private Map<String, Object> parseResponse(Document doc) {
+    @Cacheable(value = "codechef-stats", key = "#handle")
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getStats(String handle) {
         Map<String, Object> result = new HashMap<>();
 
         try {
-            // Rating
-            Element ratingElement = doc.selectFirst(".rating-number");
-            if (ratingElement != null) {
-                String ratingStr = ratingElement.text().replaceAll("[^0-9]", "");
-                if (!ratingStr.isEmpty()) {
-                    result.put("rating", Integer.parseInt(ratingStr));
-                }
-            }
+            String url = scraperUrl + "/codechef/" + handle;
+            System.out.println("CodeChef: Calling Puppeteer scraper at " + url);
 
-            // Stars
-            Element starsElement = doc.selectFirst(".rating-star");
-            if (starsElement != null) {
-                String starsText = starsElement.text().trim();
-                if (!starsText.isEmpty()) {
-                    result.put("stars", starsText);
-                }
-            }
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                    url, HttpMethod.GET, null,
+                    new ParameterizedTypeReference<Map<String, Object>>() {}
+            );
 
-            // Max Rating — look in <small> tags containing "Highest Rating"
-            for (Element small : doc.select("small")) {
-                if (small.text().contains("Highest Rating")) {
-                    String digits = small.text().replaceAll("[^0-9]", "");
-                    if (!digits.isEmpty()) {
-                        result.put("maxRating", Integer.parseInt(digits));
-                    }
-                    break;
-                }
-            }
+            Map<String, Object> data = response.getBody();
+            if (data != null && !data.containsKey("error")) {
+                result.putAll(data);
 
-            // Global Rank
-            Element globalRankElement = doc.select(".rating-ranks ul li a").first();
-            if (globalRankElement != null) {
-                result.put("globalRank", globalRankElement.text().trim());
-            }
-
-            // Problems Solved
-            Element solvedHeader = doc.selectFirst("h3:contains(Total Problems Solved)");
-            if (solvedHeader != null) {
-                String digits = solvedHeader.text().replaceAll("[^0-9]", "");
-                if (!digits.isEmpty()) {
-                    result.put("totalSolved", Integer.parseInt(digits));
+                // Derive stars from rating if not already present
+                if (result.containsKey("rating") && !result.containsKey("stars")) {
+                    int rating = ((Number) result.get("rating")).intValue();
+                    result.put("stars", starsForRating(rating));
+                    result.put("starCount", starCountForRating(rating));
                 }
+
+                System.out.println("CodeChef: Successfully fetched stats for " + handle + ": " + result);
+            } else {
+                System.err.println("CodeChef: Scraper returned error for " + handle);
             }
 
         } catch (Exception e) {
-            System.err.println("CodeChef parse error: " + e.getMessage());
+            System.err.println("CodeChef: Scraper call failed for " + handle + ": " + e.getMessage());
         }
 
+        // Graceful fallbacks so the widget never disappears
+        result.putIfAbsent("rating", "N/A");
+        result.putIfAbsent("stars", "—");
+        result.putIfAbsent("totalSolved", 0);
+
         return result;
+    }
+
+    private String starsForRating(int rating) {
+        return "★".repeat(starCountForRating(rating));
+    }
+
+    private int starCountForRating(int rating) {
+        if (rating < 1400) return 1;
+        if (rating < 1600) return 2;
+        if (rating < 1800) return 3;
+        if (rating < 2000) return 4;
+        if (rating < 2200) return 5;
+        if (rating < 2500) return 6;
+        return 7;
     }
 }

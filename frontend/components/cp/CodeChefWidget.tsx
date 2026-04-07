@@ -43,9 +43,11 @@ export function CodeChefWidget({ stats, themeColor, className }: CodeChefWidgetP
 
       {/* Secondary stats */}
       <div className="flex gap-4">
-        {stats.stars && (
+        {(stats.stars || stats.starCount) && (
           <div className="flex flex-col">
-            <span className="text-lg font-black text-foreground">{stats.stars}</span>
+            <span className="text-lg font-black" style={{ color: themeColor }}>
+              {stats.stars ?? "★".repeat(stats.starCount ?? 0)}
+            </span>
             <span className="text-[10px] font-bold uppercase tracking-wider text-foreground/40">Stars</span>
           </div>
         )}

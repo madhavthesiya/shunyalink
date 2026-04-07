@@ -30,6 +30,10 @@ graph TB
         PG[("PostgreSQL 16<br/>URLs · Users · Profiles · Migrations")]
     end
 
+    subgraph Scraping["Scraping Layer"]
+        Scraper["Puppeteer Scraper<br/>Headless Chrome · CodeChef"]
+    end
+
     subgraph Frontend["Frontend"]
         Next["Next.js 15<br/>App Router · SSR"]
     end
@@ -39,6 +43,7 @@ graph TB
     Nginx --> SB1 & SB2 & SB3
     SB1 & SB2 & SB3 --> Redis
     SB1 & SB2 & SB3 --> PG
+    SB1 & SB2 & SB3 -->|"anti-bot scrape"| Scraper
     Next -->|REST API| Nginx
 
     classDef client fill:#6366f1,color:#fff,stroke:none
@@ -126,7 +131,7 @@ One backend node killed mid-traffic — Nginx reroutes to surviving replicas wit
 | **AI Insights** | **AI Profile Roast** (Gemini/Groq) · **Auto-Categorization** of shortlinks · **AI Phishing Detection** |
 | **Bio-Link** | Drag-and-Drop Link Reordering · Public `/@username` profiles · Dynamic OG tags for social sharing · Theme customization · Show/hide links toggle |
 | **Data** | CSV bulk import (drag-and-drop) · CSV export · Global dashboard search (title, URL, short ID, tags) · Custom tags |
-| **Infra** | 3-node cluster · Nginx LB · Lua rate limiting · Cache warmup (top 1000) · **Branded QR Generation** (with logo overlay) · Actuator lockdown |
+| **Infra** | 3-node cluster · Nginx LB · Lua rate limiting · Cache warmup (top 1000) · **Branded QR Generation** (with logo overlay) · **Puppeteer Scraper** (headless Chrome for anti-bot bypass) · Actuator lockdown |
 | **Security** | On-demand password reveal · AES-256 encryption · AI-driven URL safety verification |
 
 ---
@@ -165,7 +170,7 @@ One backend node killed mid-traffic — Nginx reroutes to surviving replicas wit
 | Layer | Technology |
 |-------|-----------|
 | Backend | Java 21, Spring Boot 3.3 |
-| Frontend | Next.js 16, React 19, TypeScript |
+| Frontend | Next.js 15, React 19, TypeScript |
 | Database | PostgreSQL 16 |
 | Cache | Redis 7 |
 | Migrations | Flyway 10 (13 versioned migrations) |
@@ -239,7 +244,7 @@ backend/src/main/java/com/shunyalink/
 │   ├── LeetCodeService.java          # LeetCode GraphQL integration
 │   ├── CodeforcesService.java        # Codeforces API integration
 │   ├── GithubService.java            # GitHub API integration
-│   ├── CodeChefService.java          # JSoup-based CodeChef scraper
+│   ├── CodeChefService.java          # Delegates to Puppeteer scraper microservice
 │   ├── AtCoderService.java           # JSoup-based AtCoder scraper
 │   └── LlmIntegrationService.java    # Hybrid Groq/Gemini AI for roasts & categorization
 ├── exception/
@@ -288,7 +293,12 @@ frontend/
 nginx/
 └── nginx.conf                         # Load balancer for 3 backend replicas
 
-docker-compose.yml                     # Full stack: PG + Redis + 3×Backend + Nginx + Frontend (10 containers)
+scraper/
+├── index.js                           # Express + Puppeteer headless Chrome scraper
+├── package.json                       # Dependencies: express, puppeteer
+└── Dockerfile.scraper                 # Node 20 + system Chromium
+
+docker-compose.yml                     # Full stack: PG + Redis + 3×Backend + Scraper + Nginx + Frontend (11 containers)
 ```
 
 ---
@@ -306,7 +316,7 @@ cd shunyalink
 cp .env.example .env
 # Edit .env — fill in ALL values (see table below)
 
-# 3. Start everything (PostgreSQL + Redis + 3×Backend + Nginx + Frontend)
+# 3. Start everything (PostgreSQL + Redis + 3×Backend + Scraper + Nginx + Frontend)
 docker-compose up --build
 ```
 
