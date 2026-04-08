@@ -303,6 +303,18 @@ docker-compose.yml                     # Full stack: PG + Redis + 3×Backend + S
 
 ---
 
+## Production Deployment
+
+| Component | Provider | Details |
+|-----------|----------|---------|
+| **Frontend** | Vercel | Next.js 15 SSR · Custom domain `shunyalink.madhavv.me` |
+| **Backend** | Azure App Service | Spring Boot 3 · Java 21 · Custom domain `sl.madhavv.me` |
+| **Database** | Supabase | PostgreSQL 17 · Connection pooling via Supavisor |
+| **Cache** | Upstash | Serverless Redis · TLS · Write-behind analytics pipeline |
+| **Scraper** | DigitalOcean App Platform | Puppeteer + Headless Chromium · Dockerized |
+
+---
+
 ## Running Locally
 
 **Prerequisites:** Docker & Docker Compose
