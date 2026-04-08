@@ -350,12 +350,13 @@ docker-compose up --build
 
 | Service | URL |
 |---------|-----|
-| Frontend | `https://shunyalink.madhavv.me` |
+| Frontend | `http://localhost:3000` |
 | Backend (via Nginx) | `http://localhost` |
 | Swagger Docs | `http://localhost/swagger-ui/index.html` |
 | System Health | `http://localhost/actuator/health` |
 | PostgreSQL | `localhost:5432` |
 | Redis | `localhost:6379` |
+| Scraper | `http://localhost:3001` |
 
 Flyway runs all 13 migrations automatically on first startup.
 
