@@ -16,6 +16,7 @@ app.get("/codechef/:handle", async (req, res) => {
   try {
     browser = await puppeteer.launch({
       headless: "new",
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath(),
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
