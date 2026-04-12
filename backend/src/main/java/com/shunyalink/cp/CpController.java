@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.concurrent.CompletableFuture;
 
 @RestController
 @RequestMapping("/api/v1/portfolio")
@@ -67,45 +68,66 @@ public class CpController {
                 .orElseThrow(() -> new BadRequestException("User not found"));
 
         Map<String, Object> stats = new HashMap<>();
+
+        // Fire all platform calls in parallel — prevents Puppeteer's 10-15s latency
+        // from blocking the other 4 fast API calls
+        CompletableFuture<Map<String, Object>> lcFuture = (user.getLeetcodeUsername() != null)
+                ? CompletableFuture.supplyAsync(() -> leetCodeService.getStats(user.getLeetcodeUsername()))
+                : CompletableFuture.completedFuture(null);
+
+        CompletableFuture<Map<String, Object>> cfFuture = (user.getCodeforcesUsername() != null)
+                ? CompletableFuture.supplyAsync(() -> codeforcesService.getStats(user.getCodeforcesUsername()))
+                : CompletableFuture.completedFuture(null);
+
+        CompletableFuture<Map<String, Object>> ccFuture = (user.getCodeChefHandle() != null)
+                ? CompletableFuture.supplyAsync(() -> codeChefService.getStats(user.getCodeChefHandle()))
+                : CompletableFuture.completedFuture(null);
+
+        CompletableFuture<Map<String, Object>> acFuture = (user.getAtCoderHandle() != null)
+                ? CompletableFuture.supplyAsync(() -> {
+                    Map<String, Object> ac = new HashMap<>(atCoderService.getStats(user.getAtCoderHandle()));
+                    ac.put("handle", user.getAtCoderHandle());
+                    return ac;
+                })
+                : CompletableFuture.completedFuture(null);
+
+        CompletableFuture<Map<String, Object>> ghFuture = (user.getGithubUsername() != null)
+                ? CompletableFuture.supplyAsync(() -> githubService.getStats(user.getGithubUsername()))
+                : CompletableFuture.completedFuture(null);
+
+        // Wait for all to complete
+        CompletableFuture.allOf(lcFuture, cfFuture, ccFuture, acFuture, ghFuture).join();
+
+        // Collect results
         int totalGloballySolved = 0;
 
-        if (user.getLeetcodeUsername() != null) {
-            Map<String, Object> lc = leetCodeService.getStats(user.getLeetcodeUsername());
+        Map<String, Object> lc = lcFuture.join();
+        if (lc != null) {
             stats.put("leetcode", lc);
             totalGloballySolved += (Integer) lc.getOrDefault("totalSolved", 0);
         }
 
-        if (user.getCodeforcesUsername() != null) {
-            Map<String, Object> cf = codeforcesService.getStats(user.getCodeforcesUsername());
+        Map<String, Object> cf = cfFuture.join();
+        if (cf != null) {
             stats.put("codeforces", cf);
             totalGloballySolved += (Integer) cf.getOrDefault("totalSolved", 0);
         }
 
-        if (user.getCodeChefHandle() != null) {
-            Map<String, Object> cc = codeChefService.getStats(user.getCodeChefHandle());
+        Map<String, Object> cc = ccFuture.join();
+        if (cc != null) {
             stats.put("codechef", cc);
-            Object ccSolved = cc.get("totalSolved");
-            if (ccSolved instanceof String) {
-                totalGloballySolved += Integer.parseInt((String) ccSolved);
-            } else if (ccSolved instanceof Integer) {
-                totalGloballySolved += (Integer) ccSolved;
-            }
+            totalGloballySolved += toInt(cc.get("totalSolved"));
         }
 
-        if (user.getAtCoderHandle() != null) {
-            Map<String, Object> ac = new java.util.HashMap<>(atCoderService.getStats(user.getAtCoderHandle()));
-            ac.put("handle", user.getAtCoderHandle()); // needed by frontend for Kenkoooo client-side fetch
+        Map<String, Object> ac = acFuture.join();
+        if (ac != null) {
             stats.put("atcoder", ac);
-            Object acSolved = ac.get("totalSolved");
-            if (acSolved instanceof String) {
-                totalGloballySolved += Integer.parseInt((String) acSolved);
-            } else if (acSolved instanceof Integer) {
-                totalGloballySolved += (Integer) acSolved;
-            }
+            totalGloballySolved += toInt(ac.get("totalSolved"));
         }
 
-        if (user.getGithubUsername() != null) {
-            stats.put("github", githubService.getStats(user.getGithubUsername()));
+        Map<String, Object> gh = ghFuture.join();
+        if (gh != null) {
+            stats.put("github", gh);
         }
 
         stats.put("totalGloballySolved", totalGloballySolved);
@@ -113,4 +135,13 @@ public class CpController {
 
         return ResponseEntity.ok(stats);
     }
+
+    private int toInt(Object value) {
+        if (value instanceof Integer) return (Integer) value;
+        if (value instanceof String) {
+            try { return Integer.parseInt((String) value); } catch (NumberFormatException e) { return 0; }
+        }
+        return 0;
+    }
 }
+
