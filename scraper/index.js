@@ -4,6 +4,44 @@ const puppeteer = require("puppeteer");
 const app = express();
 const PORT = 3001;
 
+// ── Persistent Browser Instance ─────────────────────────────────────────────
+// Keep Chrome alive instead of launching/closing on every request.
+// Saves ~3-4 seconds per scrape by reusing the same browser process.
+let browser = null;
+
+async function getBrowser() {
+  if (browser && browser.connected) return browser;
+
+  console.log("[Browser] Launching persistent Chrome instance...");
+  browser = await puppeteer.launch({
+    headless: "new",
+    executablePath:
+      process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath(),
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--disable-extensions",
+      "--disable-background-networking",
+      "--single-process",
+    ],
+  });
+
+  // Auto-restart if Chrome crashes
+  browser.on("disconnected", () => {
+    console.log("[Browser] Chrome disconnected, will relaunch on next request");
+    browser = null;
+  });
+
+  return browser;
+}
+
+// Pre-launch Chrome at startup so first request is fast
+getBrowser().catch((err) =>
+  console.error("[Browser] Failed to pre-launch:", err.message)
+);
+
 // ── Health Check ─────────────────────────────────────────────────────────────
 app.get("/health", (_req, res) => res.json({ status: "UP" }));
 
@@ -12,23 +50,10 @@ app.get("/codechef/:handle", async (req, res) => {
   const { handle } = req.params;
   console.log(`[CodeChef] Scraping profile: ${handle}`);
 
-  let browser;
+  let page;
   try {
-    browser = await puppeteer.launch({
-      headless: "new",
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath(),
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",    // Use /tmp instead of /dev/shm (Docker fix)
-        "--disable-gpu",
-        "--disable-extensions",
-        "--disable-background-networking",
-        "--single-process",           // Reduce memory in Docker
-      ],
-    });
-
-    const page = await browser.newPage();
+    const b = await getBrowser();
+    page = await b.newPage();
 
     // Mimic a real browser
     await page.setUserAgent(
@@ -122,8 +147,9 @@ app.get("/codechef/:handle", async (req, res) => {
     console.error(`[CodeChef] Error scraping ${handle}:`, err.message);
     res.status(500).json({ error: err.message });
   } finally {
-    if (browser) {
-      await browser.close().catch(() => {});
+    // Close only the page tab, NOT the browser
+    if (page) {
+      await page.close().catch(() => {});
     }
   }
 });
