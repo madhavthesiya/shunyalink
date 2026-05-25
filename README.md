@@ -26,7 +26,7 @@ graph TB
     end
 
     subgraph Data["Data Layer"]
-        Redis[("Redis 7<br/>Cache · Counters · Rate Limits · Geo")]
+        Redis[("Redis 7<br/>Entity Hash Cache · Counters · Rate Limits · Geo")]
         PG[("PostgreSQL 16<br/>URLs · Users · Profiles · Migrations")]
     end
 
@@ -297,7 +297,7 @@ backend/src/main/java/com/shunyalink/
 │   ├── CodeforcesService.java        # Codeforces API integration
 │   ├── GithubService.java            # GitHub API integration
 │   ├── CodeChefService.java          # Delegates to Puppeteer scraper microservice
-│   ├── AtCoderService.java           # JSoup-based AtCoder scraper
+│   ├── AtCoderService.java           # AtCoder API + Kenkoooo integration
 │   └── LlmIntegrationService.java    # Hybrid Groq/Gemini AI for roasts & categorization
 ├── exception/
 │   └── GlobalExceptionHandler.java   # Centralized error handling (400/403/404/409/410/429)
@@ -313,7 +313,7 @@ backend/src/main/java/com/shunyalink/
 ├── url/
 │   ├── DbUrlService.java             # Core business logic + AI categorization
 │   ├── Base62IdEncoder.java          # Sequential ID → Base62
-│   ├── RedirectController.java       # /{shortId} redirect + social bot OG tags
+│   ├── RedirectController.java       # /{shortId} redirect + Redis Hash cache + OG tags
 │   ├── UrlController.java            # REST API endpoints (25+ routes)
 │   ├── CsvImportService.java         # Bulk CSV import with validation
 │   ├── CsvExportService.java         # CSV data export
