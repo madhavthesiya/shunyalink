@@ -61,26 +61,28 @@ sequenceDiagram
 
     U->>N: GET /abc123
     N->>SB: Proxy (round-robin)
-    SB->>R: GET url:abc123
+    SB->>R: HGETALL url:entity:abc123
 
-    alt Cache Hit
-        R-->>SB: longUrl
-        SB->>R: HINCRBY click_counts abc123 1
+    alt Cache Hit (zero DB)
+        R-->>SB: {longUrl, hasPassword, title, expiryTime}
+        SB->>R: HINCRBY click_counts abc123 1 (async)
         SB-->>U: 302 Redirect
     else Cache Miss
         SB->>PG: SELECT * FROM urls
         PG-->>SB: row
-        SB->>R: SET url:abc123 (dynamic TTL)
-        SB->>R: HINCRBY click_counts abc123 1
+        SB->>R: HSET url:entity:abc123 {longUrl, hasPassword, title, expiryTime}
+        SB->>R: HINCRBY click_counts abc123 1 (async)
         SB-->>U: 302 Redirect
     end
 
     Note over R,PG: Scheduler syncs counters<br/>to PostgreSQL every 30s
 ```
 
+> **Why Redis Hash instead of a simple string?** The redirect path needs more than just the long URL — it must check password protection, expiry time, and the page title (for social bot OG tags). Caching all redirect-critical fields as a Hash eliminates the database query entirely on cache hits. See [Performance Optimization](#performance-optimization) for the full story.
+
 ### Write-Behind Analytics
 
-Clicks are **never written to the database on the redirect path.** Each redirect increments a Redis hash counter in microseconds. A background scheduler runs every 30 seconds, acquires a distributed UUID lock (ensuring only one instance syncs across the cluster), atomically renames the counter key, batch-flushes all counts to PostgreSQL, and releases the lock.
+Clicks are **never written to the database on the redirect path.** Each redirect increments a Redis hash counter in microseconds via a bounded `ThreadPoolTaskExecutor` (10 core, 50 max threads). A background scheduler runs every 30 seconds, acquires a distributed UUID lock (ensuring only one instance syncs across the cluster), atomically renames the counter key, batch-flushes all counts to PostgreSQL, and releases the lock.
 
 **Result:** Zero DB write pressure during peak traffic.
 
@@ -97,26 +99,75 @@ Clicks are **never written to the database on the redirect path.** Each redirect
 | Checks Passed | **100%** (all 302 redirects) |
 | Avg Response | **3.12s** |
 
-> Avg latency includes cross-region internet round-trip (India → Azure). Zero requests dropped under sustained load.
+> Avg latency includes cross-region internet round-trip (India → Azure Free Tier). Zero requests dropped under sustained load.
 
 ### Local Cluster (k6 → 3-node Docker, 50 concurrent users)
 
-| Metric | Result |
-|--------|--------|
-| Total Requests | **34,563** |
-| Throughput | **288 req/s** |
-| Error Rate | **0%** |
-| Min Response | **3.74 ms** |
-| Avg Response | **36 ms** |
-| p95 Response | **48 ms** |
+| Metric | Before (v1) | After (v2 — Redis Hash) | Improvement |
+|--------|-------------|------------------------|-------------|
+| Throughput | 483 req/s | **566 req/s** | +17% |
+| Avg Response | 31.27 ms | **19.5 ms** | **37% faster** |
+| p95 Response | 90.47 ms | **34.9 ms** | **2.6x faster** |
+| Max Response | 653 ms | **325 ms** | 2x better |
+| Error Rate | 0% | 0% | Perfect |
+| Redis Cache Hit Rate | 99.99% | 99.99% | Near-perfect |
 
-> 95%+ requests served entirely from Redis — zero database reads on the hot path.
+> **v1:** Redis cached only the URL string — the database was still queried on every redirect for password/title/expiry checks.<br/>
+> **v2:** All redirect-critical fields cached as a Redis Hash — **zero database reads** on the hot path for cache hits.
 
 ### Failover Test
 
 One backend node killed mid-traffic — Nginx reroutes to surviving replicas with zero downtime:
 
 ![Failover Demo](docs/failover-demo.gif)
+
+---
+
+## Performance Optimization
+
+### The Problem
+
+During profiling, I discovered the redirect hot path was making a **redundant database query on every single request**, even with Redis caching enabled:
+
+```java
+// Step 1: ALWAYS hit PostgreSQL for the full entity (password, title, expiry checks)
+UrlEntity entity = urlRepository.findByShortId(shortId);
+
+// Step 2: Check Redis for the URL string (but we already have entity.getLongUrl()!)
+String longUrl = urlService.getLongUrl(shortId);  // redundant
+```
+
+The Redis cache only stored the long URL string (`SET url:abc123 "https://..."`) — but the controller needed the **full entity** for password verification, social bot OG tags, and expiry checks. So PostgreSQL was hit on every redirect regardless.
+
+### The Solution
+
+**1. Redis Hash Entity Caching** — Cache all redirect-critical fields, not just the URL:
+
+```
+HSET url:entity:abc123
+  longUrl      "https://google.com"
+  hasPassword  "false"
+  title        "Google"
+  expiryTime   "2026-12-31T00:00:00"
+```
+
+On cache hit: **zero database reads.** On cache miss: query DB once, populate the Hash, all subsequent requests served from Redis.
+
+**2. Eliminated Redundant Lookup** — Removed the unnecessary `getLongUrl()` call since the entity (or cached Hash) already provides the long URL.
+
+**3. Bounded Async Thread Pool** — Replaced Spring's default `SimpleAsyncTaskExecutor` (which creates **unlimited threads**) with a bounded `ThreadPoolTaskExecutor` (10 core, 50 max, 500 queue) for analytics processing. `CallerRunsPolicy` ensures no analytics events are silently dropped.
+
+**4. Cache Invalidation** — The entity Hash is invalidated on password changes, title updates, and link deletion to prevent stale data.
+
+### Result
+
+| Metric | Before | After |
+|--------|--------|-------|
+| p95 Latency | 90 ms | **35 ms (2.6x faster)** |
+| Avg Latency | 31 ms | **19 ms (37% faster)** |
+| Throughput | 483 req/s | **566 req/s (+17%)** |
+
+Benchmarked with [k6](https://k6.io/) at 50 concurrent virtual users against the local 3-node Docker cluster.
 
 ---
 
@@ -234,9 +285,10 @@ backend/src/main/java/com/shunyalink/
 │   ├── ProfileController.java        # Bio-link CRUD + profile picture upload
 │   └── UserEntity.java               # JPA user model
 ├── cache/
-│   └── CacheWarmup.java              # Top 1000 URLs preloaded on startup
+│   └── CacheWarmup.java              # Top 1000 URLs preloaded on startup (String + Hash)
 ├── config/
 │   ├── AppConfig.java                # RestTemplate + async config
+│   ├── AsyncConfig.java              # Bounded thread pool for analytics (10 core, 50 max)
 │   ├── RedisConfig.java              # RedisTemplate serialization
 │   └── OpenApiConfig.java            # Swagger UI config
 ├── cp/

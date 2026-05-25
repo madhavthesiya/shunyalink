@@ -110,6 +110,8 @@ public class DbUrlService implements UrlService {
                     longUrl,
                     getTtlSeconds(entity.getExpiryTime()),
                     TimeUnit.SECONDS);
+            // Invalidate redirect Hash cache so it gets rebuilt on next hit
+            redisTemplate.delete("url:entity:" + normalized);
 
             // Trigger Unified Smart AI Fetching (Async) - Always for categorization
             metadataService.fetchAndProcessMetadataAsync(normalized, longUrl, useAutoTitle);
@@ -151,6 +153,8 @@ public class DbUrlService implements UrlService {
         redisTemplate.opsForValue().set(
                 "url:" + shortId, longUrl,
                 getTtlSeconds(entity.getExpiryTime()), TimeUnit.SECONDS);
+        // Invalidate redirect Hash cache so it gets rebuilt on next hit
+        redisTemplate.delete("url:entity:" + shortId);
 
         // Trigger Unified Smart AI Fetching (Async) - Always for categorization
         metadataService.fetchAndProcessMetadataAsync(shortId, longUrl, useAutoTitle);
@@ -195,6 +199,8 @@ public class DbUrlService implements UrlService {
         }
         
         urlRepository.save(entity);
+        // Invalidate redirect Hash cache — password or title may have changed
+        redisTemplate.delete("url:entity:" + shortId);
     }
 
     @Override
@@ -351,6 +357,7 @@ public class DbUrlService implements UrlService {
         UrlEntity entity = urlRepository.findByShortIdAndUserId(shortId, userId)
                 .orElseThrow(() -> new NotFoundException("URL not found or not owned by you"));
         redisTemplate.delete("url:" + shortId);
+        redisTemplate.delete("url:entity:" + shortId);
         urlRepository.delete(entity);
     }
 
@@ -360,6 +367,7 @@ public class DbUrlService implements UrlService {
         for (String shortId : shortIds) {
             urlRepository.findByShortIdAndUserId(shortId, userId).ifPresent(entity -> {
                 redisTemplate.delete("url:" + shortId);
+                redisTemplate.delete("url:entity:" + shortId);
                 urlRepository.delete(entity);
             });
         }

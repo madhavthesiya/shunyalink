@@ -33,7 +33,7 @@ public class AnalyticsService {
      * MAANG Performance: Annotated with @Async to ensure analytics tracking 
      * never delays the user's redirection experience.
      */
-    @Async
+    @Async("analyticsExecutor")
     public void recordClick(String shortId, String ipAddress, String userAgent, String referer) {
         String key = CLICK_KEY_PREFIX + shortId;
         long timestamp = System.currentTimeMillis();
