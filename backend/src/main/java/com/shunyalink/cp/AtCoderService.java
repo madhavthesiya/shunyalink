@@ -145,25 +145,20 @@ public class AtCoderService {
     }
 
     private String calculateAtCoderRank(int rating) {
-        if (rating < 400) return "10 Kyu";
-        if (rating < 600) return "9 Kyu";
-        if (rating < 800) return "8 Kyu";
-        if (rating < 1000) return "7 Kyu";
-        if (rating < 1200) return "6 Kyu";
-        if (rating < 1400) return "5 Kyu";
-        if (rating < 1600) return "4 Kyu";
-        if (rating < 1800) return "3 Kyu";
-        if (rating < 2000) return "2 Kyu";
-        if (rating < 2200) return "1 Kyu";
+        if (rating < 400)  return "Unrated/Gray";
+        if (rating < 600)  return "8 Kyu";
+        if (rating < 800)  return "7 Kyu";
+        if (rating < 1000) return "6 Kyu";
+        if (rating < 1200) return "5 Kyu";
+        if (rating < 1400) return "4 Kyu";
+        if (rating < 1600) return "3 Kyu";
+        if (rating < 1800) return "2 Kyu";
+        if (rating < 2000) return "1 Kyu";
         if (rating < 2400) return "1 Dan";
-        if (rating < 2600) return "2 Dan";
-        if (rating < 2800) return "3 Dan";
-        if (rating < 3000) return "4 Dan";
-        if (rating < 3200) return "5 Dan";
-        if (rating < 3400) return "6 Dan";
-        if (rating < 3600) return "7 Dan";
-        if (rating < 3800) return "8 Dan";
-        if (rating < 4000) return "9 Dan";
-        return "10 Dan";
+        if (rating < 2800) return "2 Dan";
+        if (rating < 3200) return "3 Dan";
+        if (rating < 3600) return "4 Dan";
+        if (rating < 4000) return "5 Dan";
+        return "5 Dan";
     }
 }
