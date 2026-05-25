@@ -92,14 +92,14 @@ Clicks are **never written to the database on the redirect path.** Each redirect
 
 ### Production (k6 → Azure, 50 concurrent users)
 
-| Metric | Result |
-|--------|--------|
-| Total Requests | **1,437** |
-| Error Rate | **0%** |
-| Checks Passed | **100%** (all 302 redirects) |
-| Avg Response | **3.12s** |
+| Metric | Before (v1) | After (v2 — Redis Hash) | Improvement |
+|--------|-------------|------------------------|-------------|
+| Total Requests | 1,437 | **4,581** | 3.2x more |
+| Avg Response | 3.12s | **893 ms** | **3.5x faster** |
+| Min Response | — | **76 ms** | — |
+| Error Rate | 0% | 0% | Perfect |
 
-> Avg latency includes cross-region internet round-trip (India → Azure Free Tier). Zero requests dropped under sustained load.
+> Latency includes cross-region internet round-trip (India → Azure Free Tier). The Redis Hash optimization reduced avg response by 3.5x even on a resource-constrained cloud instance.
 
 ### Local Cluster (k6 → 3-node Docker, 50 concurrent users)
 
