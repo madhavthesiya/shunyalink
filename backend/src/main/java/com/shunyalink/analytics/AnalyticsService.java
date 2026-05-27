@@ -64,6 +64,19 @@ public class AnalyticsService {
         // 7. Record Device & Browser
         String device = parseDevice(userAgent);
         redisTemplate.opsForHash().increment(DEVICE_KEY_PREFIX + shortId, device, 1);
+
+        // 8. Time-series sorted sets for Geo/Referrer/Device (enables time-range filtering)
+        redisTemplate.opsForZSet().add("analytics:geo:ts:" + shortId,
+                UUID.randomUUID() + "|" + country, (double) timestamp);
+        redisTemplate.opsForZSet().removeRangeByScore("analytics:geo:ts:" + shortId, 0, thirtyDaysAgo);
+
+        redisTemplate.opsForZSet().add("analytics:referrer:ts:" + shortId,
+                UUID.randomUUID() + "|" + source, (double) timestamp);
+        redisTemplate.opsForZSet().removeRangeByScore("analytics:referrer:ts:" + shortId, 0, thirtyDaysAgo);
+
+        redisTemplate.opsForZSet().add("analytics:device:ts:" + shortId,
+                UUID.randomUUID() + "|" + device, (double) timestamp);
+        redisTemplate.opsForZSet().removeRangeByScore("analytics:device:ts:" + shortId, 0, thirtyDaysAgo);
     }
 
     private String getCountryFromIp(String ip) {
@@ -171,16 +184,45 @@ public class AnalyticsService {
         }
     }
 
-    public Map<String, Long> getGeoDistribution(String shortId) {
-        return getHashDistribution(GEO_KEY_PREFIX + shortId);
+    public Map<String, Long> getGeoDistribution(String shortId, long lookbackMs) {
+        if (lookbackMs == 0) {
+            return getHashDistribution(GEO_KEY_PREFIX + shortId);
+        }
+        return getTimeFilteredDistribution("analytics:geo:ts:" + shortId, lookbackMs);
     }
 
-    public Map<String, Long> getReferrerDistribution(String shortId) {
-        return getHashDistribution(REFERRER_KEY_PREFIX + shortId);
+    public Map<String, Long> getReferrerDistribution(String shortId, long lookbackMs) {
+        if (lookbackMs == 0) {
+            return getHashDistribution(REFERRER_KEY_PREFIX + shortId);
+        }
+        return getTimeFilteredDistribution("analytics:referrer:ts:" + shortId, lookbackMs);
     }
 
-    public Map<String, Long> getDeviceDistribution(String shortId) {
-        return getHashDistribution(DEVICE_KEY_PREFIX + shortId);
+    public Map<String, Long> getDeviceDistribution(String shortId, long lookbackMs) {
+        if (lookbackMs == 0) {
+            return getHashDistribution(DEVICE_KEY_PREFIX + shortId);
+        }
+        return getTimeFilteredDistribution("analytics:device:ts:" + shortId, lookbackMs);
+    }
+
+    /**
+     * Queries a time-series sorted set within the lookback window and aggregates by category.
+     * Members are stored as "uuid|category" with timestamp as score.
+     */
+    private Map<String, Long> getTimeFilteredDistribution(String key, long lookbackMs) {
+        long now = System.currentTimeMillis();
+        long startTime = now - lookbackMs;
+
+        Set<String> members = redisTemplate.opsForZSet().rangeByScore(key, startTime, now);
+        if (members == null || members.isEmpty()) return new TreeMap<>();
+
+        return members.stream()
+                .map(m -> m.substring(m.indexOf("|") + 1))
+                .collect(Collectors.groupingBy(
+                        category -> category,
+                        TreeMap::new,
+                        Collectors.counting()
+                ));
     }
 
     private Map<String, Long> getHashDistribution(String key) {

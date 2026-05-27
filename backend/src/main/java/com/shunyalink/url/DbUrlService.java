@@ -244,12 +244,12 @@ public class DbUrlService implements UrlService {
         // 2. Fetch Time-Series Click Data
         Map<String, Long> timeSeries = analyticsService.getClickStats(shortId, lookbackMs);
         
-        // 3. Fetch Geo-Distribution Data
-        Map<String, Long> countries = analyticsService.getGeoDistribution(shortId);
+        // 3. Fetch Geo-Distribution Data (time-filtered)
+        Map<String, Long> countries = analyticsService.getGeoDistribution(shortId, lookbackMs);
 
-        // 4. Fetch Referrer & Device Distribution
-        Map<String, Long> referrers = analyticsService.getReferrerDistribution(shortId);
-        Map<String, Long> devices = analyticsService.getDeviceDistribution(shortId);
+        // 4. Fetch Referrer & Device Distribution (time-filtered)
+        Map<String, Long> referrers = analyticsService.getReferrerDistribution(shortId, lookbackMs);
+        Map<String, Long> devices = analyticsService.getDeviceDistribution(shortId, lookbackMs);
 
         return new UrlStatsResponse(
                 entity.getShortId(),
