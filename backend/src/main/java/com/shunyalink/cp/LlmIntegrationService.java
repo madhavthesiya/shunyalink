@@ -144,17 +144,25 @@ public class LlmIntegrationService {
      * Uses Gemini primarily for better reasoning.
      */
     public boolean isPhishing(String url) {
-        String prompt = "Analyze this URL: " + url + ". " +
-                "Is it highly likely to be a phishing, scam, malware, or malicious link? " +
-                "(e.g., typosquatting like 'g00gle.com', 'secure-login-paypal.net', or 'free-crypto.xyz'). " +
-                "Reply with EXACTLY the word YES or NO and nothing else.";
+        String prompt = "You are a cybersecurity expert specializing in phishing URL detection.\n" +
+                "Analyze this URL and determine if it is a phishing, scam, malware, or malicious link.\n\n" +
+                "URL: " + url + "\n\n" +
+                "Check for these red flags:\n" +
+                "1. Typosquatting (e.g. 'paypa1.com', 'g00gle.com', 'arnazon.com')\n" +
+                "2. Brand names in suspicious domains (e.g. 'paypal-secure-login.com', 'amazon-alert.net')\n" +
+                "3. Suspicious TLDs combined with brand names (e.g. 'google.com.verify-login.xyz')\n" +
+                "4. Scam keywords (e.g. 'free-iphone', 'crypto-giveaway', 'account-suspended', 'verify-now')\n" +
+                "5. Misleading subdomains (e.g. 'paypal.com.phish.net' — real domain is 'phish.net')\n" +
+                "6. Random character domains (e.g. 'xk92mz.top', 'a1b2c3.xyz')\n\n" +
+                "IMPORTANT: When in doubt, answer YES. It is better to block a suspicious URL than allow a malicious one.\n" +
+                "Legitimate URLs from known brands (github.com, google.com, youtube.com, linkedin.com) should be NO.\n\n" +
+                "Reply with EXACTLY one word: YES or NO. No explanation, no punctuation.";
 
         String response = "NO";
         if (isKeyValid(geminiApiKey)) {
             try {
                 response = callGemini(prompt).toUpperCase().trim();
             } catch (Exception e) {
-                // Fallback
                 if (isKeyValid(groqApiKey)) {
                     try {
                         response = callGroq(prompt).toUpperCase().trim();
@@ -164,8 +172,9 @@ public class LlmIntegrationService {
                 }
             }
         }
-        
-        return response.contains("YES");
+
+        // Sanitize: sometimes AI returns "YES." or "YES, this is phishing"
+        return response.startsWith("YES");
     }
 
     private boolean isKeyValid(String key) {
