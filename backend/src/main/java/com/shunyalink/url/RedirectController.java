@@ -61,7 +61,7 @@ public class RedirectController {
         String title;
 
         if (!cached.isEmpty()) {
-            // ✅ Cache HIT — zero DB hit on the hot path
+            // Cache HIT — zero DB hit on the hot path
             longUrl     = (String) cached.get("longUrl");
             hasPassword = "true".equals(cached.get("hasPassword"));
             title       = (String) cached.get("title");
