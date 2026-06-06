@@ -414,4 +414,9 @@ Flyway runs all 13 migrations automatically on first startup.
 
 ---
 
-**Made by [Madhav Thesiya](https://www.linkedin.com/in/madhavthesiya/)** — If this was useful, drop a ⭐
+<div align="center">
+
+**Made by [Madhav Thesiya](https://www.linkedin.com/in/madhavthesiya/)** — If this was useful, drop a ⭐<br>
+**© 2026 Madhav Thesiya. All Rights Reserved.**
+
+</div>
