@@ -27,6 +27,16 @@
 
 Built to scale horizontally and survive heavy traffic spikes, this project implements several enterprise-grade backend patterns:
 
+### Performance Benchmarks (Local 3-Node Cluster)
+*Benchmarked with [k6](https://k6.io/) at 50 concurrent virtual users against a 3-node Docker cluster.*
+| Metric | Before (v1) | After (Redis Hash) | Improvement |
+|--------|-------------|-------------------|-------------|
+| **Throughput** | 483 req/s | **566 req/s** | +17% |
+| **Avg Response** | 31.27 ms | **19.5 ms** | **37% faster** |
+| **p95 Response** | 90.47 ms | **34.9 ms** | **2.6x faster** |
+| **Cache Hit Rate** | 99.99% | **99.99%** | Near-perfect |
+
+
 * ⚡ **75% Latency Reduction via Parallel Pipelines:** Aggregated real-time competitive programming stats across 5 different platforms simultaneously using `CompletableFuture.allOf()`, cutting total wait times by 75%. Bypassed Cloudflare bot-detection using a pre-warmed, highly optimized Puppeteer microservice.
 * 🚀 **Zero-DB Hot Path via Redis Hash Caching:** Reduced p95 redirect latency from 90ms down to 34.9ms (a 2.6x improvement) by caching all redirect-critical fields (URLs, passwords, expiry times) inside Redis Hashes, entirely eliminating PostgreSQL queries on cache hits. [👉 *Read the benchmark breakdown*](docs/performance.md)
 * 🛡️ **Stateless Distributed Architecture:** Scaled across 3 Spring Boot replicas behind an Nginx load balancer. Implemented stateless authentication via JWTs with a Redis-backed Token Blacklist for secure revocation on logout. [👉 *View the Architecture Diagram*](docs/architecture.md)
