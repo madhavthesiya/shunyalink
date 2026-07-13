@@ -1,7 +1,7 @@
 # ShunyaLink
 
 > An all-in-one Smart URL Shortener and Digital Identity Platform featuring write-behind analytics, Geo-IP tracking, Link-in-Bio profiles, and a real-time Competitive Programming dashboard.
-> Engineered with distributed caching, horizontal scaling, and real-world security & AI trade-offs.
+> Engineered with distributed caching, horizontal scaling, and real-world security &amp; AI trade-offs.
 
 - 🔗 **Live:** https://shunyalink.madhavv.me
 - 📖 **API Docs:** https://sl.madhavv.me/swagger-ui/index.html
@@ -9,39 +9,165 @@
 
 ---
 
-## Table of Contents
+## Architecture
 
-- [Engineering Highlights](#engineering-highlights)
-- [Features](#features)
-- [Tech Stack](#tech-stack)
-- [Architecture & Deep Dives](docs/architecture.md)
-- [Performance & Benchmarks](docs/performance.md)
-- [System Design Decisions](docs/system_design.md)
-- [API Reference](docs/api_reference.md)
-- [Project Structure](docs/project_structure.md)
-- [Deployment & Setup](#running-locally)
+```mermaid
+graph TB
+    Client([Browser / Mobile]):::client
+
+    subgraph Edge["Edge Layer"]
+        Nginx["Nginx Load Balancer<br/>Round-Robin · X-Forwarded-For"]
+    end
+
+    subgraph Cluster["Backend Cluster (×3 Replicas)"]
+        SB1["Spring Boot :8080"]
+        SB2["Spring Boot :8080"]
+        SB3["Spring Boot :8080"]
+    end
+
+    subgraph Data["Data Layer"]
+        Redis[("Redis 7<br/>Entity Hash Cache · Counters · Rate Limits · Geo")]
+        PG[("PostgreSQL 16<br/>URLs · Users · Profiles · Migrations")]
+    end
+
+    subgraph Scraping["Scraping Layer"]
+        Scraper["Puppeteer Scraper<br/>Headless Chrome · CodeChef"]
+    end
+
+    subgraph Frontend["Frontend"]
+        Next["Next.js 15<br/>App Router · SSR"]
+    end
+
+    Client --> Nginx
+    Client --> Next
+    Nginx --> SB1 & SB2 & SB3
+    SB1 & SB2 & SB3 --> Redis
+    SB1 & SB2 & SB3 --> PG
+    SB1 & SB2 & SB3 -->|"anti-bot scrape"| Scraper
+    Next -->|REST API| Nginx
+
+    classDef client fill:#6366f1,color:#fff,stroke:none
+```
+
+### Redirect Hot-Path
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant N as Nginx
+    participant SB as Spring Boot
+    participant R as Redis
+    participant PG as PostgreSQL
+
+    U->>N: GET /abc123
+    N->>SB: Proxy (round-robin)
+    SB->>R: HGETALL url:entity:abc123
+
+    alt Cache Hit (zero DB)
+        R-->>SB: {longUrl, hasPassword, title, expiryTime}
+        SB->>R: HINCRBY click_counts abc123 1 (async)
+        SB-->>U: 302 Redirect
+    else Cache Miss
+        SB->>PG: SELECT * FROM urls
+        PG-->>SB: row
+        SB->>R: HSET url:entity:abc123 {longUrl, hasPassword, title, expiryTime}
+        SB->>R: HINCRBY click_counts abc123 1 (async)
+        SB-->>U: 302 Redirect
+    end
+
+    Note over R,PG: Scheduler syncs counters<br/>to PostgreSQL every 30s
+```
+
+> **Why Redis Hash instead of a simple string?** The redirect path needs more than just the long URL — it must check password protection, expiry time, and the page title (for social bot OG tags). Caching all redirect-critical fields as a Hash eliminates the database query entirely on cache hits. See [Performance Optimization](#performance-optimization) for the full story.
+
+### Write-Behind Analytics
+
+Clicks are **never written to the database on the redirect path.** Each redirect increments a Redis hash counter in microseconds via a bounded `ThreadPoolTaskExecutor` (10 core, 50 max threads). A background scheduler runs every 30 seconds, acquires a distributed UUID lock (ensuring only one instance syncs across the cluster), atomically renames the counter key, batch-flushes all counts to PostgreSQL, and releases the lock.
+
+**Result:** Zero DB write pressure during peak traffic.
 
 ---
 
-## Engineering Highlights
+## Performance
 
-Built to scale horizontally and survive heavy traffic spikes, this project implements several enterprise-grade backend patterns:
+### Production (k6 → Azure, 50 concurrent users)
 
-### Performance Benchmarks (Local 3-Node Cluster)
-*Benchmarked with [k6](https://k6.io/) at 50 concurrent virtual users against a 3-node Docker cluster.*
-| Metric | Before (v1) | After (Redis Hash) | Improvement |
-|--------|-------------|-------------------|-------------|
-| **Throughput** | 483 req/s | **566 req/s** | +17% |
-| **Avg Response** | 31.27 ms | **19.5 ms** | **37% faster** |
-| **p95 Response** | 90.47 ms | **34.9 ms** | **2.6x faster** |
-| **Cache Hit Rate** | 99.99% | **99.99%** | Near-perfect |
+| Metric | Before (v1) | After (v2 — Redis Hash) | Improvement |
+|--------|-------------|------------------------|-------------|
+| Total Requests | 1,437 | **4,581** | 3.2x more |
+| Avg Response | 3.12s | **893 ms** | **3.5x faster** |
+| Min Response | — | **76 ms** | — |
+| Error Rate | 0% | 0% | Perfect |
 
+> Latency includes cross-region internet round-trip (India → Azure Free Tier). The Redis Hash optimization reduced avg response by 3.5x even on a resource-constrained cloud instance.
 
-* ⚡ **75% Latency Reduction via Parallel Pipelines:** Aggregated real-time competitive programming stats across 5 different platforms simultaneously using `CompletableFuture.allOf()`, cutting total wait times by 75%. Bypassed Cloudflare bot-detection using a pre-warmed, highly optimized Puppeteer microservice.
-* 🚀 **Zero-DB Hot Path via Redis Hash Caching:** Reduced p95 redirect latency from 90ms down to 34.9ms (a 2.6x improvement) by caching all redirect-critical fields (URLs, passwords, expiry times) inside Redis Hashes, entirely eliminating PostgreSQL queries on cache hits. [👉 *Read the benchmark breakdown*](docs/performance.md)
-* 🛡️ **Stateless Distributed Architecture:** Scaled across 3 Spring Boot replicas behind an Nginx load balancer. Implemented stateless authentication via JWTs with a Redis-backed Token Blacklist for secure revocation on logout. [👉 *View the Architecture Diagram*](docs/architecture.md)
-* 🔄 **Write-Behind Analytics with Distributed Locks:** Decoupled the redirect hot-path from analytics tracking. Clicks are buffered in Redis Hash counters asynchronously and batch-flushed to PostgreSQL every 30 seconds by a cron job utilizing a Redis `SETNX` UUID Distributed Lock to prevent race conditions across the 3 backend replicas.
-* 🔐 **Dual Security Model:** Secured the database using two distinct cryptographic strategies: **BCrypt (One-Way Hashing)** for irreversible user passwords, and **AES-256 (Two-Way Encryption)** for short-link passwords to support an "On-Demand Password Reveal" feature. [👉 *Read the System Design decisions*](docs/system_design.md)
+### Local Cluster (k6 → 3-node Docker, 50 concurrent users)
+
+| Metric | Before (v1) | After (v2 — Redis Hash) | Improvement |
+|--------|-------------|------------------------|-------------|
+| Throughput | 483 req/s | **566 req/s** | +17% |
+| Avg Response | 31.27 ms | **19.5 ms** | **37% faster** |
+| p95 Response | 90.47 ms | **34.9 ms** | **2.6x faster** |
+| Max Response | 653 ms | **325 ms** | 2x better |
+| Error Rate | 0% | 0% | Perfect |
+| Redis Cache Hit Rate | 99.99% | 99.99% | Near-perfect |
+
+> **v1:** Redis cached only the URL string — the database was still queried on every redirect for password/title/expiry checks.<br/>
+> **v2:** All redirect-critical fields cached as a Redis Hash — **zero database reads** on the hot path for cache hits.
+
+### Failover Test
+
+One backend node killed mid-traffic — Nginx reroutes to surviving replicas with zero downtime:
+
+![Failover Demo](docs/failover-demo.gif)
+
+---
+
+## Performance Optimization
+
+### The Problem
+
+During profiling, I discovered the redirect hot path was making a **redundant database query on every single request**, even with Redis caching enabled:
+
+```java
+// Step 1: ALWAYS hit PostgreSQL for the full entity (password, title, expiry checks)
+UrlEntity entity = urlRepository.findByShortId(shortId);
+
+// Step 2: Check Redis for the URL string (but we already have entity.getLongUrl()!)
+String longUrl = urlService.getLongUrl(shortId);  // redundant
+```
+
+The Redis cache only stored the long URL string (`SET url:abc123 "https://..."`) — but the controller needed the **full entity** for password verification, social bot OG tags, and expiry checks. So PostgreSQL was hit on every redirect regardless.
+
+### The Solution
+
+**1. Redis Hash Entity Caching** — Cache all redirect-critical fields, not just the URL:
+
+```
+HSET url:entity:abc123
+  longUrl      "https://google.com"
+  hasPassword  "false"
+  title        "Google"
+  expiryTime   "2026-12-31T00:00:00"
+```
+
+On cache hit: **zero database reads.** On cache miss: query DB once, populate the Hash, all subsequent requests served from Redis.
+
+**2. Eliminated Redundant Lookup** — Removed the unnecessary `getLongUrl()` call since the entity (or cached Hash) already provides the long URL.
+
+**3. Bounded Async Thread Pool** — Replaced Spring's default `SimpleAsyncTaskExecutor` (which creates **unlimited threads**) with a bounded `ThreadPoolTaskExecutor` (10 core, 50 max, 500 queue) for analytics processing. `CallerRunsPolicy` ensures no analytics events are silently dropped.
+
+**4. Cache Invalidation** — The entity Hash is invalidated on password changes, title updates, and link deletion to prevent stale data.
+
+### Result
+
+| Metric | Before | After |
+|--------|--------|-------|
+| p95 Latency | 90 ms | **35 ms (2.6x faster)** |
+| Avg Latency | 31 ms | **19 ms (37% faster)** |
+| Throughput | 483 req/s | **566 req/s (+17%)** |
+
+Benchmarked with [k6](https://k6.io/) at 50 concurrent virtual users against the local 3-node Docker cluster.
 
 ---
 
@@ -61,6 +187,35 @@ Built to scale horizontally and survive heavy traffic spikes, this project imple
 
 ---
 
+## Why These Choices
+
+**Base62 on sequential IDs** — Random UUIDs fragment B-tree indexes on every insert. Sequential IDs give ordered inserts; Base62 gives compact, URL-safe codes.
+
+**Lua script for rate limiting** — Two separate Redis commands (`INCR` + `EXPIRE`) have a race window. If the app crashes between them, the key lives forever, permanently blocking that IP. A Lua script executes both atomically on the server.
+
+**Write-Behind over Write-Through** — Writing to PostgreSQL on every click would bottleneck the hot redirect path. Buffering in Redis and batch-flushing every 30s decouples read latency from write durability.
+
+**Flyway over `ddl-auto=update`** — Hibernate's auto-update silently modifies production schemas. Flyway gives versioned, auditable migrations (13 migrations across users, auth, profiles, analytics, ordering, tags, and cloud storage).
+
+**Partial unique index** — Idempotency for permanent URLs is enforced at the database level. Same URL → same short ID. No application-level dedup logic needed.
+
+**Geo-IP Self-Healing** — If the external lookup returns "Unknown" and later resolves, the system retroactively shifts one count from "Unknown" to the real country.
+
+**On-demand password reveal** — Link passwords are never included in list/stats API responses. A dedicated authenticated endpoint (`/reveal-password`) decrypts and returns the password only when the owner explicitly requests it — same pattern as Google Password Manager.
+
+**Synchronous AI Phishing Detection** — Scammers abuse URL shorteners to hide malware links. By passing the long URL through a Gemini LLM prompt synchronously during the `/shorten` request, we intercept and block typosquatting and scam links before they are even created. We implemented a **Resilient Fallback Pattern**: if Gemini rate-limits or fails, the request automatically falls back to Groq (Llama 3), and if both fail, the system fails-open to prevent breaking the core shortening functionality.
+
+---
+
+## Reliability & Observability
+
+*   **Health Monitoring**: Integrated **Spring Boot Actuator** to provide real-time status of the JVM, Hibernate connection pool, and Redis connectivity.
+*   **Live Frontend Heartbeat**: Implemented a dashboard-level monitoring component that polls the backend health status every 30 seconds, providing real-time "System Operational" feedback to the user.
+*   **Production Readiness**: Configured custom health indicators to ensure the application only accepts traffic when all downstream services (Redis/PostgreSQL) are fully operational.
+*   **Graceful Shutdown**: The platform is tuned to ensure all pending **Redis-to-PostgreSQL analytics syncs** are completed atomically before the container process exits during a deployment or scale-down event.
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -76,6 +231,127 @@ Built to scale horizontally and survive heavy traffic spikes, this project imple
 | Load Balancer | Nginx (Docker, 3 upstream replicas) |
 | Docs | SpringDoc OpenAPI (Swagger) |
 | Build | Maven · Docker Compose |
+
+---
+
+## API
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `POST` | `/api/v1/url/shorten` | ✅ | Shorten a URL (supports custom alias, password, tags, auto-title) |
+| `GET` | `/{shortId}` | — | Redirect (or OG preview for social bots) |
+| `GET` | `/api/v1/url/stats/{shortId}` | — | Click count + timestamps (supports `?range=24h\|7d\|all`) |
+| `GET` | `/api/v1/url/my-links` | ✅ | Paginated user links (supports `?search=` full-text) |
+| `POST` | `/api/v1/url/bulk-delete` | ✅ | Bulk delete links |
+| `POST` | `/api/v1/url/bulk-import` | ✅ | CSV bulk import (drag-and-drop) |
+| `GET` | `/api/v1/url/export/csv` | ✅ | CSV export of all user links |
+| `PUT` | `/api/v1/url/reorder` | ✅ | Drag-and-drop link reordering |
+| `PUT` | `/api/v1/url/{shortId}/bio-visibility` | ✅ | Toggle show/hide on bio profile |
+| `PATCH` | `/api/v1/url/{shortId}/metadata` | ✅ | Update link title and password |
+| `PATCH` | `/api/v1/url/{shortId}/tags` | ✅ | Update link tags |
+| `GET` | `/api/v1/url/{shortId}/reveal-password` | ✅ | On-demand password reveal (owner only) |
+| `POST` | `/api/v1/url/resolve/{shortId}` | — | Verify password and resolve long URL |
+| `GET` | `/api/v1/url/qr/{shortId}` | — | QR code image (PNG) |
+| `GET` | `/api/v1/url/stats/public` | — | Public system stats (links, users, clicks) |
+| `POST` | `/api/v1/auth/register` | — | Register |
+| `POST` | `/api/v1/auth/login` | — | Login (JWT) |
+| `POST` | `/api/v1/auth/google` | — | Google OAuth |
+| `GET` | `/api/v1/profile/me` | ✅ | Get authenticated user's profile |
+| `POST` | `/api/v1/profile/settings` | ✅ | Update bio-link profile settings |
+| `POST` | `/api/v1/profile/picture` | ✅ | Upload profile picture (Cloudinary) |
+| `GET` | `/api/v1/profile/username-check` | ✅ | Check username availability |
+| `GET` | `/api/v1/profile/{username}` | — | Public bio-link page |
+| `GET` | `/api/v1/portfolio/{username}` | — | Public CP Portfolio stats |
+| `GET` | `/api/v1/portfolio/{username}/roast` | — | AI profile roast (Gemini/Groq) |
+
+Error codes: `400` invalid input · `404` not found · `409` alias taken · `410` expired · `429` rate limited
+
+---
+
+## Project Structure
+
+```
+backend/src/main/java/com/shunyalink/
+├── analytics/
+│   ├── AnalyticsScheduler.java       # Write-behind sync with distributed lock
+│   ├── AnalyticsService.java         # Time-series + Geo-IP recording & self-healing
+│   ├── GlobalStatsEntity.java        # Aggregate click counters
+│   └── GlobalStatsRepository.java
+├── auth/
+│   ├── AuthController.java           # Register, Login, Google OAuth, Email verification
+│   ├── AuthService.java              # Core auth logic + password reset
+│   ├── CloudinaryService.java        # Profile picture upload + auto-compression
+│   ├── EmailService.java             # Transactional emails (verification, reset)
+│   ├── ProfileController.java        # Bio-link CRUD + profile picture upload
+│   └── UserEntity.java               # JPA user model
+├── cache/
+│   └── CacheWarmup.java              # Top 1000 URLs preloaded on startup (String + Hash)
+├── config/
+│   ├── AppConfig.java                # RestTemplate + async config
+│   ├── AsyncConfig.java              # Bounded thread pool for analytics (10 core, 50 max)
+│   ├── RedisConfig.java              # RedisTemplate serialization
+│   └── OpenApiConfig.java            # Swagger UI config
+├── cp/
+│   ├── CpController.java             # Multi-platform stats aggregator + roast endpoint
+│   ├── LeetCodeService.java          # LeetCode GraphQL integration
+│   ├── CodeforcesService.java        # Codeforces API integration
+│   ├── GithubService.java            # GitHub API integration
+│   ├── CodeChefService.java          # Delegates to Puppeteer scraper microservice
+│   ├── AtCoderService.java           # AtCoder API + Kenkoooo integration
+│   └── LlmIntegrationService.java    # Hybrid Groq/Gemini AI for roasts & categorization
+├── exception/
+│   └── GlobalExceptionHandler.java   # Centralized error handling (400/403/404/409/410/429)
+├── rate/
+│   └── RateLimiterService.java       # Atomic Lua rate limiting (fail-open)
+├── scheduler/
+│   └── ExpiredLinkCleanupScheduler.java  # Hourly expired link purge
+├── security/
+│   ├── SecurityConfig.java           # Spring Security filter chain
+│   ├── JwtService.java               # JWT creation + validation
+│   ├── JwtBlacklistService.java      # Token revocation via Redis
+│   └── JwtAuthenticationFilter.java  # Per-request JWT filter
+├── url/
+│   ├── DbUrlService.java             # Core business logic + AI categorization
+│   ├── Base62IdEncoder.java          # Sequential ID → Base62
+│   ├── RedirectController.java       # /{shortId} redirect + Redis Hash cache + OG tags
+│   ├── UrlController.java            # REST API endpoints (25+ routes)
+│   ├── CsvImportService.java         # Bulk CSV import with validation
+│   ├── CsvExportService.java         # CSV data export
+│   ├── MetadataService.java          # Thread-safe URL title scraping
+│   ├── QrController.java             # QR code generation
+│   └── ReorderRequest.java           # DTO for drag-and-drop ordering
+└── util/
+    └── EncryptionUtils.java          # AES-256 encryption/decryption
+
+frontend/
+├── app/
+│   ├── layout.tsx                    # Root layout + SEO/OG metadata
+│   ├── page.tsx                      # Landing page
+│   ├── login/ & register/            # Auth pages
+│   ├── forgot-password/ & reset-password/ # Password recovery
+│   ├── dashboard/                    # Link management + insights + settings
+│   ├── [username]/                   # Public bio-link profiles (server-side OG tags)
+│   ├── cp/[username]/                # CP portfolio page (server-side OG tags)
+│   └── p/                            # Password challenge page
+└── components/
+    ├── header.tsx & footer.tsx        # Site chrome
+    ├── shortener-form.tsx             # URL shortening form + UTM builder
+    ├── user-profile-settings.tsx      # Bio-link editor + live preview + avatar upload
+    ├── profile-card.tsx               # Public bio-link card (Normal + Programmer modes)
+    ├── dashboard/                     # Dashboard panels (links, analytics, import modal, system status)
+    ├── cp/                            # CP widgets (LeetCode, Codeforces, CodeChef, AtCoder, GitHub, Roast)
+    └── home/                          # Homepage sections (hero, features, bio showcase, stats)
+
+nginx/
+└── nginx.conf                         # Load balancer for 3 backend replicas
+
+scraper/
+├── index.js                           # Express + Puppeteer headless Chrome scraper
+├── package.json                       # Dependencies: express, puppeteer
+└── Dockerfile.scraper                 # Node 20 + system Chromium
+
+docker-compose.yml                     # Full stack: PG + Redis + 3×Backend + Scraper + Nginx + Frontend (11 containers)
+```
 
 ---
 
