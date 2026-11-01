@@ -13,7 +13,11 @@ public class EncryptionUtils {
 
     private final String secretKey;
 
-    public EncryptionUtils(@Value("${app.encryption.secret:my-ultra-secret-key-32-chars-long}") String secretKey) {
+    public EncryptionUtils(@Value("${app.encryption.secret}") String secretKey) {
+        // An empty value would otherwise be padded into an all-spaces key below.
+        if (secretKey == null || secretKey.isBlank()) {
+            throw new IllegalStateException("ENCRYPTION_SECRET must be set to a non-blank value");
+        }
         // Ensure key is 32 bytes for AES-256
         if (secretKey.length() < 32) {
             this.secretKey = String.format("%-32s", secretKey).substring(0, 32);

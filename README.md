@@ -392,13 +392,15 @@ docker-compose up --build
 | `DB_PASSWORD` | PostgreSQL password |
 | `APP_BASE_URL` | Public backend URL (`http://localhost` for local) |
 | `ALLOWED_ORIGIN` | Frontend origin for CORS (`http://localhost:3000` for local) |
-| `JWT_SECRET` | 256-bit secret for JWT signing (`openssl rand -base64 32`) |
-| `ENCRYPTION_SECRET` | 32-char key for AES-256 link password encryption |
+| `FRONTEND_URL` | Frontend URL used in redirects and emails (defaults to `http://localhost:3000`) |
+| `JWT_SECRET` | **Required.** 256-bit secret for JWT signing (`openssl rand -base64 32`) — no default, startup fails without it |
+| `ENCRYPTION_SECRET` | **Required.** 32-char key for link password encryption (`openssl rand -base64 24`) — no default, startup fails without it |
 | `MAIL_USERNAME` | Gmail address for transactional emails |
 | `MAIL_PASSWORD` | Gmail App Password ([generate here](https://myaccount.google.com/apppasswords)) |
 | `GEMINI_API_KEY` | Google Gemini API key (AI categorization + phishing detection) |
 | `GROQ_API_KEY` | Groq API key (AI profile roasts) |
 | `CLOUDINARY_URL` | Cloudinary environment URL (profile picture uploads) |
+| `GOOGLE_CLIENT_ID` | Optional. Your own Google OAuth client ID (defaults to the ShunyaLink client) |
 
 | Service | URL |
 |---------|-----|
