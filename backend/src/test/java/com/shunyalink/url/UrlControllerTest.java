@@ -188,6 +188,43 @@ class UrlControllerTest {
     }
 
     @Test
+    void resolve_isRateLimitedPerClientAndPerLink() throws Exception {
+        when(urlService.resolveProtectedLink("locked", "guess")).thenReturn("https://example.com/private");
+
+        mockMvc.perform(post("/api/v1/url/resolve/locked")
+                        .header("X-Forwarded-For", "203.0.113.7")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"guess\"}"))
+                .andExpect(status().isOk());
+
+        verify(rateLimiterService).checkLimit("rate:resolve:locked:203.0.113.7", 5, 60);
+        verify(rateLimiterService).checkLimit("rate:resolve:locked", 100, 3600);
+    }
+
+    @Test
+    void resolve_whenRateLimited_returns429WithoutCheckingThePassword() throws Exception {
+        doThrow(new com.shunyalink.exception.TooManyRequestsException("Rate limit exceeded. Try again later."))
+                .when(rateLimiterService).checkLimit(startsWith("rate:resolve:locked:"), anyInt(), anyInt());
+
+        mockMvc.perform(post("/api/v1/url/resolve/locked")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"guess\"}"))
+                .andExpect(status().isTooManyRequests());
+
+        verify(urlService, never()).resolveProtectedLink(any(), any());
+    }
+
+    @Test
+    void resolve_missingPassword_returns400() throws Exception {
+        mockMvc.perform(post("/api/v1/url/resolve/locked")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(urlService);
+    }
+
+    @Test
     void shorten_rateLimitKey_usesProxyAppendedIpNotTheClientSuppliedOne() throws Exception {
         UrlEntity entity = new UrlEntity("abc123", "https://google.com", false);
         when(urlService.shortenUrl(any(), any(), any(), any(), any(), any(), anyBoolean(), any())).thenReturn(entity);

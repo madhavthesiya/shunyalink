@@ -233,9 +233,15 @@ public class UrlController {
 
     @Operation(summary = "Resolve password-protected link", description = "Verifies password and returns the original long URL.")
     @PostMapping("/resolve/{shortId}")
-    public Map<String, String> resolvePassword(@PathVariable String shortId, @RequestBody Map<String, String> body, HttpServletRequest request) {
+    public Map<String, String> resolvePassword(@PathVariable String shortId, @Valid @RequestBody ResolveRequest body, HttpServletRequest request) {
+        String ip = clientIpResolver.resolve(request);
+        // The per-client limit stops a single guesser; the per-link ceiling bounds guessing
+        // spread across many IPs. Both run before any password comparison.
+        rateLimiterService.checkLimit("rate:resolve:" + shortId + ":" + ip, 5, 60);
+        rateLimiterService.checkLimit("rate:resolve:" + shortId, 100, 3600);
+
         // Throws 401 on a wrong password; verification (and legacy upgrade) lives in the service
-        String longUrl = urlService.resolveProtectedLink(shortId, body.get("password"));
+        String longUrl = urlService.resolveProtectedLink(shortId, body.password());
         analyticsService.recordClick(shortId, clientIpResolver.resolve(request), request.getHeader("User-Agent"), request.getHeader("Referer"));
         return Map.of("longUrl", longUrl);
     }

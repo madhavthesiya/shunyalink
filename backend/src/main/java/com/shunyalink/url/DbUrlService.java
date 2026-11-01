@@ -241,6 +241,9 @@ public class DbUrlService implements UrlService {
     public String resolveProtectedLink(String shortId, String rawPassword) {
         UrlEntity entity = urlRepository.findByShortId(shortId)
                 .orElseThrow(() -> new NotFoundException("URL not found"));
+        if (entity.getExpiryTime() != null && entity.getExpiryTime().isBefore(LocalDateTime.now())) {
+            throw new GoneException("Short URL has expired");
+        }
 
         String stored = entity.getPassword();
         if (stored == null) {

@@ -34,9 +34,14 @@ export default function PasswordPage() {
         const data = await response.json();
         // Redirect to the actual destination
         window.location.href = data.longUrl;
+      } else if (response.status === 429) {
+        setError("Too many attempts. Please wait a minute and try again.");
+      } else if (response.status === 410) {
+        setError("This link has expired.");
+      } else if (response.status === 404) {
+        setError("This link doesn't exist.");
       } else {
-        const errorData = await response.json().catch(() => ({}));
-        setError(typeof errorData === 'string' ? errorData : "Incorrect password. Please try again.");
+        setError("Incorrect password. Please try again.");
       }
     } catch (err) {
       setError("Failed to verify password. Please check your connection.");

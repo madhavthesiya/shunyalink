@@ -237,6 +237,15 @@ class DbUrlServiceTest {
     }
 
     @Test
+    void resolve_expiredLink_throwsGoneEvenWithTheCorrectPassword() {
+        UrlEntity entity = protectedLink("old", "$2a$10$hashed");
+        entity.setExpiryTime(LocalDateTime.now().minusMinutes(1));
+        when(passwordEncoder.matches("s3cret", "$2a$10$hashed")).thenReturn(true);
+
+        assertThrows(GoneException.class, () -> dbUrlService.resolveProtectedLink("old", "s3cret"));
+    }
+
+    @Test
     void resolve_unprotectedLink_returnsDestination() {
         protectedLink("open", null);
 
