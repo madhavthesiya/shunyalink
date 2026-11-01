@@ -1,8 +1,11 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
-// k6 Load Test: ShunyaLink Local Cluster Benchmark 🚀
-// Tests the redirect hot-path against the local 3-node Docker cluster.
+// k6 load test: single-link redirect hot path.
+// Defaults to the local Nginx entry point (3 backend replicas). Point it elsewhere
+// explicitly, e.g. `k6 run -e BASE_URL=https://sl.madhavv.me -e SHORT_ID=ce redirect-smoke.js`.
+const BASE_URL = __ENV.BASE_URL || 'http://localhost';
+const SHORT_ID = __ENV.SHORT_ID || 'ce';
 
 export const options = {
   stages: [
@@ -18,9 +21,7 @@ export const options = {
 };
 
 export default function () {
-  // Hit the LOCAL Nginx load balancer (port 80) → 3 backend replicas
-  // Replace 'ce' with any valid shortId from your local database
-  const res = http.get('https://sl.madhavv.me/ce', {
+  const res = http.get(`${BASE_URL}/${SHORT_ID}`, {
     redirects: 0, // Measure REDIRECT latency only, don't follow
   });
 

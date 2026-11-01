@@ -58,6 +58,10 @@ services:
       SPRING_DATA_REDIS_PORT: 6379
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost}
       ALLOWED_ORIGIN: ${ALLOWED_ORIGIN:-http://localhost:3000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      # Required secrets: compose refuses to start if they are unset or empty
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:?ENCRYPTION_SECRET must be set in .env}
       MAIL_USERNAME: ${MAIL_USERNAME:-noreply.shunyalink@gmail.com}
       MAIL_PASSWORD: ${MAIL_PASSWORD}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
@@ -75,7 +79,7 @@ services:
   scraper:
     build:
       context: ./scraper
-      dockerfile: Dockerfile.scraper
+      dockerfile: Dockerfile
     container_name: urlshortener-scraper
     restart: unless-stopped
     healthcheck:

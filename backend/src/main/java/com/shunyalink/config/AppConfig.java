@@ -11,7 +11,6 @@ public class AppConfig {
     /**
      * Define a global RestTemplate with strict timeouts to prevent
      * external service failures from cascading through our system.
-     * MAANG Principle: Fail fast or timeout rather than blocking threads.
      */
     @Bean
     public RestTemplate restTemplate() {

@@ -59,7 +59,7 @@ public class AuthService {
         user.setName(request.getName());
         userRepository.save(user);
 
-        // Professional Stats: Increment global users count
+        // Denormalized counter for the public stats strip (avoids COUNT(*) per page view)
         globalStatsRepository.incrementUsers();
 
         // Send verification email
@@ -118,7 +118,7 @@ public class AuthService {
                 newUser.setEmailVerified(true); // Google OAuth implies verified email
                 user = userRepository.save(newUser);
 
-                // Professional Stats: Increment global users count
+                // Denormalized counter for the public stats strip (avoids COUNT(*) per page view)
                 globalStatsRepository.incrementUsers();
 
                 // Send Welcome Email to first-time Google users
@@ -181,7 +181,7 @@ public class AuthService {
             throw new BadRequestException("Email is already verified");
         }
 
-        // Professional Cleanup: Delete any old pending tokens for this user
+        // Invalidate earlier verification links so only the newest email works
         verificationTokenRepo.deleteByUser(user);
 
         // Generate a fresh token
