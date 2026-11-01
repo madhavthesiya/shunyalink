@@ -36,6 +36,8 @@ public class RedisConfig {
 
         return org.springframework.data.redis.cache.RedisCacheManager.builder(connectionFactory)
             .cacheDefaults(config)
+            // AI roasts are paid LLM calls; one per user per day is plenty
+            .withCacheConfiguration("roasts", config.entryTtl(java.time.Duration.ofHours(24)))
             .build();
     }
 }

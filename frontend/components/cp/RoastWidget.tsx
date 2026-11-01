@@ -23,6 +23,10 @@ export function RoastWidget({ username, themeColor, className }: RoastWidgetProp
       if (res.ok) {
         const data = await res.json()
         setRoast(data.roast)
+      } else if (res.status === 429) {
+        setRoast("Easy there — you've hit the roast limit. Try again in an hour.")
+      } else {
+        setRoast("The roast engine is running too hot. Try again later.")
       }
     } catch {
       setRoast("The roast engine is running too hot. Try again later.")

@@ -1,8 +1,47 @@
+const crypto = require("crypto");
 const express = require("express");
 const puppeteer = require("puppeteer");
 
 const app = express();
 const PORT = 3001;
+
+// ── Access control & abuse limits ───────────────────────────────────────────
+// This service is publicly reachable, and every scrape holds a Chrome tab. Only our backend
+// (which sends the shared secret) may use it, and parallel tabs are capped.
+const API_KEY = process.env.SCRAPER_API_KEY || "";
+const VALID_HANDLE = /^[A-Za-z0-9_]{1,30}$/;
+const MAX_CONCURRENT_SCRAPES = 2;
+const MAX_QUEUED_SCRAPES = 10;
+
+if (!API_KEY) {
+  console.warn("[Security] SCRAPER_API_KEY is not set: /codechef is open to anyone. Set it in production.");
+}
+
+function hasValidKey(req) {
+  if (!API_KEY) return true;
+  const provided = Buffer.from(req.get("X-Scraper-Key") || "");
+  const expected = Buffer.from(API_KEY);
+  return provided.length === expected.length && crypto.timingSafeEqual(provided, expected);
+}
+
+let activeScrapes = 0;
+const waitingScrapes = [];
+
+/** Resolves when a tab slot is free; null when the waiting line is full (caller answers 503). */
+function acquireScrapeSlot() {
+  if (activeScrapes < MAX_CONCURRENT_SCRAPES) {
+    activeScrapes++;
+    return Promise.resolve();
+  }
+  if (waitingScrapes.length >= MAX_QUEUED_SCRAPES) return null;
+  return new Promise((resolve) => waitingScrapes.push(resolve));
+}
+
+function releaseScrapeSlot() {
+  const next = waitingScrapes.shift();
+  if (next) next(); // hand the slot straight to the next waiter
+  else activeScrapes--;
+}
 
 // ── Persistent Browser Instance ─────────────────────────────────────────────
 // Keep Chrome alive instead of launching/closing on every request.
@@ -47,7 +86,18 @@ app.get("/health", (_req, res) => res.json({ status: "UP" }));
 
 // ── CodeChef Scraper ─────────────────────────────────────────────────────────
 app.get("/codechef/:handle", async (req, res) => {
+  if (!hasValidKey(req)) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
   const { handle } = req.params;
+  if (!VALID_HANDLE.test(handle)) {
+    return res.status(400).json({ error: "Invalid handle" });
+  }
+  const slot = acquireScrapeSlot();
+  if (!slot) {
+    return res.status(503).json({ error: "Scraper is busy, try again shortly" });
+  }
+  await slot;
   console.log(`[CodeChef] Scraping profile: ${handle}`);
 
   let page;
@@ -145,12 +195,14 @@ app.get("/codechef/:handle", async (req, res) => {
     res.json(stats);
   } catch (err) {
     console.error(`[CodeChef] Error scraping ${handle}:`, err.message);
-    res.status(500).json({ error: err.message });
+    // Internal error details stay in the logs
+    res.status(500).json({ error: "Scrape failed" });
   } finally {
     // Close only the page tab, NOT the browser
     if (page) {
       await page.close().catch(() => {});
     }
+    releaseScrapeSlot();
   }
 });
 

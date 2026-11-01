@@ -3,8 +3,11 @@ package com.shunyalink.cp;
 import com.shunyalink.auth.UserEntity;
 import com.shunyalink.auth.UserRepository;
 import com.shunyalink.exception.BadRequestException;
+import com.shunyalink.rate.RateLimiterService;
+import com.shunyalink.security.ClientIpResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
@@ -16,13 +19,18 @@ import java.util.concurrent.CompletableFuture;
 @Tag(name = "CP Portfolio", description = "Endpoints for fetching competitive programming statistics")
 public class CpController {
 
+    static final String ROAST_UNAVAILABLE =
+            "The AI roast engine is taking a break. Try again in a few minutes.";
+
     private final UserRepository userRepository;
     private final LeetCodeService leetCodeService;
     private final CodeforcesService codeforcesService;
     private final CodeChefService codeChefService;
     private final AtCoderService atCoderService;
     private final GithubService githubService;
-    private final LlmIntegrationService llmIntegrationService;
+    private final RoastService roastService;
+    private final RateLimiterService rateLimiterService;
+    private final ClientIpResolver clientIpResolver;
 
     public CpController(UserRepository userRepository,
                         LeetCodeService leetCodeService,
@@ -30,40 +38,36 @@ public class CpController {
                         CodeChefService codeChefService,
                         AtCoderService atCoderService,
                         GithubService githubService,
-                        LlmIntegrationService llmIntegrationService) {
+                        RoastService roastService,
+                        RateLimiterService rateLimiterService,
+                        ClientIpResolver clientIpResolver) {
         this.userRepository = userRepository;
         this.leetCodeService = leetCodeService;
         this.codeforcesService = codeforcesService;
         this.codeChefService = codeChefService;
         this.atCoderService = atCoderService;
         this.githubService = githubService;
-        this.llmIntegrationService = llmIntegrationService;
+        this.roastService = roastService;
+        this.rateLimiterService = rateLimiterService;
+        this.clientIpResolver = clientIpResolver;
     }
 
-    @Operation(summary = "Get AI roast for CP portfolio", description = "Generates a sarcastic roast based on the user's coding stats.")
+    @Operation(summary = "Get AI roast for CP portfolio", description = "Generates a sarcastic roast based on the user's coding stats. Cached per user for 24h.")
     @GetMapping("/{username}/roast")
-    public ResponseEntity<Map<String, String>> getRoast(@PathVariable String username) {
-        UserEntity user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new BadRequestException("User not found"));
+    public ResponseEntity<Map<String, String>> getRoast(@PathVariable String username, HttpServletRequest request) {
+        // Each uncached roast is a paid LLM call
+        rateLimiterService.checkLimit("rate:roast:" + clientIpResolver.resolve(request), 5, 3600);
 
-        StringBuilder context = new StringBuilder();
-        if (user.getLeetcodeUsername() != null) {
-            context.append("LeetCode: ").append(leetCodeService.getStats(user.getLeetcodeUsername())).append("; ");
-        }
-        if (user.getCodeforcesUsername() != null) {
-            context.append("Codeforces: ").append(codeforcesService.getStats(user.getCodeforcesUsername())).append("; ");
-        }
-        if (user.getGithubUsername() != null) {
-            context.append("GitHub: ").append(githubService.getStats(user.getGithubUsername())).append("; ");
-        }
-
-        String roast = llmIntegrationService.roastProfile(context.toString());
-        return ResponseEntity.ok(Map.of("roast", roast));
+        String roast = roastService.roast(username);
+        return ResponseEntity.ok(Map.of("roast", roast != null ? roast : ROAST_UNAVAILABLE));
     }
 
     @Operation(summary = "Get full CP portfolio stats", description = "Aggregates stats from all connected CP platforms for a user.")
     @GetMapping("/{username}")
-    public ResponseEntity<Map<String, Object>> getPortfolio(@PathVariable String username) {
+    public ResponseEntity<Map<String, Object>> getPortfolio(@PathVariable String username, HttpServletRequest request) {
+        // Fans out to five external services (one is a headless browser) per uncached view
+        rateLimiterService.checkLimit("rate:portfolio:" + clientIpResolver.resolve(request), 30, 60);
+
         UserEntity user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new BadRequestException("User not found"));
 
