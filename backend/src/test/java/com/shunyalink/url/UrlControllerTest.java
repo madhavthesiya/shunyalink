@@ -158,6 +158,12 @@ class UrlControllerTest {
                 .andExpect(status().isConflict());
     }
 
+    @Test
+    void removedRevealEndpoint_returns404NotA500() throws Exception {
+        mockMvc.perform(get("/api/v1/url/abc123/reveal-password").with(asUser(OWNER_ID)))
+                .andExpect(status().isNotFound());
+    }
+
     // ─── POST /api/v1/url/resolve/{shortId} ──────────────────────────
 
     @Test
