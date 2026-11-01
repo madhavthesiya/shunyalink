@@ -7,7 +7,9 @@ import com.shunyalink.auth.VerificationTokenRepository;
 import com.shunyalink.url.UrlRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.ApplicationContext;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -15,6 +17,8 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
 /**
  * Boots the whole application context (every controller, service, config, filter and scheduler)
@@ -32,6 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "spring.task.scheduling.enabled=false"
 })
 @ActiveProfiles("test")
+@AutoConfigureMockMvc
 class ApplicationContextWiringTest {
 
     @MockBean
@@ -52,8 +57,22 @@ class ApplicationContextWiringTest {
     @Autowired
     private ApplicationContext context;
 
+    @Autowired
+    private MockMvc mockMvc;
+
     @Test
     void applicationContextStarts() {
         assertThat(context.getBeanDefinitionCount()).isPositive();
+    }
+
+    @Test
+    void publicHealthEndpoint_showsComponentStatusButNoDetails() throws Exception {
+        // Status may be DOWN here (Redis is a mock); only the response shape matters
+        mockMvc.perform(get("/actuator/health"))
+                .andExpect(jsonPath("$.status").exists())
+                .andExpect(jsonPath("$.components.diskSpace.status").exists())
+                .andExpect(jsonPath("$.components.diskSpace.details").doesNotExist())
+                // the mail indicator opened an SMTP connection on every poll
+                .andExpect(jsonPath("$.components.mail").doesNotExist());
     }
 }
