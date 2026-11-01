@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import com.shunyalink.analytics.AnalyticsService;
+import com.shunyalink.security.ClientIpResolver;
 
 @RestController
 @Tag(name = "Redirect & Previews", description = "Endpoints for handling short URL redirects and social media rich previews (OG tags)")
@@ -36,25 +37,20 @@ public class RedirectController {
     private final UrlRepository urlRepository;
     private final AnalyticsService analyticsService;
     private final RedisTemplate<String, String> redisTemplate;
+    private final ClientIpResolver clientIpResolver;
 
     @Value("${app.frontend-url:http://localhost:3000}")
     private String frontendUrl;
 
     public RedirectController(UrlService urlService, UrlRepository urlRepository,
                               AnalyticsService analyticsService,
-                              RedisTemplate<String, String> redisTemplate) {
+                              RedisTemplate<String, String> redisTemplate,
+                              ClientIpResolver clientIpResolver) {
         this.urlService = urlService;
         this.urlRepository = urlRepository;
         this.analyticsService = analyticsService;
         this.redisTemplate = redisTemplate;
-    }
-
-    private String getClientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
+        this.clientIpResolver = clientIpResolver;
     }
 
     @Operation(summary = "Redirect or Social Preview", description = "Handles the core redirection logic. Detects social media bots (WhatsApp, Twitter, FB) and returns OG tags for rich previews. Otherwise, redirects to the target URL (or password challenge).")
@@ -120,7 +116,7 @@ public class RedirectController {
 
         // Record Analytics with IP (Only for non-password links here)
         // Password links are recorded in UrlController.resolvePassword instead
-        analyticsService.recordClick(shortId, getClientIp(request), request.getHeader("User-Agent"), request.getHeader("Referer"));
+        analyticsService.recordClick(shortId, clientIpResolver.resolve(request), request.getHeader("User-Agent"), request.getHeader("Referer"));
 
         // No password -> Proceed with normal redirect (Fix #3: use longUrl directly, no redundant getLongUrl call)
         return ResponseEntity.status(HttpStatus.FOUND)

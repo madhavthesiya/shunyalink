@@ -9,6 +9,7 @@ import com.shunyalink.rate.RateLimiterService;
 import com.shunyalink.security.JwtBlacklistService;
 import com.shunyalink.security.JwtService;
 import com.shunyalink.security.CustomUserDetailsService;
+import com.shunyalink.security.ClientIpResolver;
 import com.shunyalink.security.SecurityConfig;
 import com.shunyalink.auth.UserRepository;
 import com.shunyalink.util.EncryptionUtils;
@@ -36,7 +37,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 
 @WebMvcTest(UrlController.class)
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, ClientIpResolver.class})
 class UrlControllerTest {
 
     private static final long OWNER_ID = 7L;
@@ -161,6 +162,23 @@ class UrlControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void shorten_rateLimitKey_usesProxyAppendedIpNotTheClientSuppliedOne() throws Exception {
+        UrlEntity entity = new UrlEntity("abc123", "https://google.com", false);
+        when(urlService.shortenUrl(any(), any(), any(), any(), any(), any(), anyBoolean(), any())).thenReturn(entity);
+
+        ShortenRequest request = new ShortenRequest();
+        request.setLongUrl("https://google.com");
+
+        mockMvc.perform(post("/api/v1/url/shorten")
+                        .header("X-Forwarded-For", "1.2.3.4, 203.0.113.7:51234")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk());
+
+        verify(rateLimiterService).checkLimit("rate:shorten:203.0.113.7", 10, 60);
     }
 
     @Test

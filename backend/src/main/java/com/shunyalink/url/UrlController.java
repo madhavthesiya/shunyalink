@@ -6,6 +6,7 @@ import com.shunyalink.exception.BadRequestException;
 import com.shunyalink.exception.ForbiddenException;
 import com.shunyalink.exception.UnauthorizedException;
 import com.shunyalink.rate.RateLimiterService;
+import com.shunyalink.security.ClientIpResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -45,6 +46,7 @@ public class UrlController {
     private final EncryptionUtils encryptionUtils;
     private final com.shunyalink.analytics.AnalyticsService analyticsService;
     private final CsvImportService csvImportService;
+    private final ClientIpResolver clientIpResolver;
 
     @Value("${app.base-url}")
     private String baseUrl;
@@ -55,7 +57,8 @@ public class UrlController {
                          com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository,
                          EncryptionUtils encryptionUtils,
                          com.shunyalink.analytics.AnalyticsService analyticsService,
-                         CsvImportService csvImportService) {
+                         CsvImportService csvImportService,
+                         ClientIpResolver clientIpResolver) {
         this.urlService = urlService;
         this.rateLimiterService = rateLimiterService;
         this.urlRepository = urlRepository;
@@ -66,14 +69,7 @@ public class UrlController {
         this.encryptionUtils = encryptionUtils;
         this.analyticsService = analyticsService;
         this.csvImportService = csvImportService;
-    }
-
-    private String getClientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
+        this.clientIpResolver = clientIpResolver;
     }
 
     private Long getCurrentUserId() {
@@ -99,7 +95,7 @@ public class UrlController {
     @Operation(summary = "Create a short URL", description = "Generates a unique short ID for a long URL. Supports custom aliases and password protection.")
     @PostMapping("/shorten")
     public ShortenResponse shorten(@Valid @RequestBody ShortenRequest request, HttpServletRequest httpRequest) {
-        String ip = getClientIp(httpRequest);
+        String ip = clientIpResolver.resolve(httpRequest);
         rateLimiterService.checkLimit("rate:shorten:" + ip, 10, 60);
 
         Long userId = getCurrentUserId();
@@ -197,7 +193,7 @@ public class UrlController {
     public ResponseEntity<?> bulkImport(@org.springframework.web.bind.annotation.RequestParam("file") org.springframework.web.multipart.MultipartFile file, HttpServletRequest httpRequest) {
         Long userId = requireUserId();
         
-        String ip = getClientIp(httpRequest);
+        String ip = clientIpResolver.resolve(httpRequest);
         rateLimiterService.checkLimit("rate:import:" + ip, 5, 3600); // 5 imports per hour max
 
         Map<String, Object> result = csvImportService.importCsv(file, userId);
@@ -262,7 +258,7 @@ public class UrlController {
 
         if (matches) {
             // NEW: Record Analytics with IP
-            analyticsService.recordClick(shortId, getClientIp(request), request.getHeader("User-Agent"), request.getHeader("Referer"));
+            analyticsService.recordClick(shortId, clientIpResolver.resolve(request), request.getHeader("User-Agent"), request.getHeader("Referer"));
             return ResponseEntity.ok(Map.of("longUrl", entity.getLongUrl()));
         } else {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Incorrect password");

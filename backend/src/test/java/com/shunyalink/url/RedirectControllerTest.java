@@ -4,6 +4,7 @@ import com.shunyalink.analytics.AnalyticsService;
 import com.shunyalink.security.CustomUserDetailsService;
 import com.shunyalink.security.JwtBlacklistService;
 import com.shunyalink.security.JwtService;
+import com.shunyalink.security.ClientIpResolver;
 import com.shunyalink.security.SecurityConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,7 +27,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(RedirectController.class)
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, ClientIpResolver.class})
 class RedirectControllerTest {
 
     private static final String WHATSAPP_UA = "WhatsApp/2.23.20.0 A";

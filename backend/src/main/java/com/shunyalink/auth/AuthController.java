@@ -1,6 +1,7 @@
 package com.shunyalink.auth;
 
 import com.shunyalink.rate.RateLimiterService;
+import com.shunyalink.security.ClientIpResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -22,23 +23,26 @@ public class AuthController {
     private final RateLimiterService rateLimiterService;
     private final com.shunyalink.security.JwtService jwtService;
     private final com.shunyalink.security.JwtBlacklistService blacklistService;
+    private final ClientIpResolver clientIpResolver;
 
     @org.springframework.beans.factory.annotation.Value("${app.frontend-url}")
     private String frontendUrl;
 
     public AuthController(AuthService authService, RateLimiterService rateLimiterService,
                           com.shunyalink.security.JwtService jwtService,
-                          com.shunyalink.security.JwtBlacklistService blacklistService) {
+                          com.shunyalink.security.JwtBlacklistService blacklistService,
+                          ClientIpResolver clientIpResolver) {
         this.authService = authService;
         this.rateLimiterService = rateLimiterService;
         this.jwtService = jwtService;
         this.blacklistService = blacklistService;
+        this.clientIpResolver = clientIpResolver;
     }
 
     @Operation(summary = "Register a new user", description = "Creates a new user account and sends a verification email.")
     @PostMapping("/register")
     public AuthResponse register(@Valid @RequestBody RegisterRequest request, HttpServletRequest httpRequest) {
-        String ip = getClientIp(httpRequest);
+        String ip = clientIpResolver.resolve(httpRequest);
         rateLimiterService.checkLimit("rate:register:" + ip, 5, 60);
         return authService.register(request);
     }
@@ -46,7 +50,7 @@ public class AuthController {
     @Operation(summary = "Authenticate user", description = "Returns a JWT token if credentials are valid.")
     @PostMapping("/login")
     public AuthResponse login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
-        String ip = getClientIp(httpRequest);
+        String ip = clientIpResolver.resolve(httpRequest);
         rateLimiterService.checkLimit("rate:login:" + ip, 10, 60);
         return authService.login(request);
     }
@@ -98,13 +102,5 @@ public class AuthController {
             }
         }
         return ResponseEntity.ok().build();
-    }
-
-    private String getClientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
     }
 }
