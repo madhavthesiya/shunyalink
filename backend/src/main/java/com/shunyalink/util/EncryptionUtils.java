@@ -8,6 +8,12 @@ import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
+/**
+ * Read-only support for legacy link passwords that were stored as AES/ECB ciphertext before
+ * link passwords moved to BCrypt. There is deliberately no encrypt method: nothing may write this
+ * format again. DbUrlService upgrades each legacy value to BCrypt on its next successful unlock;
+ * once no legacy values remain, this class (and ENCRYPTION_SECRET) can be deleted.
+ */
 @Component
 public class EncryptionUtils {
 
@@ -23,18 +29,6 @@ public class EncryptionUtils {
             this.secretKey = String.format("%-32s", secretKey).substring(0, 32);
         } else {
             this.secretKey = secretKey.substring(0, 32);
-        }
-    }
-
-    public String encrypt(String strToEncrypt) {
-        if (strToEncrypt == null || strToEncrypt.isEmpty()) return null;
-        try {
-            SecretKeySpec secretKeySpec = new SecretKeySpec(secretKey.getBytes(StandardCharsets.UTF_8), "AES");
-            Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
-            cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec);
-            return Base64.getEncoder().encodeToString(cipher.doFinal(strToEncrypt.getBytes(StandardCharsets.UTF_8)));
-        } catch (Exception e) {
-            throw new RuntimeException("Error while encrypting: " + e.toString());
         }
     }
 

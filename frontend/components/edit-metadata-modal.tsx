@@ -10,11 +10,10 @@ interface EditMetadataModalProps {
   shortId: string;
   initialTitle?: string;
   initialPasswordProtected: boolean;
-  initialPassword?: string;
   initialTags?: string[];
   isOpen: boolean;
   onClose: () => void;
-  onUpdate: (shortId: string, newTitle: string, newPasswordProtected: boolean, newPassword?: string, newTags?: string[]) => void;
+  onUpdate: (shortId: string, newTitle: string, newPasswordProtected: boolean, newTags?: string[]) => void;
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
@@ -23,7 +22,6 @@ export function EditMetadataModal({
   shortId, 
   initialTitle, 
   initialPasswordProtected,
-  initialPassword,
   initialTags = [],
   isOpen, 
   onClose,
@@ -34,8 +32,6 @@ export function EditMetadataModal({
   const [removePassword, setRemovePassword] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [isRevealing, setIsRevealing] = useState(false);
-  const [passwordRevealed, setPasswordRevealed] = useState(false);
   const [tags, setTags] = useState<string[]>(initialTags);
   const [tagInput, setTagInput] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -44,14 +40,12 @@ export function EditMetadataModal({
     if (isOpen) {
       setTitle(initialTitle || "");
       setPassword("");
-      setPasswordRevealed(false);
-      setPasswordRevealed(false);
       setRemovePassword(false);
       setTags(initialTags || []);
       setTagInput("");
       setError(null);
     }
-  }, [isOpen, initialTitle, initialPasswordProtected, initialPassword, initialTags]);
+  }, [isOpen, initialTitle, initialPasswordProtected, initialTags]);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -66,28 +60,6 @@ export function EditMetadataModal({
       document.body.style.overflow = "";
     };
   }, [isOpen, onClose]);
-
-  const handleRevealPassword = async () => {
-    setIsRevealing(true);
-    const token = localStorage.getItem("authToken");
-    try {
-      const response = await fetch(`${API_URL}/api/v1/url/${shortId}/reveal-password`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setPassword(data.password || "");
-        setPasswordRevealed(true);
-        setShowPassword(true);
-      } else {
-        setError("Failed to reveal password.");
-      }
-    } catch {
-      setError("Network error.");
-    } finally {
-      setIsRevealing(false);
-    }
-  };
 
   const handleSave = async () => {
     setIsUpdating(true);
@@ -140,7 +112,7 @@ export function EditMetadataModal({
           if (removePassword) isNowProtected = false;
           else if (password.trim() !== "") isNowProtected = true;
 
-          onUpdate(shortId, title.trim(), isNowProtected, passwordToSend === null ? initialPassword : passwordToSend, tags);
+          onUpdate(shortId, title.trim(), isNowProtected, tags);
           onClose();
         } else {
           try {
@@ -304,26 +276,19 @@ export function EditMetadataModal({
                   <Input
                     id="edit-password"
                     type={showPassword ? "text" : "password"}
-                    placeholder={initialPasswordProtected ? (passwordRevealed ? "" : "Click 'Reveal' to see current password") : "Enter password"}
+                    placeholder={initialPasswordProtected ? "Enter a new password to replace the current one" : "Enter password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="h-12 bg-background/50 border-border/50 rounded-xl premium-input focus:border-primary/50 focus:ring-2 focus:ring-primary/10 transition-all pr-24"
+                    minLength={4}
+                    maxLength={20}
+                    className="h-12 bg-background/50 border-border/50 rounded-xl premium-input focus:border-primary/50 focus:ring-2 focus:ring-primary/10 transition-all pr-12"
                     disabled={isUpdating}
                   />
                   <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                    {initialPasswordProtected && !passwordRevealed && (
-                      <button
-                        type="button"
-                        onClick={handleRevealPassword}
-                        disabled={isRevealing}
-                        className="px-2 py-1 rounded-lg text-[10px] font-bold text-primary hover:bg-primary/10 transition-colors uppercase tracking-wider"
-                      >
-                        {isRevealing ? <Loader2 className="w-3 h-3 animate-spin" /> : "Reveal"}
-                      </button>
-                    )}
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
                       className="p-2 rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -338,7 +303,7 @@ export function EditMetadataModal({
               
               <p className="text-[10px] text-muted-foreground/60 italic leading-snug">
                 {initialPasswordProtected 
-                  ? (removePassword ? "Changes will be applied." : "Link is currently protected. Enter a new password to change it, or click 'Remove' above.") 
+                  ? (removePassword ? "Changes will be applied." : "Link is protected. Passwords are stored as one-way hashes, so they can't be shown — enter a new one to change it, or remove protection above.")
                   : "Link is public. Provide a password to protect it."}
               </p>
             </div>

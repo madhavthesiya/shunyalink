@@ -39,7 +39,6 @@ interface ShortenResponse {
   createdAt: string;
   title?: string;
   passwordProtected: boolean;
-  password?: string;
   category?: string;
   tags?: string[];
 }
@@ -233,7 +232,6 @@ function DashboardContent() {
         createdAt: data.createdAt,
         title: data.title,
         passwordProtected: data.passwordProtected,
-        password: data.password,
         tags: data.tags,
       },
       ...urls,
@@ -342,7 +340,6 @@ function DashboardContent() {
     shortId: string,
     newTitle: string,
     newProtected: boolean,
-    newPassword?: string,
     newTags?: string[]
   ) => {
     setUrls((prev) =>
@@ -352,7 +349,6 @@ function DashboardContent() {
               ...u,
               title: newTitle,
               passwordProtected: newProtected,
-              password: newPassword,
               tags: newTags !== undefined ? newTags : u.tags,
             }
           : u,
@@ -580,7 +576,6 @@ function DashboardContent() {
           shortId={editingUrl.shortId}
           initialTitle={editingUrl.title}
           initialPasswordProtected={editingUrl.passwordProtected}
-          initialPassword={editingUrl.password}
           initialTags={editingUrl.tags}
           onUpdate={handleUpdateUrl}
         />

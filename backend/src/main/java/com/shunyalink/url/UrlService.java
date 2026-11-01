@@ -16,6 +16,8 @@ public interface UrlService {
     
     void toggleShowOnBio(String shortId, Long userId, boolean showOnBio);
     void updateUrlMetadata(String shortId, Long userId, String title, String password);
+    /** Returns the destination if the password is correct (or the link is unprotected); 401 otherwise. */
+    String resolveProtectedLink(String shortId, String rawPassword);
     void updateTags(String shortId, Long userId, Set<String> tags);
     void incrementClickCount(String shortId);
     void reorderLinks(Long userId, List<String> shortIds);

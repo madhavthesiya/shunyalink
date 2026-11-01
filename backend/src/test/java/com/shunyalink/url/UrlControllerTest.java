@@ -12,7 +12,6 @@ import com.shunyalink.security.CustomUserDetailsService;
 import com.shunyalink.security.ClientIpResolver;
 import com.shunyalink.security.SecurityConfig;
 import com.shunyalink.auth.UserRepository;
-import com.shunyalink.util.EncryptionUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -69,8 +68,6 @@ class UrlControllerTest {
     @MockBean
     private UserRepository userRepository;
 
-    @MockBean
-    private org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
 
     @MockBean
     private CsvExportService csvExportService;
@@ -80,9 +77,6 @@ class UrlControllerTest {
 
     @MockBean
     private GlobalStatsRepository globalStatsRepository;
-
-    @MockBean
-    private EncryptionUtils encryptionUtils;
 
     @MockBean
     private AnalyticsService analyticsService;
@@ -96,7 +90,7 @@ class UrlControllerTest {
         return new UrlStatsResponse(
                 shortId, "https://google.com", 42L,
                 LocalDateTime.now(), LocalDateTime.now(),
-                false, "Title", false, null,
+                false, "Title", false,
                 Collections.emptyMap(), Collections.emptyMap(),
                 Collections.emptyMap(), Collections.emptyMap(),
                 0, "GENERAL", Collections.emptySet()
@@ -164,6 +158,35 @@ class UrlControllerTest {
                 .andExpect(status().isConflict());
     }
 
+    // ─── POST /api/v1/url/resolve/{shortId} ──────────────────────────
+
+    @Test
+    void resolve_correctPassword_returnsDestinationAndRecordsClick() throws Exception {
+        when(urlService.resolveProtectedLink("locked", "s3cret")).thenReturn("https://example.com/private");
+
+        mockMvc.perform(post("/api/v1/url/resolve/locked")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"s3cret\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.longUrl").value("https://example.com/private"));
+
+        verify(analyticsService).recordClick(eq("locked"), any(), any(), any());
+    }
+
+    @Test
+    void resolve_wrongPassword_returns401JsonAndRecordsNoClick() throws Exception {
+        when(urlService.resolveProtectedLink("locked", "guess"))
+                .thenThrow(new com.shunyalink.exception.UnauthorizedException("Incorrect password"));
+
+        mockMvc.perform(post("/api/v1/url/resolve/locked")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"guess\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Incorrect password"));
+
+        verifyNoInteractions(analyticsService);
+    }
+
     @Test
     void shorten_rateLimitKey_usesProxyAppendedIpNotTheClientSuppliedOne() throws Exception {
         UrlEntity entity = new UrlEntity("abc123", "https://google.com", false);
@@ -185,7 +208,6 @@ class UrlControllerTest {
     void shorten_protectedLink_responseNeverContainsThePassword() throws Exception {
         UrlEntity entity = new UrlEntity("locked", "https://google.com", true);
         entity.setPassword("stored-password-value");
-        when(encryptionUtils.decrypt("stored-password-value")).thenReturn("hunter2");
         when(urlService.shortenUrl(any(), any(), any(), any(), any(), any(), anyBoolean(), any())).thenReturn(entity);
 
         ShortenRequest request = new ShortenRequest();

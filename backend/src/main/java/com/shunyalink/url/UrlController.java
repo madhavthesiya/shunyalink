@@ -18,15 +18,12 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
-import com.shunyalink.util.EncryptionUtils;
 
 import java.util.List;
 import java.util.Map;
@@ -40,10 +37,8 @@ public class UrlController {
     private final RateLimiterService rateLimiterService;
     private final UrlRepository urlRepository;
     private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
     private final CsvExportService csvExportService;
     private final com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository;
-    private final EncryptionUtils encryptionUtils;
     private final com.shunyalink.analytics.AnalyticsService analyticsService;
     private final CsvImportService csvImportService;
     private final ClientIpResolver clientIpResolver;
@@ -53,9 +48,8 @@ public class UrlController {
 
     public UrlController(UrlService urlService, RateLimiterService rateLimiterService,
                          UrlRepository urlRepository, UserRepository userRepository,
-                         PasswordEncoder passwordEncoder, CsvExportService csvExportService,
+                         CsvExportService csvExportService,
                          com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository,
-                         EncryptionUtils encryptionUtils,
                          com.shunyalink.analytics.AnalyticsService analyticsService,
                          CsvImportService csvImportService,
                          ClientIpResolver clientIpResolver) {
@@ -63,10 +57,8 @@ public class UrlController {
         this.rateLimiterService = rateLimiterService;
         this.urlRepository = urlRepository;
         this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
         this.csvExportService = csvExportService;
         this.globalStatsRepository = globalStatsRepository;
-        this.encryptionUtils = encryptionUtils;
         this.analyticsService = analyticsService;
         this.csvImportService = csvImportService;
         this.clientIpResolver = clientIpResolver;
@@ -241,57 +233,11 @@ public class UrlController {
 
     @Operation(summary = "Resolve password-protected link", description = "Verifies password and returns the original long URL.")
     @PostMapping("/resolve/{shortId}")
-    public ResponseEntity<?> resolvePassword(@PathVariable String shortId, @RequestBody Map<String, String> body, HttpServletRequest request) {
-        String password = body.get("password");
-        UrlEntity entity = urlRepository.findByShortId(shortId)
-                .orElseThrow(() -> new com.shunyalink.exception.NotFoundException("URL not found"));
-
-        String storedPassword = entity.getPassword();
-        boolean matches = false;
-        
-        if (storedPassword == null) {
-            matches = true;
-        } else {
-            // AES-encrypted password — decrypt and compare
-             matches = checkPassword(password, storedPassword);
-        }
-
-        if (matches) {
-            // NEW: Record Analytics with IP
-            analyticsService.recordClick(shortId, clientIpResolver.resolve(request), request.getHeader("User-Agent"), request.getHeader("Referer"));
-            return ResponseEntity.ok(Map.of("longUrl", entity.getLongUrl()));
-        } else {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Incorrect password");
-        }
-    }
-
-    private boolean checkPassword(String plain, String stored) {
-        try {
-            // Try BCrypt first (legacy)
-            if (stored.startsWith("$2a$") || stored.startsWith("$2b$")) {
-                return passwordEncoder.matches(plain, stored);
-            }
-            // Use injected AES encryption (new)
-            return plain.equals(encryptionUtils.decrypt(stored));
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    @Operation(summary = "Reveal link password", description = "Returns the decrypted password for a link owned by the authenticated user.", security = @SecurityRequirement(name = "Bearer Authentication"))
-    @GetMapping("/{shortId}/reveal-password")
-    public ResponseEntity<?> revealPassword(@PathVariable String shortId) {
-        Long userId = requireUserId();
-
-        UrlEntity entity = urlRepository.findByShortIdAndUserId(shortId, userId)
-                .orElseThrow(() -> new com.shunyalink.exception.NotFoundException("URL not found or not owned by you"));
-
-        if (entity.getPassword() == null) {
-            return ResponseEntity.ok(Map.of("password", ""));
-        }
-
-        String decrypted = encryptionUtils.decrypt(entity.getPassword());
-        return ResponseEntity.ok(Map.of("password", decrypted));
+    public Map<String, String> resolvePassword(@PathVariable String shortId, @RequestBody Map<String, String> body, HttpServletRequest request) {
+        // Throws 401 on a wrong password; verification (and legacy upgrade) lives in the service
+        String longUrl = urlService.resolveProtectedLink(shortId, body.get("password"));
+        analyticsService.recordClick(shortId, clientIpResolver.resolve(request), request.getHeader("User-Agent"), request.getHeader("Referer"));
+        return Map.of("longUrl", longUrl);
     }
 
     @Operation(summary = "Export all user links to CSV", description = "Downloads all user links as a CSV file.", security = @SecurityRequirement(name = "Bearer Authentication"))

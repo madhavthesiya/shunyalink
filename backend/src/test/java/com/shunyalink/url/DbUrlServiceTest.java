@@ -174,6 +174,95 @@ class DbUrlServiceTest {
                 dbUrlService.shortenUrl("https://example.com/sale", "promo", 7, 1L, null, null, false, null));
     }
 
+    // ─── Link passwords: BCrypt storage + legacy AES migration ───────
+
+    private UrlEntity protectedLink(String shortId, String storedPassword) {
+        UrlEntity entity = new UrlEntity(shortId, "https://example.com/private", false);
+        entity.setPassword(storedPassword);
+        when(urlRepository.findByShortId(shortId)).thenReturn(Optional.of(entity));
+        return entity;
+    }
+
+    @Test
+    void shortenUrl_withPassword_storesBcryptHashNotReversibleCiphertext() {
+        when(urlRepository.getNextId()).thenReturn(5L);
+        when(idEncoder.encode(5L)).thenReturn("f");
+        when(urlRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(passwordEncoder.encode("s3cret")).thenReturn("$2a$10$hashed");
+
+        UrlEntity result = dbUrlService.shortenUrl("https://example.com", null, null, 1L, null, "s3cret", false, null);
+
+        assertEquals("$2a$10$hashed", result.getPassword());
+        verifyNoInteractions(encryptionUtils);
+    }
+
+    @Test
+    void resolve_correctBcryptPassword_returnsDestination() {
+        protectedLink("locked", "$2a$10$hashed");
+        when(passwordEncoder.matches("s3cret", "$2a$10$hashed")).thenReturn(true);
+
+        assertEquals("https://example.com/private", dbUrlService.resolveProtectedLink("locked", "s3cret"));
+        verify(urlRepository, never()).save(any());
+    }
+
+    @Test
+    void resolve_wrongPassword_throwsUnauthorized() {
+        protectedLink("locked", "$2a$10$hashed");
+        when(passwordEncoder.matches("guess", "$2a$10$hashed")).thenReturn(false);
+
+        assertThrows(com.shunyalink.exception.UnauthorizedException.class,
+                () -> dbUrlService.resolveProtectedLink("locked", "guess"));
+    }
+
+    @Test
+    void resolve_correctLegacyAesPassword_succeedsAndUpgradesStorageToBcrypt() {
+        UrlEntity entity = protectedLink("legacy", "bGVnYWN5Q2lwaGVydGV4dA==");
+        when(encryptionUtils.decrypt("bGVnYWN5Q2lwaGVydGV4dA==")).thenReturn("s3cret");
+        when(passwordEncoder.encode("s3cret")).thenReturn("$2a$10$upgraded");
+
+        assertEquals("https://example.com/private", dbUrlService.resolveProtectedLink("legacy", "s3cret"));
+        assertEquals("$2a$10$upgraded", entity.getPassword());
+        verify(urlRepository).save(entity);
+    }
+
+    @Test
+    void resolve_wrongLegacyAesPassword_failsAndKeepsStoredValue() {
+        UrlEntity entity = protectedLink("legacy", "bGVnYWN5Q2lwaGVydGV4dA==");
+        when(encryptionUtils.decrypt("bGVnYWN5Q2lwaGVydGV4dA==")).thenReturn("s3cret");
+
+        assertThrows(com.shunyalink.exception.UnauthorizedException.class,
+                () -> dbUrlService.resolveProtectedLink("legacy", "wrong"));
+        assertEquals("bGVnYWN5Q2lwaGVydGV4dA==", entity.getPassword());
+        verify(urlRepository, never()).save(any());
+    }
+
+    @Test
+    void resolve_unprotectedLink_returnsDestination() {
+        protectedLink("open", null);
+
+        assertEquals("https://example.com/private", dbUrlService.resolveProtectedLink("open", "anything"));
+    }
+
+    @Test
+    void updateMetadata_newPassword_isHashed() {
+        UrlEntity entity = new UrlEntity("mine", "https://example.com", false);
+        when(urlRepository.findByShortIdAndUserId("mine", 1L)).thenReturn(Optional.of(entity));
+        when(passwordEncoder.encode("newpass")).thenReturn("$2a$10$new");
+
+        dbUrlService.updateUrlMetadata("mine", 1L, null, "newpass");
+
+        assertEquals("$2a$10$new", entity.getPassword());
+    }
+
+    @Test
+    void updateMetadata_passwordShorterThanFourChars_isRejected() {
+        when(urlRepository.findByShortIdAndUserId("mine", 1L))
+                .thenReturn(Optional.of(new UrlEntity("mine", "https://example.com", false)));
+
+        assertThrows(com.shunyalink.exception.BadRequestException.class,
+                () -> dbUrlService.updateUrlMetadata("mine", 1L, null, "abc"));
+    }
+
     @Test
     void shortenUrl_withExpiry_setsTtlCorrectly() {
         when(urlRepository.getNextId()).thenReturn(1001L);

@@ -12,7 +12,6 @@ interface ShortenResponse {
   createdAt: string;
   title?: string;
   passwordProtected: boolean;
-  password?: string;
 }
 
 export const DashboardShortenBlock = forwardRef<

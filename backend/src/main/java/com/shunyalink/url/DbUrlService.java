@@ -10,6 +10,11 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import com.shunyalink.exception.UnauthorizedException;
+import org.springframework.security.crypto.password.PasswordEncoder;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -34,6 +39,7 @@ public class DbUrlService implements UrlService {
     private final com.shunyalink.util.EncryptionUtils encryptionUtils;
     private final AnalyticsService analyticsService;
     private final com.shunyalink.cp.LlmIntegrationService llmIntegrationService;
+    private final PasswordEncoder passwordEncoder;
 
     public DbUrlService(UrlRepository urlRepository,
                         IdEncoder idEncoder,
@@ -42,7 +48,8 @@ public class DbUrlService implements UrlService {
                         MetadataService metadataService,
                         com.shunyalink.util.EncryptionUtils encryptionUtils,
                         AnalyticsService analyticsService,
-                        com.shunyalink.cp.LlmIntegrationService llmIntegrationService) {
+                        com.shunyalink.cp.LlmIntegrationService llmIntegrationService,
+                        PasswordEncoder passwordEncoder) {
         this.urlRepository = urlRepository;
         this.idEncoder = idEncoder;
         this.redisTemplate = redisTemplate;
@@ -51,6 +58,19 @@ public class DbUrlService implements UrlService {
         this.encryptionUtils = encryptionUtils;
         this.analyticsService = analyticsService;
         this.llmIntegrationService = llmIntegrationService;
+        this.passwordEncoder = passwordEncoder;
+    }
+
+    /** Link passwords are stored as one-way BCrypt hashes; they can be verified, never recovered. */
+    private String hashLinkPassword(String rawPassword) {
+        if (rawPassword.length() < 4 || rawPassword.length() > 20) {
+            throw new BadRequestException("Password must be 4-20 characters");
+        }
+        return passwordEncoder.encode(rawPassword);
+    }
+
+    private static boolean isBcryptHash(String stored) {
+        return stored.startsWith("$2a$") || stored.startsWith("$2b$") || stored.startsWith("$2y$");
     }
 
     private long getTtlSeconds(LocalDateTime expiryTime) {
@@ -112,7 +132,7 @@ public class DbUrlService implements UrlService {
                 entity.setExpiryTime(LocalDateTime.now().plusDays(expiryDays));
             }
             if (password != null && !password.isBlank()) {
-                entity.setPassword(encryptionUtils.encrypt(password));
+                entity.setPassword(hashLinkPassword(password));
             }
             UrlEntity saved = urlRepository.save(entity);
             redisTemplate.opsForValue().set(
@@ -156,7 +176,7 @@ public class DbUrlService implements UrlService {
             entity.setExpiryTime(LocalDateTime.now().plusDays(expiryDays));
         }
         if (password != null && !password.isBlank()) {
-            entity.setPassword(encryptionUtils.encrypt(password));
+            entity.setPassword(hashLinkPassword(password));
         }
         UrlEntity saved = urlRepository.save(entity);
         globalStatsRepository.incrementLinks();
@@ -197,20 +217,59 @@ public class DbUrlService implements UrlService {
                 .orElseThrow(() -> new NotFoundException("URL not found or not owned by you"));
         
         if (title != null) {
+            if (title.trim().length() > 100) {
+                throw new BadRequestException("Title cannot exceed 100 characters");
+            }
             entity.setTitle(title.trim().isEmpty() ? null : title.trim());
         }
-        
+
         if (password != null) {
             if (password.trim().isEmpty()) {
                 entity.setPassword(null);
             } else {
-                entity.setPassword(encryptionUtils.encrypt(password));
+                entity.setPassword(hashLinkPassword(password));
             }
         }
-        
+
         urlRepository.save(entity);
         // Invalidate redirect Hash cache — password or title may have changed
         redisTemplate.delete("url:entity:" + shortId);
+    }
+
+    @Override
+    @Transactional
+    public String resolveProtectedLink(String shortId, String rawPassword) {
+        UrlEntity entity = urlRepository.findByShortId(shortId)
+                .orElseThrow(() -> new NotFoundException("URL not found"));
+
+        String stored = entity.getPassword();
+        if (stored == null) {
+            return entity.getLongUrl();
+        }
+        if (rawPassword == null || !matchesStoredPassword(entity, stored, rawPassword)) {
+            throw new UnauthorizedException("Incorrect password");
+        }
+        return entity.getLongUrl();
+    }
+
+    /**
+     * BCrypt hashes are verified directly. Values written before BCrypt are legacy AES ciphertext:
+     * they are checked once more and, on a correct password, transparently re-stored as BCrypt,
+     * so legacy values disappear as links get used, without a bulk migration.
+     */
+    private boolean matchesStoredPassword(UrlEntity entity, String stored, String rawPassword) {
+        if (isBcryptHash(stored)) {
+            return passwordEncoder.matches(rawPassword, stored);
+        }
+        String legacyPlaintext = encryptionUtils.decrypt(stored);
+        boolean matches = legacyPlaintext != null && MessageDigest.isEqual(
+                legacyPlaintext.getBytes(StandardCharsets.UTF_8), rawPassword.getBytes(StandardCharsets.UTF_8));
+        if (matches) {
+            entity.setPassword(passwordEncoder.encode(rawPassword));
+            urlRepository.save(entity);
+            log.info("Upgraded legacy link password to BCrypt for shortId={}", entity.getShortId());
+        }
+        return matches;
     }
 
     @Override
@@ -272,7 +331,6 @@ public class DbUrlService implements UrlService {
                 entity.isShowOnBio(),
                 entity.getTitle(),
                 entity.getPassword() != null,
-                null, // Use /reveal-password endpoint instead
                 timeSeries,
                 countries,
                 referrers,
@@ -319,7 +377,6 @@ public class DbUrlService implements UrlService {
                     entity.isShowOnBio(),
                     entity.getTitle(),
                     entity.getPassword() != null,
-                    null, // Use /reveal-password endpoint instead
                     new HashMap<>(), // No time-series
                     new HashMap<>(), // No geo-distribution
                     new HashMap<>(), // No referrers
@@ -351,7 +408,6 @@ public class DbUrlService implements UrlService {
                     entity.isShowOnBio(),
                     entity.getTitle(),
                     entity.getPassword() != null,
-                    null, // Use /reveal-password endpoint instead
                     new HashMap<>(),
                     new HashMap<>(),
                     new HashMap<>(),
