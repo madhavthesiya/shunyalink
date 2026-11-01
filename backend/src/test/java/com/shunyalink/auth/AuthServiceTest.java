@@ -63,6 +63,108 @@ class AuthServiceTest {
         return user;
     }
 
+    // ─── Registration / login ────────────────────────────────────────
+
+    @Test
+    void register_duplicateEmailInDifferentCase_isRejected() {
+        when(userRepository.existsByEmailIgnoreCase("madhav@gmail.com")).thenReturn(true);
+        RegisterRequest request = new RegisterRequest();
+        request.setEmail("Madhav@Gmail.com");
+        request.setPassword("longenough");
+        request.setName("Madhav");
+
+        assertThatThrownBy(() -> authService.register(request))
+                .isInstanceOf(com.shunyalink.exception.ConflictException.class);
+    }
+
+    @Test
+    void register_storesTheNormalizedEmail() {
+        RegisterRequest request = new RegisterRequest();
+        request.setEmail("  New.User@Example.COM ");
+        request.setPassword("longenough");
+        request.setName("New");
+
+        authService.register(request);
+
+        verify(userRepository).save(argThat(u -> u.getEmail().equals("new.user@example.com")));
+    }
+
+    @Test
+    void login_isCaseInsensitive() throws Exception {
+        existingUser(9L, "madhav@gmail.com", "LOCAL", true, "$2a$10$hash");
+        when(passwordEncoder.matches("pw", "$2a$10$hash")).thenReturn(true);
+        LoginRequest request = new LoginRequest();
+        request.setEmail("MADHAV@gmail.com");
+        request.setPassword("pw");
+
+        assertThat(authService.login(request).getToken()).isEqualTo("new-jwt");
+    }
+
+    @Test
+    void login_unknownEmail_stillComparesAHashSoTimingDoesNotRevealAccounts() {
+        when(userRepository.findFirstByEmailIgnoreCaseOrderByIdAsc("ghost@example.com")).thenReturn(Optional.empty());
+        LoginRequest request = new LoginRequest();
+        request.setEmail("ghost@example.com");
+        request.setPassword("pw");
+
+        assertThatThrownBy(() -> authService.login(request)).isInstanceOf(BadRequestException.class);
+        verify(passwordEncoder).matches(eq("pw"), any());
+    }
+
+    // ─── Password reset / verification emails ────────────────────────
+
+    @Test
+    void forgotPassword_unknownEmail_returnsTheGenericMessageAndSendsNothing() {
+        when(userRepository.findFirstByEmailIgnoreCaseOrderByIdAsc("ghost@example.com")).thenReturn(Optional.empty());
+
+        String message = authService.requestPasswordReset("ghost@example.com");
+
+        assertThat(message).isEqualTo(AuthService.RESET_REQUESTED_MESSAGE);
+        verifyNoInteractions(emailService);
+    }
+
+    @Test
+    void forgotPassword_googleAccount_returnsTheSameGenericMessage() throws Exception {
+        existingUser(3L, "g@gmail.com", "GOOGLE", true, null);
+
+        assertThat(authService.requestPasswordReset("g@gmail.com")).isEqualTo(AuthService.RESET_REQUESTED_MESSAGE);
+        verifyNoInteractions(emailService);
+    }
+
+    @Test
+    void forgotPassword_existingUser_invalidatesOlderLinksAndSendsOne() throws Exception {
+        UserEntity user = existingUser(4L, "me@example.com", "LOCAL", true, "$2a$10$hash");
+
+        assertThat(authService.requestPasswordReset("ME@example.com")).isEqualTo(AuthService.RESET_REQUESTED_MESSAGE);
+        verify(resetTokens).deleteByUser(user);
+        verify(emailService).sendPasswordResetEmail(eq("me@example.com"), anyString());
+    }
+
+    @Test
+    void resendVerification_unknownEmail_isSilent() {
+        when(userRepository.findFirstByEmailIgnoreCaseOrderByIdAsc("ghost@example.com")).thenReturn(Optional.empty());
+
+        authService.resendVerificationEmail("ghost@example.com");
+
+        verifyNoInteractions(emailService);
+    }
+
+    @Test
+    void resetPassword_success_revokesExistingSessionsAndRemainingLinks() throws Exception {
+        UserEntity user = existingUser(8L, "me@example.com", "LOCAL", false, "$2a$10$old");
+        PasswordResetToken token = new PasswordResetToken();
+        token.setUser(user);
+        when(resetTokens.findByToken("reset-123")).thenReturn(Optional.of(token));
+        when(passwordEncoder.encode("brandnewpass")).thenReturn("$2a$10$new");
+
+        authService.resetPassword("reset-123", "brandnewpass");
+
+        assertThat(user.getPassword()).isEqualTo("$2a$10$new");
+        assertThat(user.isEmailVerified()).isTrue(); // the reset link proved control of the inbox
+        verify(blacklist).revokeAllForUser(8L);
+        verify(resetTokens).deleteByUser(user);
+    }
+
     // ─── Google sign-in / account pre-hijacking ──────────────────────
 
     @Test

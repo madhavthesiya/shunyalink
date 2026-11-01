@@ -10,6 +10,7 @@ import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.UUID;
 
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +27,12 @@ public class AuthService {
     private final EmailService emailService;
     private final com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository;
     private final JwtBlacklistService jwtBlacklistService;
+    /** Compared against when no account matches, so login takes the same time either way. */
+    private final String dummyPasswordHash;
+
+    /** Same response whether or not the account exists, so this endpoint can't discover accounts. */
+    static final String RESET_REQUESTED_MESSAGE =
+            "If an account exists for that email, a password reset link has been sent.";
 
     public AuthService(UserRepository userRepository,
             PasswordEncoder passwordEncoder,
@@ -45,6 +52,7 @@ public class AuthService {
         this.emailService = emailService;
         this.globalStatsRepository = globalStatsRepository;
         this.jwtBlacklistService = jwtBlacklistService;
+        this.dummyPasswordHash = passwordEncoder.encode("timing-equalizer-" + UUID.randomUUID());
     }
 
     /** Emails are case-insensitive identifiers; store and compare them in one canonical form. */
@@ -53,14 +61,15 @@ public class AuthService {
     }
 
     public AuthResponse register(RegisterRequest request) {
-        // Check if email already exists
-        if (userRepository.existsByEmail(request.getEmail())) {
+        String email = normalizeEmail(request.getEmail());
+        // Check if email already exists (in any letter case)
+        if (userRepository.existsByEmailIgnoreCase(email)) {
             throw new ConflictException("Email already registered");
         }
 
         // Create user with hashed password
         UserEntity user = new UserEntity();
-        user.setEmail(request.getEmail());
+        user.setEmail(email);
         user.setPassword(passwordEncoder.encode(request.getPassword())); // BCrypt hash
         user.setName(request.getName());
         userRepository.save(user);
@@ -80,14 +89,18 @@ public class AuthService {
     }
 
     public AuthResponse login(LoginRequest request) {
-        // Find user by email
-        UserEntity user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new BadRequestException("Invalid email or password"));
+        Optional<UserEntity> found =
+                userRepository.findFirstByEmailIgnoreCaseOrderByIdAsc(normalizeEmail(request.getEmail()));
+        String storedHash = found.map(UserEntity::getPassword).orElse(null);
 
-        // Verify password
-        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+        // Always run exactly one BCrypt comparison: an early return for unknown (or Google-only)
+        // accounts would be measurably faster and reveal which emails are registered.
+        boolean matches = passwordEncoder.matches(request.getPassword(),
+                storedHash != null ? storedHash : dummyPasswordHash);
+        if (storedHash == null || !matches) {
             throw new BadRequestException("Invalid email or password");
         }
+        UserEntity user = found.get();
 
         // Generate JWT and return
         String token = jwtService.generateToken(user.getId(), user.getEmail());
@@ -185,12 +198,12 @@ public class AuthService {
     }
 
     public void resendVerificationEmail(String email) {
-        UserEntity user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new BadRequestException("User not found"));
-
-        if (user.isEmailVerified()) {
-            throw new BadRequestException("Email is already verified");
+        Optional<UserEntity> found = userRepository.findFirstByEmailIgnoreCaseOrderByIdAsc(normalizeEmail(email));
+        // Silent for unknown or already-verified addresses: the caller can't tell them apart
+        if (found.isEmpty() || found.get().isEmailVerified()) {
+            return;
         }
+        UserEntity user = found.get();
 
         // Invalidate earlier verification links so only the newest email works
         verificationTokenRepo.deleteByUser(user);
@@ -205,19 +218,21 @@ public class AuthService {
     }
 
     public String requestPasswordReset(String email) {
-        UserEntity user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new BadRequestException("No account found with that email"));
-
-        if ("GOOGLE".equals(user.getAuthProvider())) {
-            throw new BadRequestException("Google accounts cannot reset password. Use Google login.");
+        Optional<UserEntity> found = userRepository.findFirstByEmailIgnoreCaseOrderByIdAsc(normalizeEmail(email));
+        // Google-only accounts have no password to reset; they get the same answer as unknown emails
+        if (found.isEmpty() || "GOOGLE".equals(found.get().getAuthProvider())) {
+            return RESET_REQUESTED_MESSAGE;
         }
+        UserEntity user = found.get();
 
+        // Only the newest reset link works
+        passwordResetTokenRepo.deleteByUser(user);
         PasswordResetToken resetToken = new PasswordResetToken();
         resetToken.setUser(user);
         passwordResetTokenRepo.save(resetToken);
         emailService.sendPasswordResetEmail(user.getEmail(), resetToken.getToken());
 
-        return "Password reset email sent!";
+        return RESET_REQUESTED_MESSAGE;
     }
 
     public String resetPassword(String token, String newPassword) {
@@ -233,10 +248,14 @@ public class AuthService {
 
         UserEntity user = resetToken.getUser();
         user.setPassword(passwordEncoder.encode(newPassword));
+        // Following the emailed link proved control of the inbox
+        user.setEmailVerified(true);
         userRepository.save(user);
 
-        resetToken.setUsed(true);
-        passwordResetTokenRepo.save(resetToken);
+        // Consume this and any other outstanding links, and sign out every existing session:
+        // a reset is often a response to a compromised password.
+        passwordResetTokenRepo.deleteByUser(user);
+        jwtBlacklistService.revokeAllForUser(user.getId());
 
         return "Password reset successfully!";
     }

@@ -12,7 +12,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -72,22 +71,32 @@ public class AuthController {
 
     @Operation(summary = "Resend verification email", description = "Trigger a new verification email for a non-verified account.")
     @PostMapping("/resend-verification")
-    public ResponseEntity<Void> resendVerification(@RequestBody Map<String, String> request) {
-        String email = request.get("email");
-        authService.resendVerificationEmail(email);
+    public ResponseEntity<Void> resendVerification(@Valid @RequestBody EmailRequest request, HttpServletRequest httpRequest) {
+        limitEmailSending("resend", request.email(), httpRequest);
+        authService.resendVerificationEmail(request.email());
         return ResponseEntity.ok().build();
     }
 
-    @Operation(summary = "Request password reset", description = "Sends a password reset link to the specified email address.")
+    @Operation(summary = "Request password reset", description = "Sends a password reset link if an account exists. The response is identical either way.")
     @PostMapping("/forgot-password")
-    public String forgotPassword(@RequestBody Map<String, String> request) {
-        return authService.requestPasswordReset(request.get("email"));
+    public String forgotPassword(@Valid @RequestBody EmailRequest request, HttpServletRequest httpRequest) {
+        limitEmailSending("forgot", request.email(), httpRequest);
+        return authService.requestPasswordReset(request.email());
     }
 
-    @Operation(summary = "Reset password", description = "Updates password using the secret token from the reset email.")
+    @Operation(summary = "Reset password", description = "Updates password using the secret token from the reset email and signs out all existing sessions.")
     @PostMapping("/reset-password")
-    public String resetPassword(@RequestBody Map<String, String> request) {
-        return authService.resetPassword(request.get("token"), request.get("newPassword"));
+    public String resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        return authService.resetPassword(request.token(), request.newPassword());
+    }
+
+    /**
+     * Endpoints that send email: limited per client (one caller spamming many addresses) and per
+     * address (many callers flooding one inbox), protecting both users and the mail quota.
+     */
+    private void limitEmailSending(String action, String email, HttpServletRequest httpRequest) {
+        rateLimiterService.checkLimit("rate:" + action + ":ip:" + clientIpResolver.resolve(httpRequest), 5, 3600);
+        rateLimiterService.checkLimit("rate:" + action + ":email:" + AuthService.normalizeEmail(email), 3, 3600);
     }
 
     @Operation(summary = "Logout user", description = "Invalidates the current JWT token by adding it to the Redis blacklist.", security = @SecurityRequirement(name = "Bearer Authentication"))
