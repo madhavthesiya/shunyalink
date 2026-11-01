@@ -1,31 +1,45 @@
 package com.shunyalink.url;
 
+import com.shunyalink.analytics.AnalyticsService;
+import com.shunyalink.analytics.GlobalStatsEntity;
+import com.shunyalink.analytics.GlobalStatsRepository;
 import com.shunyalink.exception.ConflictException;
 import com.shunyalink.exception.NotFoundException;
 import com.shunyalink.rate.RateLimiterService;
+import com.shunyalink.security.JwtBlacklistService;
 import com.shunyalink.security.JwtService;
 import com.shunyalink.security.CustomUserDetailsService;
+import com.shunyalink.security.SecurityConfig;
 import com.shunyalink.auth.UserRepository;
+import com.shunyalink.util.EncryptionUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 
 @WebMvcTest(UrlController.class)
+@Import(SecurityConfig.class)
 class UrlControllerTest {
+
+    private static final long OWNER_ID = 7L;
 
     @Autowired
     private MockMvc mockMvc;
@@ -41,6 +55,9 @@ class UrlControllerTest {
 
     @MockBean
     private JwtService jwtService;
+
+    @MockBean
+    private JwtBlacklistService jwtBlacklistService;
 
     @MockBean
     private CustomUserDetailsService customUserDetailsService;
@@ -59,6 +76,31 @@ class UrlControllerTest {
 
     @MockBean
     private CsvImportService csvImportService;
+
+    @MockBean
+    private GlobalStatsRepository globalStatsRepository;
+
+    @MockBean
+    private EncryptionUtils encryptionUtils;
+
+    @MockBean
+    private AnalyticsService analyticsService;
+
+    /** Same principal shape JwtAuthenticationFilter produces in production: the user id. */
+    private static RequestPostProcessor asUser(long userId) {
+        return authentication(new UsernamePasswordAuthenticationToken(userId, null, List.of()));
+    }
+
+    private static UrlStatsResponse sampleStats(String shortId) {
+        return new UrlStatsResponse(
+                shortId, "https://google.com", 42L,
+                LocalDateTime.now(), LocalDateTime.now(),
+                false, "Title", false, null,
+                Collections.emptyMap(), Collections.emptyMap(),
+                Collections.emptyMap(), Collections.emptyMap(),
+                0, "GENERAL", Collections.emptySet()
+        );
+    }
 
     // ─── POST /api/v1/url/shorten ────────────────────────────────────
 
@@ -134,35 +176,55 @@ class UrlControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
-    // ─── GET /api/v1/url/{shortId}/stats ────────────────────────────
+    // ─── GET /api/v1/url/stats/{shortId} ─────────────────────────────
 
     @Test
-    @WithMockUser
-    void getStats_existingShortId_returns200() throws Exception {
-        UrlStatsResponse stats = new UrlStatsResponse(
-                "abc123", "https://google.com", 42L,
-                LocalDateTime.now(), LocalDateTime.now(),
-                false, "Title", false, null,
-                Collections.emptyMap(), Collections.emptyMap(),
-                Collections.emptyMap(), Collections.emptyMap(),
-                0, "GENERAL", Collections.emptySet()
-        );
-        when(urlService.getStats(eq("abc123"), anyLong())).thenReturn(stats);
+    void getStats_owner_returns200() throws Exception {
+        when(urlService.getStats(eq("abc123"), eq(OWNER_ID), anyLong())).thenReturn(sampleStats("abc123"));
 
-        mockMvc.perform(get("/api/v1/url/stats/abc123"))
+        mockMvc.perform(get("/api/v1/url/stats/abc123").with(asUser(OWNER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.shortId").value("abc123"))
                 .andExpect(jsonPath("$.clickCount").value(42));
     }
 
     @Test
-    @WithMockUser
-    void getStats_notFound_returns404() throws Exception {
-        when(urlService.getStats(eq("xyz"), anyLong()))
+    void getStats_anonymous_returns401AndNeverLoadsStats() throws Exception {
+        mockMvc.perform(get("/api/v1/url/stats/abc123"))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(urlService);
+    }
+
+    @Test
+    void getStats_passesCallerIdSoOnlyTheOwnersLinkCanMatch() throws Exception {
+        when(urlService.getStats(eq("abc123"), eq(99L), anyLong()))
                 .thenThrow(new NotFoundException("Short URL not found"));
 
-        mockMvc.perform(get("/api/v1/url/stats/xyz"))
+        mockMvc.perform(get("/api/v1/url/stats/abc123").with(asUser(99L)))
                 .andExpect(status().isNotFound());
+
+        verify(urlService).getStats("abc123", 99L, 0L);
+    }
+
+    @Test
+    void getStats_notFound_returns404() throws Exception {
+        when(urlService.getStats(eq("xyz"), eq(OWNER_ID), anyLong()))
+                .thenThrow(new NotFoundException("Short URL not found"));
+
+        mockMvc.perform(get("/api/v1/url/stats/xyz").with(asUser(OWNER_ID)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void publicStats_anonymous_staysPublic() throws Exception {
+        GlobalStatsEntity global = new GlobalStatsEntity();
+        global.setTotalLinks(3);
+        when(globalStatsRepository.getStats()).thenReturn(global);
+
+        mockMvc.perform(get("/api/v1/url/stats/public"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalLinks").value(3));
     }
 
     // ─── Validation tests ────────────────────────────────────────────

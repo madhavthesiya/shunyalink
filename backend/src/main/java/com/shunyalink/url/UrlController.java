@@ -4,6 +4,7 @@ import com.shunyalink.auth.UserEntity;
 import com.shunyalink.auth.UserRepository;
 import com.shunyalink.exception.BadRequestException;
 import com.shunyalink.exception.ForbiddenException;
+import com.shunyalink.exception.UnauthorizedException;
 import com.shunyalink.rate.RateLimiterService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -83,6 +84,12 @@ public class UrlController {
         return null;
     }
 
+    private Long requireUserId() {
+        Long userId = getCurrentUserId();
+        if (userId == null) throw new UnauthorizedException("Authentication required");
+        return userId;
+    }
+
     private Long getUserIdFromPrincipal(Object principal) {
         if (principal instanceof Long) return (Long) principal;
         if (principal instanceof Integer) return ((Integer) principal).longValue();
@@ -149,14 +156,13 @@ public class UrlController {
             default -> 0L; // All time
         };
         
-        return urlService.getStats(shortId, lookbackMs);
+        return urlService.getStats(shortId, requireUserId(), lookbackMs);
     }
 
     @Operation(summary = "Export link stats to CSV", description = "Downloads analytics for a specific short ID as CSV.", security = @SecurityRequirement(name = "Bearer Authentication"))
     @GetMapping("/stats/{shortId}/export")
     public ResponseEntity<byte[]> exportStats(@PathVariable String shortId) {
-        Long userId = getCurrentUserId();
-        if (userId == null) throw new BadRequestException("Authentication required");
+        Long userId = requireUserId();
 
         UrlEntity entity = urlRepository.findByShortId(shortId)
                 .orElseThrow(() -> new com.shunyalink.exception.NotFoundException("URL not found"));
@@ -190,8 +196,7 @@ public class UrlController {
     @PostMapping("/bulk-import")
     @Operation(summary = "Bulk import short URLs via CSV", security = @SecurityRequirement(name = "Bearer Authentication"))
     public ResponseEntity<?> bulkImport(@org.springframework.web.bind.annotation.RequestParam("file") org.springframework.web.multipart.MultipartFile file, HttpServletRequest httpRequest) {
-        Long userId = getCurrentUserId();
-        if (userId == null) throw new BadRequestException("Authentication required");
+        Long userId = requireUserId();
         
         String ip = getClientIp(httpRequest);
         rateLimiterService.checkLimit("rate:import:" + ip, 5, 3600); // 5 imports per hour max
@@ -203,8 +208,7 @@ public class UrlController {
     @Operation(summary = "Toggle Bio Link visibility", description = "Shows or hides a link on your public Bio Profile.", security = @SecurityRequirement(name = "Bearer Authentication"))
     @PutMapping("/{shortId}/bio-visibility")
     public void toggleBioVisibility(@PathVariable String shortId, @RequestBody Map<String, Boolean> request) {
-        Long userId = getCurrentUserId();
-        if (userId == null) throw new BadRequestException("Authentication required");
+        Long userId = requireUserId();
         Boolean showOnBio = request.get("showOnBio");
         if (showOnBio == null) throw new BadRequestException("showOnBio parameter is required");
         urlService.toggleShowOnBio(shortId, userId, showOnBio);
@@ -213,8 +217,7 @@ public class UrlController {
     @Operation(summary = "Update link metadata", description = "Allows editing the title and password of an existing link.", security = @SecurityRequirement(name = "Bearer Authentication"))
     @PatchMapping("/{shortId}/metadata")
     public void updateMetadata(@PathVariable String shortId, @RequestBody Map<String, String> request) {
-        Long userId = getCurrentUserId();
-        if (userId == null) throw new BadRequestException("Authentication required");
+        Long userId = requireUserId();
         
         String title = request.get("title");
         String password = request.get("password");
@@ -225,8 +228,7 @@ public class UrlController {
     @Operation(summary = "Update link tags", description = "Allows editing the tags of an existing link.", security = @SecurityRequirement(name = "Bearer Authentication"))
     @PatchMapping("/{shortId}/tags")
     public void updateTags(@PathVariable String shortId, @RequestBody Map<String, java.util.Set<String>> request) {
-        Long userId = getCurrentUserId();
-        if (userId == null) throw new BadRequestException("Authentication required");
+        Long userId = requireUserId();
         
         java.util.Set<String> tags = request.get("tags");
         urlService.updateTags(shortId, userId, tags);
@@ -284,8 +286,7 @@ public class UrlController {
     @Operation(summary = "Reveal link password", description = "Returns the decrypted password for a link owned by the authenticated user.", security = @SecurityRequirement(name = "Bearer Authentication"))
     @GetMapping("/{shortId}/reveal-password")
     public ResponseEntity<?> revealPassword(@PathVariable String shortId) {
-        Long userId = getCurrentUserId();
-        if (userId == null) throw new BadRequestException("Authentication required");
+        Long userId = requireUserId();
 
         UrlEntity entity = urlRepository.findByShortIdAndUserId(shortId, userId)
                 .orElseThrow(() -> new com.shunyalink.exception.NotFoundException("URL not found or not owned by you"));
@@ -301,8 +302,7 @@ public class UrlController {
     @Operation(summary = "Export all user links to CSV", description = "Downloads all user links as a CSV file.", security = @SecurityRequirement(name = "Bearer Authentication"))
     @GetMapping("/export/csv")
     public ResponseEntity<byte[]> exportCsv() {
-        Long userId = getCurrentUserId();
-        if (userId == null) throw new BadRequestException("Authentication required");
+        Long userId = requireUserId();
 
         List<UrlEntity> urls = urlRepository.findByUserIdOrderByCreatedAtDesc(userId);
         String csvContent = csvExportService.exportToCsv(urls);

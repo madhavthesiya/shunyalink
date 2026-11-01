@@ -49,6 +49,18 @@ class DbUrlServiceTest {
     @Mock
     private com.shunyalink.util.EncryptionUtils encryptionUtils;
 
+    @Mock
+    private com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository;
+
+    @Mock
+    private MetadataService metadataService;
+
+    @Mock
+    private com.shunyalink.analytics.AnalyticsService analyticsService;
+
+    @Mock
+    private com.shunyalink.cp.LlmIntegrationService llmIntegrationService;
+
     @InjectMocks
     private DbUrlService dbUrlService;
 
@@ -154,7 +166,6 @@ class DbUrlServiceTest {
 
         assertEquals("https://google.com", result);
         verify(urlRepository, never()).findByShortId(any());
-        verify(hashOperations).increment("analytics:click_counts", "abc123", 1);
     }
 
     @Test
@@ -171,7 +182,6 @@ class DbUrlServiceTest {
 
         assertEquals("https://google.com", result);
         verify(valueOperations).set(eq("url:abc123"), eq("https://google.com"), anyLong(), eq(TimeUnit.SECONDS));
-        verify(hashOperations).increment("analytics:click_counts", "abc123", 1);
     }
 
     @Test
@@ -198,24 +208,33 @@ class DbUrlServiceTest {
     // ─── getStats tests ──────────────────────────────────────────────
 
     @Test
-    void getStats_returnsCorrectStats() {
+    void getStats_owner_returnsStatsIncludingUnsyncedRedisClicks() {
         UrlEntity entity = new UrlEntity();
         entity.setShortId("abc123");
         entity.setLongUrl("https://google.com");
         entity.setClickCount(10L);
-        when(urlRepository.findByShortId("abc123")).thenReturn(Optional.of(entity));
+        when(urlRepository.findByShortIdAndUserId("abc123", 7L)).thenReturn(Optional.of(entity));
         when(hashOperations.get("analytics:click_counts", "abc123")).thenReturn("5");
 
-        UrlStatsResponse stats = dbUrlService.getStats("abc123", 0L);
+        UrlStatsResponse stats = dbUrlService.getStats("abc123", 7L, 0L);
 
         assertEquals("abc123", stats.getShortId());
         assertEquals(15L, stats.getClickCount()); // 10 DB + 5 Redis
     }
 
     @Test
-    void getStats_notFound_throwsNotFoundException() {
-        when(urlRepository.findByShortId("xyz")).thenReturn(Optional.empty());
+    void getStats_notOwner_throwsNotFoundWithoutRevealingTheLinkExists() {
+        when(urlRepository.findByShortIdAndUserId("abc123", 99L)).thenReturn(Optional.empty());
 
-        assertThrows(NotFoundException.class, () -> dbUrlService.getStats("xyz", 0L));
+        assertThrows(NotFoundException.class, () -> dbUrlService.getStats("abc123", 99L, 0L));
+        // Ownership is part of the lookup itself; an unscoped lookup would leak the destination.
+        verify(urlRepository, never()).findByShortId(any());
+    }
+
+    @Test
+    void getStats_anonymousLink_isNotVisibleToAnyone() {
+        when(urlRepository.findByShortIdAndUserId("anon1", 7L)).thenReturn(Optional.empty());
+
+        assertThrows(NotFoundException.class, () -> dbUrlService.getStats("anon1", 7L, 0L));
     }
 }

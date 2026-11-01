@@ -218,8 +218,10 @@ public class DbUrlService implements UrlService {
 
     @Override
     @Transactional(readOnly = true)
-    public UrlStatsResponse getStats(String shortId, long lookbackMs) {
-        UrlEntity entity = urlRepository.findByShortId(shortId)
+    public UrlStatsResponse getStats(String shortId, Long userId, long lookbackMs) {
+        // Ownership is part of the lookup: other users' (and anonymous) links are
+        // indistinguishable from links that don't exist.
+        UrlEntity entity = urlRepository.findByShortIdAndUserId(shortId, userId)
                 .orElseThrow(() -> new NotFoundException("Short URL not found"));
         long dbClicks = entity.getClickCount();
         Object redisClicksObj = redisTemplate.opsForHash().get("analytics:click_counts", shortId);
