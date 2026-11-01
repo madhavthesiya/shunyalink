@@ -348,7 +348,7 @@ nginx/
 scraper/
 ├── index.js                           # Express + Puppeteer headless Chrome scraper
 ├── package.json                       # Dependencies: express, puppeteer
-└── Dockerfile.scraper                 # Node 20 + system Chromium
+└── Dockerfile                         # Node 20 + system Chromium
 
 docker-compose.yml                     # Full stack: PG + Redis + 3×Backend + Scraper + Nginx + Frontend (11 containers)
 ```

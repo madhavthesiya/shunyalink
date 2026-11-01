@@ -75,7 +75,7 @@ services:
   scraper:
     build:
       context: ./scraper
-      dockerfile: Dockerfile.scraper
+      dockerfile: Dockerfile
     container_name: urlshortener-scraper
     restart: unless-stopped
     healthcheck:
