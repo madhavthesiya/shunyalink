@@ -51,6 +51,10 @@ public class JwtService{
         }
     }
 
+    public java.util.Date extractIssuedAt(String token) {
+        return extractClaims(token).getIssuedAt();
+    }
+
     /**
      * Extracts the expiration claim from the token.
      */

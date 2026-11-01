@@ -2,15 +2,13 @@ package com.shunyalink.auth;
 
 import com.shunyalink.exception.BadRequestException;
 import com.shunyalink.exception.ConflictException;
+import com.shunyalink.security.JwtBlacklistService;
 import com.shunyalink.security.JwtService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
-import com.google.api.client.http.javanet.NetHttpTransport;
-import com.google.api.client.json.gson.GsonFactory;
-import org.springframework.beans.factory.annotation.Value;
-import java.util.Collections;
+import java.util.Locale;
 import java.util.Optional;
 
 import org.springframework.transaction.annotation.Transactional;
@@ -22,28 +20,36 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
-    private final String googleClientId;
+    private final GoogleIdTokenVerifier googleIdTokenVerifier;
     private final VerificationTokenRepository verificationTokenRepo;
     private final PasswordResetTokenRepository passwordResetTokenRepo;
     private final EmailService emailService;
     private final com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository;
+    private final JwtBlacklistService jwtBlacklistService;
 
     public AuthService(UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
-            @Value("${app.google.client-id}") String googleClientId,
+            GoogleIdTokenVerifier googleIdTokenVerifier,
             VerificationTokenRepository verificationTokenRepo,
             PasswordResetTokenRepository passwordResetTokenRepo,
             EmailService emailService,
-            com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository) {
+            com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository,
+            JwtBlacklistService jwtBlacklistService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
-        this.googleClientId = googleClientId;
+        this.googleIdTokenVerifier = googleIdTokenVerifier;
         this.verificationTokenRepo = verificationTokenRepo;
         this.passwordResetTokenRepo = passwordResetTokenRepo;
         this.emailService = emailService;
         this.globalStatsRepository = globalStatsRepository;
+        this.jwtBlacklistService = jwtBlacklistService;
+    }
+
+    /** Emails are case-insensitive identifiers; store and compare them in one canonical form. */
+    static String normalizeEmail(String email) {
+        return email == null ? null : email.trim().toLowerCase(Locale.ROOT);
     }
 
     public AuthResponse register(RegisterRequest request) {
@@ -90,25 +96,24 @@ public class AuthService {
 
     public AuthResponse googleLogin(String idTokenString) {
         try {
-            // Verify the Google ID token
-            GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(
-                    new NetHttpTransport(), GsonFactory.getDefaultInstance())
-                    .setAudience(Collections.singletonList(googleClientId))
-                    .build();
-
-            GoogleIdToken idToken = verifier.verify(idTokenString);
+            // Verify the Google ID token (signature, audience, expiry)
+            GoogleIdToken idToken = googleIdTokenVerifier.verify(idTokenString);
             if (idToken == null) {
                 throw new BadRequestException("Invalid Google ID token");
             }
 
             // Extract user info from Google token
             GoogleIdToken.Payload payload = idToken.getPayload();
-            String email = payload.getEmail();
+            // Google only vouches for addresses it has verified; an unverified one could be anyone's
+            if (!Boolean.TRUE.equals(payload.getEmailVerified())) {
+                throw new BadRequestException("Your Google account's email address is not verified");
+            }
+            String email = normalizeEmail(payload.getEmail());
             String name = (String) payload.get("name");
 
             // Find existing user or create new one
             UserEntity user;
-            Optional<UserEntity> existingUser = userRepository.findByEmail(email);
+            Optional<UserEntity> existingUser = userRepository.findFirstByEmailIgnoreCaseOrderByIdAsc(email);
 
             if (existingUser.isEmpty()) {
                 UserEntity newUser = new UserEntity();
@@ -125,10 +130,16 @@ public class AuthService {
                 emailService.sendGoogleWelcomeEmail(user.getEmail(), user.getName());
             } else {
                 user = existingUser.get();
-                // If the user existed but wasn't verified, verify them now and send welcome
                 if (!user.isEmailVerified()) {
+                    // Whoever registered this unverified account never proved they own the address;
+                    // Google just proved this person does. The existing password (and any token
+                    // issued at registration) may belong to an attacker who pre-registered it, so
+                    // drop the password, make the account Google-only and revoke earlier sessions.
+                    user.setPassword(null);
+                    user.setAuthProvider("GOOGLE");
                     user.setEmailVerified(true);
                     userRepository.save(user);
+                    jwtBlacklistService.revokeAllForUser(user.getId());
                     emailService.sendWelcomeEmail(user.getEmail(), user.getName());
                 }
             }
