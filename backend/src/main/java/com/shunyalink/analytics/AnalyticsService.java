@@ -30,8 +30,8 @@ public class AnalyticsService {
 
     /**
      * Records a click event for a specific shortId in a Redis Sorted Set.
-     * MAANG Performance: Annotated with @Async to ensure analytics tracking 
-     * never delays the user's redirection experience.
+     * Runs on the bounded analyticsExecutor pool so tracking never adds
+     * latency to the redirect itself.
      */
     @Async("analyticsExecutor")
     public void recordClick(String shortId, String ipAddress, String userAgent, String referer) {
@@ -80,7 +80,7 @@ public class AnalyticsService {
     }
 
     private String getCountryFromIp(String ip) {
-        // MAANG Strategy: Professional local and IPv6 range handling
+        // Loopback and private/CGNAT addresses can't be geolocated; skip the external lookup
         if (ip == null || ip.equals("127.0.0.1") || ip.equalsIgnoreCase("::1")) {
             return "Local/Dev";
         }
@@ -117,8 +117,8 @@ public class AnalyticsService {
     }
 
     /**
-     * Special MAANG logic: Self-Heal analytics if we previously recorded "Unknown"
-     * but have now successfully resolved a real country.
+     * Moves one previously "Unknown" count to the newly resolved country.
+     * Approximate: the earlier unresolved click may have come from a different country.
      */
     private void recordGeoWithSelfHealing(String shortId, String country) {
         String key = GEO_KEY_PREFIX + shortId;

@@ -49,9 +49,8 @@ public class RateLimiterService {
         } catch (TooManyRequestsException e) {
             throw e; // Always respect the rate limit if Redis is working
         } catch (Exception e) {
-            // MAANG Strategy: Fail-Open
-            // If Redis is down, we log the error but allow the request to proceed.
-            // Better to have no rate limiting for a few minutes than a total system outage.
+            // Fail open: if Redis is unavailable, allow the request rather than turning
+            // a cache outage into a full outage of shortening and login.
             log.error("RATE LIMITER ERROR (FAIL-OPEN): " + e.getMessage());
         }
     }
