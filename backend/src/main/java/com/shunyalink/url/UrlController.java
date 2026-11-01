@@ -72,6 +72,14 @@ public class UrlController {
         return null;
     }
 
+    /** Accounts must verify their email before creating links, one at a time or by CSV import. */
+    private void requireVerifiedEmail(Long userId) {
+        UserEntity user = userRepository.findById(userId).orElse(null);
+        if (user != null && !user.isEmailVerified() && !"GOOGLE".equals(user.getAuthProvider())) {
+            throw new ForbiddenException("You must verify your email address before you can create links.");
+        }
+    }
+
     private Long requireUserId() {
         Long userId = getCurrentUserId();
         if (userId == null) throw new UnauthorizedException("Authentication required");
@@ -92,10 +100,7 @@ public class UrlController {
 
         Long userId = getCurrentUserId();
         if (userId != null) {
-            UserEntity user = userRepository.findById(userId).orElse(null);
-            if (user != null && !user.isEmailVerified() && !"GOOGLE".equals(user.getAuthProvider())) {
-                throw new ForbiddenException("You must verify your email address before you can create links.");
-            }
+            requireVerifiedEmail(userId);
         }
 
         UrlEntity entity = urlService.shortenUrl(request.getLongUrl(), request.getCustomAlias(), request.getExpiryDays(), userId, request.getTitle(), request.getPassword(), request.isUseAutoTitle(), request.getTags());
@@ -184,7 +189,8 @@ public class UrlController {
     @Operation(summary = "Bulk import short URLs via CSV", security = @SecurityRequirement(name = "Bearer Authentication"))
     public ResponseEntity<?> bulkImport(@org.springframework.web.bind.annotation.RequestParam("file") org.springframework.web.multipart.MultipartFile file, HttpServletRequest httpRequest) {
         Long userId = requireUserId();
-        
+        requireVerifiedEmail(userId);
+
         String ip = clientIpResolver.resolve(httpRequest);
         rateLimiterService.checkLimit("rate:import:" + ip, 5, 3600); // 5 imports per hour max
 

@@ -159,6 +159,22 @@ class UrlControllerTest {
     }
 
     @Test
+    void bulkImport_unverifiedEmail_isRejectedLikeSingleShortening() throws Exception {
+        com.shunyalink.auth.UserEntity user = new com.shunyalink.auth.UserEntity();
+        user.setAuthProvider("LOCAL");
+        user.setEmailVerified(false);
+        when(userRepository.findById(OWNER_ID)).thenReturn(java.util.Optional.of(user));
+
+        mockMvc.perform(multipart("/api/v1/url/bulk-import")
+                        .file(new org.springframework.mock.web.MockMultipartFile(
+                                "file", "links.csv", "text/csv", "longUrl\nhttps://a.example".getBytes()))
+                        .with(asUser(OWNER_ID)))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(csvImportService);
+    }
+
+    @Test
     void removedRevealEndpoint_returns404NotA500() throws Exception {
         mockMvc.perform(get("/api/v1/url/abc123/reveal-password").with(asUser(OWNER_ID)))
                 .andExpect(status().isNotFound());

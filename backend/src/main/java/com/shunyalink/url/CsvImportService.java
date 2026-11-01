@@ -1,5 +1,8 @@
 package com.shunyalink.url;
 
+import com.shunyalink.exception.BadRequestException;
+import com.shunyalink.exception.ConflictException;
+import com.shunyalink.exception.ForbiddenException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import java.io.BufferedReader;
@@ -12,6 +15,8 @@ import org.slf4j.LoggerFactory;
 public class CsvImportService {
 
     private static final Logger log = LoggerFactory.getLogger(CsvImportService.class);
+
+    static final String ROW_FAILED = "Could not shorten this URL";
 
     private final UrlService urlService;
 
@@ -100,12 +105,29 @@ public class CsvImportService {
                     }
                 }
 
+                // Same limits /shorten enforces through ShortenRequest validation
+                if (longUrl.length() > 2048) {
+                    failCount++;
+                    errors.add("Row " + rowNumber + ": URL cannot exceed 2048 characters");
+                    continue;
+                }
+                if (title != null && title.length() > 100) {
+                    failCount++;
+                    errors.add("Row " + rowNumber + ": Title cannot exceed 100 characters");
+                    continue;
+                }
+
                 try {
                     urlService.shortenUrl(longUrl, customAlias, null, userId, title, null, false, tags);
                     successCount++;
-                } catch (Exception e) {
+                } catch (BadRequestException | ConflictException | ForbiddenException e) {
                     failCount++;
                     errors.add("Row " + rowNumber + " ('" + longUrl + "'): " + e.getMessage());
+                } catch (Exception e) {
+                    // Unexpected errors can carry SQL or internal details: log them, don't return them
+                    log.warn("CSV import row {} failed", rowNumber, e);
+                    failCount++;
+                    errors.add("Row " + rowNumber + " ('" + longUrl + "'): " + ROW_FAILED);
                 }
             }
 
