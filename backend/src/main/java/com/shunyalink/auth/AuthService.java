@@ -10,7 +10,9 @@ import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +31,15 @@ public class AuthService {
     private final JwtBlacklistService jwtBlacklistService;
     /** Compared against when no account matches, so login takes the same time either way. */
     private final String dummyPasswordHash;
+
+    private static final Pattern USERNAME = Pattern.compile("^[a-z0-9_]{3,30}$");
+    private static final Pattern THEME_COLOR = Pattern.compile("^#[0-9a-fA-F]{6}$");
+    private static final Pattern PLATFORM_HANDLE = Pattern.compile("^[A-Za-z0-9_.-]{1,40}$");
+    private static final Set<String> PROFILE_TYPES = Set.of("NORMAL", "PROGRAMMER");
+    /** Names that would let a profile pass as the site itself or its staff. */
+    private static final Set<String> RESERVED_USERNAMES = Set.of(
+            "admin", "administrator", "root", "system", "support", "help", "security", "official",
+            "shunyalink", "staff", "moderator", "api", "www", "login", "register", "dashboard", "settings");
 
     /** Same response whether or not the account exists, so this endpoint can't discover accounts. */
     static final String RESET_REQUESTED_MESSAGE =
@@ -308,46 +319,79 @@ public class AuthService {
         UserEntity user = userRepository.findById(userId)
                 .orElseThrow(() -> new BadRequestException("User not found"));
 
+        // Every field is validated only when it changes: the settings form re-sends the whole
+        // profile, and values stored before these rules existed must not block unrelated edits.
         if (request.getUsername() != null && !request.getUsername().isBlank()) {
             String newUsername = request.getUsername().toLowerCase().trim();
-            // Check if username is already taken by SOMEONE ELSE
-            Optional<UserEntity> existing = userRepository.findByUsername(newUsername);
-            if (existing.isPresent() && !existing.get().getId().equals(userId)) {
-                throw new ConflictException("Username is already taken");
+            if (!newUsername.equals(user.getUsername())) {
+                if (!USERNAME.matcher(newUsername).matches()) {
+                    throw new BadRequestException("Username must be 3-30 characters: lowercase letters, numbers or underscores");
+                }
+                if (RESERVED_USERNAMES.contains(newUsername)) {
+                    throw new BadRequestException("That username is reserved");
+                }
+                // Check if username is already taken by SOMEONE ELSE
+                Optional<UserEntity> existing = userRepository.findByUsername(newUsername);
+                if (existing.isPresent() && !existing.get().getId().equals(userId)) {
+                    throw new ConflictException("Username is already taken");
+                }
             }
             user.setUsername(newUsername);
         }
 
         if (request.getName() != null && !request.getName().isBlank()) {
-            user.setName(request.getName().trim());
+            String name = request.getName().trim();
+            if (name.length() > 100) {
+                throw new BadRequestException("Name cannot exceed 100 characters");
+            }
+            user.setName(name);
         }
 
         if (request.getBioText() != null) {
-            user.setBioText(request.getBioText().trim());
+            String bio = request.getBioText().trim();
+            if (bio.length() > 500) {
+                throw new BadRequestException("Bio cannot exceed 500 characters");
+            }
+            user.setBioText(bio);
         }
         if (request.getThemeColor() != null) {
-            user.setThemeColor(request.getThemeColor().trim());
+            String color = request.getThemeColor().trim();
+            // Rendered into inline CSS on public profile pages
+            if (!color.equals(user.getThemeColor()) && !THEME_COLOR.matcher(color).matches()) {
+                throw new BadRequestException("Theme color must be a hex color like #1a2b3c");
+            }
+            user.setThemeColor(color);
         }
         if (request.getProfileType() != null) {
-            user.setProfileType(request.getProfileType().trim());
+            String type = request.getProfileType().trim();
+            if (!type.equals(user.getProfileType()) && !PROFILE_TYPES.contains(type)) {
+                throw new BadRequestException("Profile type must be NORMAL or PROGRAMMER");
+            }
+            user.setProfileType(type);
         }
-        if (request.getGithubUsername() != null) {
-            user.setGithubUsername(request.getGithubUsername().trim());
-        }
-        if (request.getLeetcodeUsername() != null) {
-            user.setLeetcodeUsername(request.getLeetcodeUsername().trim());
-        }
-        if (request.getCodeforcesUsername() != null) {
-            user.setCodeforcesUsername(request.getCodeforcesUsername().trim());
-        }
-        if (request.getCodeChefHandle() != null) {
-            user.setCodeChefHandle(request.getCodeChefHandle().trim());
-        }
-        if (request.getAtCoderHandle() != null) {
-            user.setAtCoderHandle(request.getAtCoderHandle().trim());
-        }
+        // Platform handles are placed into external API URLs and the scraper path
+        user.setGithubUsername(platformHandle(request.getGithubUsername(), user.getGithubUsername()));
+        user.setLeetcodeUsername(platformHandle(request.getLeetcodeUsername(), user.getLeetcodeUsername()));
+        user.setCodeforcesUsername(platformHandle(request.getCodeforcesUsername(), user.getCodeforcesUsername()));
+        user.setCodeChefHandle(platformHandle(request.getCodeChefHandle(), user.getCodeChefHandle()));
+        user.setAtCoderHandle(platformHandle(request.getAtCoderHandle(), user.getAtCoderHandle()));
 
         userRepository.save(user);
+    }
+
+    /** null = field not sent (keep current); blank = disconnect the platform. */
+    private static String platformHandle(String requested, String current) {
+        if (requested == null) {
+            return current;
+        }
+        String handle = requested.trim();
+        if (handle.isEmpty()) {
+            return null;
+        }
+        if (!handle.equals(current) && !PLATFORM_HANDLE.matcher(handle).matches()) {
+            throw new BadRequestException("Platform usernames may only contain letters, numbers, '.', '_' and '-'");
+        }
+        return handle;
     }
 
     public boolean isUsernameAvailable(String username, Long currentUserId) {

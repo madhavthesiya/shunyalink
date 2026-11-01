@@ -165,6 +165,93 @@ class AuthServiceTest {
         verify(resetTokens).deleteByUser(user);
     }
 
+    // ─── Profile settings validation ─────────────────────────────────
+
+    private UserEntity profileOwner() throws Exception {
+        UserEntity user = existingUser(20L, "owner@example.com", "LOCAL", true, "$2a$10$hash");
+        user.setUsername("madhav");
+        user.setThemeColor("#000000");
+        user.setProfileType("NORMAL");
+        when(userRepository.findById(20L)).thenReturn(Optional.of(user));
+        when(userRepository.findByUsername(anyString())).thenReturn(Optional.empty());
+        return user;
+    }
+
+    private static ProfileUpdateRequest unchangedProfile() {
+        ProfileUpdateRequest request = new ProfileUpdateRequest();
+        request.setUsername("madhav");
+        request.setThemeColor("#000000");
+        request.setProfileType("NORMAL");
+        return request;
+    }
+
+    @Test
+    void updateProfile_themeColorThatIsNotAHexColor_isRejected() throws Exception {
+        profileOwner();
+        ProfileUpdateRequest request = unchangedProfile();
+        request.setThemeColor("red; background-image: url(https://tracker.example/pixel)");
+
+        assertThatThrownBy(() -> authService.updateProfile(20L, request)).isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    void updateProfile_unknownProfileType_isRejected() throws Exception {
+        profileOwner();
+        ProfileUpdateRequest request = unchangedProfile();
+        request.setProfileType("ADMIN");
+
+        assertThatThrownBy(() -> authService.updateProfile(20L, request)).isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    void updateProfile_reservedOrMalformedUsername_isRejected() throws Exception {
+        profileOwner();
+        ProfileUpdateRequest reserved = unchangedProfile();
+        reserved.setUsername("admin");
+        ProfileUpdateRequest malformed = unchangedProfile();
+        malformed.setUsername("x!");
+
+        assertThatThrownBy(() -> authService.updateProfile(20L, reserved)).isInstanceOf(BadRequestException.class);
+        assertThatThrownBy(() -> authService.updateProfile(20L, malformed)).isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    void updateProfile_platformHandleWithPathCharacters_isRejected() throws Exception {
+        profileOwner();
+        ProfileUpdateRequest request = unchangedProfile();
+        request.setGithubUsername("../orgs/private-org");
+
+        assertThatThrownBy(() -> authService.updateProfile(20L, request)).isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    void updateProfile_blankHandle_clearsTheConnection() throws Exception {
+        UserEntity user = profileOwner();
+        user.setGithubUsername("octocat");
+        ProfileUpdateRequest request = unchangedProfile();
+        request.setGithubUsername("   ");
+
+        authService.updateProfile(20L, request);
+
+        assertThat(user.getGithubUsername()).isNull();
+    }
+
+    @Test
+    void updateProfile_unchangedLegacyValues_stillSave() throws Exception {
+        UserEntity user = profileOwner();
+        // Stored before these rules existed; re-sending them must not block other edits
+        user.setUsername("old.name");
+        user.setThemeColor("black");
+        ProfileUpdateRequest request = new ProfileUpdateRequest();
+        request.setUsername("old.name");
+        request.setThemeColor("black");
+        request.setBioText("New bio");
+
+        authService.updateProfile(20L, request);
+
+        assertThat(user.getBioText()).isEqualTo("New bio");
+    }
+
     // ─── Google sign-in / account pre-hijacking ──────────────────────
 
     @Test
