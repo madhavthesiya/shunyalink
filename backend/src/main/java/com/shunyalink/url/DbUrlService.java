@@ -10,6 +10,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
@@ -80,10 +81,19 @@ public class DbUrlService implements UrlService {
             validateAlias(normalized);
             Optional<UrlEntity> existing = urlRepository.findByShortId(normalized);
             if (existing.isPresent()) {
-                if (!existing.get().getLongUrl().equals(longUrl)) {
-                    throw new ConflictException("Alias '" + normalized + "' is already in use by a different URL");
-                }
                 UrlEntity ext = existing.get();
+                // An alias belongs to its creator. Any other caller gets the same answer whether or
+                // not the URL matches, so the response never reveals someone else's link.
+                if (!Objects.equals(ext.getUserId(), userId) || !ext.getLongUrl().equals(longUrl)) {
+                    throw new ConflictException("Alias '" + normalized + "' is already in use");
+                }
+                // Idempotent only for plain links: silently returning the existing link would leave
+                // the caller believing it is password-protected or expiring when it is not.
+                boolean wantsPassword = password != null && !password.isBlank();
+                if (wantsPassword || expiryDays != null || ext.getPassword() != null || ext.getExpiryTime() != null) {
+                    throw new ConflictException("Alias '" + normalized
+                            + "' already exists. Edit that link to change its password or expiry.");
+                }
                 if (ext.getCategory() == null || ext.getCategory().isBlank() || "GENERAL".equals(ext.getCategory())) {
                     metadataService.fetchAndProcessMetadataAsync(ext.getShortId(), longUrl, useAutoTitle);
                 }

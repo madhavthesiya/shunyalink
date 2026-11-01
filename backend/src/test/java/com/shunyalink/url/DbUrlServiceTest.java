@@ -121,6 +121,59 @@ class DbUrlServiceTest {
         );
     }
 
+    // ─── Custom alias ownership ──────────────────────────────────────
+
+    private UrlEntity existingAlias(String alias, String longUrl, Long ownerId) {
+        UrlEntity existing = new UrlEntity(alias, longUrl, true);
+        existing.setUserId(ownerId);
+        when(urlRepository.findByShortId(alias)).thenReturn(Optional.of(existing));
+        return existing;
+    }
+
+    @Test
+    void customAlias_ownedByAnotherUser_sameUrl_throwsConflictInsteadOfReturningTheirLink() {
+        UrlEntity victims = existingAlias("promo", "https://example.com/sale", 1L);
+        victims.setPassword("$2a$10$victimsPasswordHash");
+
+        assertThrows(ConflictException.class, () ->
+                dbUrlService.shortenUrl("https://example.com/sale", "promo", null, 2L, null, null, false, null));
+        verify(urlRepository, never()).save(any());
+    }
+
+    @Test
+    void customAlias_ownedByUser_requestedAnonymously_throwsConflict() {
+        existingAlias("promo", "https://example.com/sale", 1L);
+
+        assertThrows(ConflictException.class, () ->
+                dbUrlService.shortenUrl("https://example.com/sale", "promo", null, null, null, null, false, null));
+    }
+
+    @Test
+    void customAlias_sameOwnerSameUrl_isIdempotent() {
+        UrlEntity mine = existingAlias("promo", "https://example.com/sale", 1L);
+
+        UrlEntity result = dbUrlService.shortenUrl("https://example.com/sale", "promo", null, 1L, null, null, false, null);
+
+        assertSame(mine, result);
+        verify(urlRepository, never()).save(any());
+    }
+
+    @Test
+    void customAlias_sameOwnerRequestingPassword_throwsConflictInsteadOfReturningUnprotectedLink() {
+        existingAlias("promo", "https://example.com/sale", 1L);
+
+        assertThrows(ConflictException.class, () ->
+                dbUrlService.shortenUrl("https://example.com/sale", "promo", null, 1L, null, "s3cret", false, null));
+    }
+
+    @Test
+    void customAlias_sameOwnerRequestingExpiry_throwsConflictInsteadOfReturningPermanentLink() {
+        existingAlias("promo", "https://example.com/sale", 1L);
+
+        assertThrows(ConflictException.class, () ->
+                dbUrlService.shortenUrl("https://example.com/sale", "promo", 7, 1L, null, null, false, null));
+    }
+
     @Test
     void shortenUrl_withExpiry_setsTtlCorrectly() {
         when(urlRepository.getNextId()).thenReturn(1001L);

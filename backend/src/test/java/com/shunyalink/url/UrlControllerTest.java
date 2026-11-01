@@ -164,6 +164,26 @@ class UrlControllerTest {
     }
 
     @Test
+    void shorten_protectedLink_responseNeverContainsThePassword() throws Exception {
+        UrlEntity entity = new UrlEntity("locked", "https://google.com", true);
+        entity.setPassword("stored-password-value");
+        when(encryptionUtils.decrypt("stored-password-value")).thenReturn("hunter2");
+        when(urlService.shortenUrl(any(), any(), any(), any(), any(), any(), anyBoolean(), any())).thenReturn(entity);
+
+        ShortenRequest request = new ShortenRequest();
+        request.setLongUrl("https://google.com");
+        request.setPassword("hunter2");
+
+        mockMvc.perform(post("/api/v1/url/shorten")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.passwordProtected").value(true))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("hunter2"))))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("stored-password-value"))));
+    }
+
+    @Test
     @WithMockUser
     void shorten_missingLongUrl_returns400() throws Exception {
         ShortenRequest request = new ShortenRequest();
