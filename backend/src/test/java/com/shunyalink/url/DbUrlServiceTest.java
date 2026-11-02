@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
@@ -48,6 +49,23 @@ class DbUrlServiceTest {
 
     @Mock
     private com.shunyalink.util.EncryptionUtils encryptionUtils;
+
+    @Mock
+    private com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository;
+
+    @Mock
+    private MetadataService metadataService;
+
+    @Mock
+    private com.shunyalink.analytics.AnalyticsService analyticsService;
+
+    @Mock
+    private com.shunyalink.cp.LlmIntegrationService llmIntegrationService;
+
+    /** Real cipher (spied so Mockito injects it): tests exercise actual GCM round trips. */
+    @Spy
+    private com.shunyalink.security.LinkPasswordCipher linkPasswordCipher =
+            new com.shunyalink.security.LinkPasswordCipher("MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=");
 
     @InjectMocks
     private DbUrlService dbUrlService;
@@ -109,6 +127,213 @@ class DbUrlServiceTest {
         );
     }
 
+    // ─── Custom alias ownership ──────────────────────────────────────
+
+    private UrlEntity existingAlias(String alias, String longUrl, Long ownerId) {
+        UrlEntity existing = new UrlEntity(alias, longUrl, true);
+        existing.setUserId(ownerId);
+        when(urlRepository.findByShortId(alias)).thenReturn(Optional.of(existing));
+        return existing;
+    }
+
+    @Test
+    void customAlias_ownedByAnotherUser_sameUrl_throwsConflictInsteadOfReturningTheirLink() {
+        UrlEntity victims = existingAlias("promo", "https://example.com/sale", 1L);
+        victims.setPassword("$2a$10$victimsPasswordHash");
+
+        assertThrows(ConflictException.class, () ->
+                dbUrlService.shortenUrl("https://example.com/sale", "promo", null, 2L, null, null, false, null));
+        verify(urlRepository, never()).save(any());
+    }
+
+    @Test
+    void customAlias_ownedByUser_requestedAnonymously_throwsConflict() {
+        existingAlias("promo", "https://example.com/sale", 1L);
+
+        assertThrows(ConflictException.class, () ->
+                dbUrlService.shortenUrl("https://example.com/sale", "promo", null, null, null, null, false, null));
+    }
+
+    @Test
+    void customAlias_sameOwnerSameUrl_isIdempotent() {
+        UrlEntity mine = existingAlias("promo", "https://example.com/sale", 1L);
+
+        UrlEntity result = dbUrlService.shortenUrl("https://example.com/sale", "promo", null, 1L, null, null, false, null);
+
+        assertSame(mine, result);
+        verify(urlRepository, never()).save(any());
+    }
+
+    @Test
+    void customAlias_sameOwnerRequestingPassword_throwsConflictInsteadOfReturningUnprotectedLink() {
+        existingAlias("promo", "https://example.com/sale", 1L);
+
+        assertThrows(ConflictException.class, () ->
+                dbUrlService.shortenUrl("https://example.com/sale", "promo", null, 1L, null, "s3cret", false, null));
+    }
+
+    @Test
+    void customAlias_sameOwnerRequestingExpiry_throwsConflictInsteadOfReturningPermanentLink() {
+        existingAlias("promo", "https://example.com/sale", 1L);
+
+        assertThrows(ConflictException.class, () ->
+                dbUrlService.shortenUrl("https://example.com/sale", "promo", 7, 1L, null, null, false, null));
+    }
+
+    // ─── Link passwords: AES-256-GCM, owner reveal, legacy upgrade ───
+
+    private static final String LEGACY_ECB = "bGVnYWN5Q2lwaGVydGV4dA==";
+
+    private UrlEntity protectedLink(String shortId, String storedPassword) {
+        UrlEntity entity = new UrlEntity(shortId, "https://example.com/private", false);
+        entity.setPassword(storedPassword);
+        entity.setUserId(1L);
+        when(urlRepository.findByShortId(shortId)).thenReturn(Optional.of(entity));
+        when(urlRepository.findByShortIdAndUserId(shortId, 1L)).thenReturn(Optional.of(entity));
+        return entity;
+    }
+
+    @Test
+    void shortenUrl_withPassword_storesAuthenticatedCiphertextBoundToTheLink() {
+        when(urlRepository.getNextId()).thenReturn(5L);
+        when(idEncoder.encode(5L)).thenReturn("f");
+        when(urlRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        UrlEntity result = dbUrlService.shortenUrl("https://example.com", null, null, 1L, null, "s3cret", false, null);
+
+        assertTrue(result.getPassword().startsWith("v1:"));
+        assertNotEquals("s3cret", result.getPassword());
+        assertEquals("s3cret", linkPasswordCipher.decrypt(result.getPassword(), "f"));
+        verifyNoInteractions(encryptionUtils);
+    }
+
+    @Test
+    void resolve_correctPassword_returnsDestination() {
+        protectedLink("locked", linkPasswordCipher.encrypt("s3cret", "locked"));
+
+        assertEquals("https://example.com/private", dbUrlService.resolveProtectedLink("locked", "s3cret"));
+        verify(urlRepository, never()).save(any());
+    }
+
+    @Test
+    void resolve_wrongPassword_throwsUnauthorized() {
+        protectedLink("locked", linkPasswordCipher.encrypt("s3cret", "locked"));
+
+        assertThrows(com.shunyalink.exception.UnauthorizedException.class,
+                () -> dbUrlService.resolveProtectedLink("locked", "guess"));
+    }
+
+    @Test
+    void resolve_ciphertextCopiedFromAnotherLink_isRejectedNotA500() {
+        // Someone with database write access moves a known ciphertext onto a different link
+        protectedLink("victim", linkPasswordCipher.encrypt("known", "attacker"));
+
+        assertThrows(com.shunyalink.exception.UnauthorizedException.class,
+                () -> dbUrlService.resolveProtectedLink("victim", "known"));
+    }
+
+    @Test
+    void resolve_legacyBcryptValue_isStillVerified() {
+        protectedLink("old", "$2a$10$hashed");
+        when(passwordEncoder.matches("s3cret", "$2a$10$hashed")).thenReturn(true);
+
+        assertEquals("https://example.com/private", dbUrlService.resolveProtectedLink("old", "s3cret"));
+    }
+
+    @Test
+    void resolve_correctLegacyEcbPassword_succeedsAndUpgradesToGcm() {
+        UrlEntity entity = protectedLink("legacy", LEGACY_ECB);
+        when(encryptionUtils.decrypt(LEGACY_ECB)).thenReturn("s3cret");
+
+        assertEquals("https://example.com/private", dbUrlService.resolveProtectedLink("legacy", "s3cret"));
+        assertTrue(entity.getPassword().startsWith("v1:"));
+        assertEquals("s3cret", linkPasswordCipher.decrypt(entity.getPassword(), "legacy"));
+        verify(urlRepository).save(entity);
+    }
+
+    @Test
+    void resolve_wrongLegacyEcbPassword_failsAndKeepsStoredValue() {
+        UrlEntity entity = protectedLink("legacy", LEGACY_ECB);
+        when(encryptionUtils.decrypt(LEGACY_ECB)).thenReturn("s3cret");
+
+        assertThrows(com.shunyalink.exception.UnauthorizedException.class,
+                () -> dbUrlService.resolveProtectedLink("legacy", "wrong"));
+        assertEquals(LEGACY_ECB, entity.getPassword());
+        verify(urlRepository, never()).save(any());
+    }
+
+    @Test
+    void resolve_expiredLink_throwsGoneEvenWithTheCorrectPassword() {
+        UrlEntity entity = protectedLink("old", linkPasswordCipher.encrypt("s3cret", "old"));
+        entity.setExpiryTime(LocalDateTime.now().minusMinutes(1));
+
+        assertThrows(GoneException.class, () -> dbUrlService.resolveProtectedLink("old", "s3cret"));
+    }
+
+    @Test
+    void resolve_unprotectedLink_returnsDestination() {
+        protectedLink("open", null);
+
+        assertEquals("https://example.com/private", dbUrlService.resolveProtectedLink("open", "anything"));
+    }
+
+    @Test
+    void reveal_owner_getsThePasswordBack() {
+        protectedLink("mine", linkPasswordCipher.encrypt("access-code", "mine"));
+
+        assertEquals("access-code", dbUrlService.revealLinkPassword("mine", 1L));
+    }
+
+    @Test
+    void reveal_notTheOwner_isNotFound() {
+        protectedLink("mine", linkPasswordCipher.encrypt("access-code", "mine"));
+        when(urlRepository.findByShortIdAndUserId("mine", 99L)).thenReturn(Optional.empty());
+
+        assertThrows(NotFoundException.class, () -> dbUrlService.revealLinkPassword("mine", 99L));
+    }
+
+    @Test
+    void reveal_unprotectedLink_returnsEmpty() {
+        protectedLink("open", null);
+
+        assertEquals("", dbUrlService.revealLinkPassword("open", 1L));
+    }
+
+    @Test
+    void reveal_legacyEcbValue_returnsItAndUpgradesToGcm() {
+        UrlEntity entity = protectedLink("legacy", LEGACY_ECB);
+        when(encryptionUtils.decrypt(LEGACY_ECB)).thenReturn("old-code");
+
+        assertEquals("old-code", dbUrlService.revealLinkPassword("legacy", 1L));
+        assertTrue(entity.getPassword().startsWith("v1:"));
+    }
+
+    @Test
+    void reveal_legacyBcryptValue_isNotRecoverable() {
+        protectedLink("old", "$2a$10$hashed");
+
+        assertNull(dbUrlService.revealLinkPassword("old", 1L));
+    }
+
+    @Test
+    void updateMetadata_newPassword_isEncryptedForThatLink() {
+        UrlEntity entity = new UrlEntity("mine", "https://example.com", false);
+        when(urlRepository.findByShortIdAndUserId("mine", 1L)).thenReturn(Optional.of(entity));
+
+        dbUrlService.updateUrlMetadata("mine", 1L, null, "newpass");
+
+        assertEquals("newpass", linkPasswordCipher.decrypt(entity.getPassword(), "mine"));
+    }
+
+    @Test
+    void updateMetadata_passwordShorterThanFourChars_isRejected() {
+        when(urlRepository.findByShortIdAndUserId("mine", 1L))
+                .thenReturn(Optional.of(new UrlEntity("mine", "https://example.com", false)));
+
+        assertThrows(com.shunyalink.exception.BadRequestException.class,
+                () -> dbUrlService.updateUrlMetadata("mine", 1L, null, "abc"));
+    }
+
     @Test
     void shortenUrl_withExpiry_setsTtlCorrectly() {
         when(urlRepository.getNextId()).thenReturn(1001L);
@@ -154,7 +379,6 @@ class DbUrlServiceTest {
 
         assertEquals("https://google.com", result);
         verify(urlRepository, never()).findByShortId(any());
-        verify(hashOperations).increment("analytics:click_counts", "abc123", 1);
     }
 
     @Test
@@ -171,7 +395,6 @@ class DbUrlServiceTest {
 
         assertEquals("https://google.com", result);
         verify(valueOperations).set(eq("url:abc123"), eq("https://google.com"), anyLong(), eq(TimeUnit.SECONDS));
-        verify(hashOperations).increment("analytics:click_counts", "abc123", 1);
     }
 
     @Test
@@ -198,24 +421,33 @@ class DbUrlServiceTest {
     // ─── getStats tests ──────────────────────────────────────────────
 
     @Test
-    void getStats_returnsCorrectStats() {
+    void getStats_owner_returnsStatsIncludingUnsyncedRedisClicks() {
         UrlEntity entity = new UrlEntity();
         entity.setShortId("abc123");
         entity.setLongUrl("https://google.com");
         entity.setClickCount(10L);
-        when(urlRepository.findByShortId("abc123")).thenReturn(Optional.of(entity));
+        when(urlRepository.findByShortIdAndUserId("abc123", 7L)).thenReturn(Optional.of(entity));
         when(hashOperations.get("analytics:click_counts", "abc123")).thenReturn("5");
 
-        UrlStatsResponse stats = dbUrlService.getStats("abc123", 0L);
+        UrlStatsResponse stats = dbUrlService.getStats("abc123", 7L, 0L);
 
         assertEquals("abc123", stats.getShortId());
         assertEquals(15L, stats.getClickCount()); // 10 DB + 5 Redis
     }
 
     @Test
-    void getStats_notFound_throwsNotFoundException() {
-        when(urlRepository.findByShortId("xyz")).thenReturn(Optional.empty());
+    void getStats_notOwner_throwsNotFoundWithoutRevealingTheLinkExists() {
+        when(urlRepository.findByShortIdAndUserId("abc123", 99L)).thenReturn(Optional.empty());
 
-        assertThrows(NotFoundException.class, () -> dbUrlService.getStats("xyz", 0L));
+        assertThrows(NotFoundException.class, () -> dbUrlService.getStats("abc123", 99L, 0L));
+        // Ownership is part of the lookup itself; an unscoped lookup would leak the destination.
+        verify(urlRepository, never()).findByShortId(any());
+    }
+
+    @Test
+    void getStats_anonymousLink_isNotVisibleToAnyone() {
+        when(urlRepository.findByShortIdAndUserId("anon1", 7L)).thenReturn(Optional.empty());
+
+        assertThrows(NotFoundException.class, () -> dbUrlService.getStats("anon1", 7L, 0L));
     }
 }

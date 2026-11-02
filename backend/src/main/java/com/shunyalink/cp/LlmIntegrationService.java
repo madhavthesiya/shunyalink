@@ -9,6 +9,7 @@ import org.springframework.web.client.RestTemplate;
 import java.util.Map;
 import java.util.List;
 import java.util.HashMap;
+import java.util.Optional;
 
 @Service
 public class LlmIntegrationService {
@@ -30,8 +31,10 @@ public class LlmIntegrationService {
 
     /**
      * Roast the user's CP stats using Hybrid AI (Groq prioritized for speed).
+     * Empty when no provider is configured or every provider failed, so callers can tell a real
+     * roast from a failure (and avoid caching the failure).
      */
-    public String roastProfile(String statsContext) {
+    public Optional<String> roastProfile(String statsContext) {
         String prompt = "Act like a sarcastic MAANG interviewer. I am going to give you a user's competitive programming stats. " +
                 "Your job is to roast them in exactly 2 witty, sarcastic sentences. " +
                 "Be brutal but keep it professional (no profanity). " +
@@ -45,7 +48,7 @@ public class LlmIntegrationService {
         // Try Groq First (Faster & Higher Limits)
         if (groqOk) {
             try {
-                return callGroq(prompt);
+                return Optional.ofNullable(callGroq(prompt));
             } catch (Exception e) {
                 System.err.println("Groq roast failed: " + e.getMessage());
             }
@@ -54,17 +57,13 @@ public class LlmIntegrationService {
         // Fallback to Gemini
         if (geminiOk) {
             try {
-                return callGemini(prompt);
+                return Optional.ofNullable(callGemini(prompt));
             } catch (Exception e) {
                 System.err.println("Gemini roast failed: " + e.getMessage());
             }
         }
 
-        if (!groqOk && !geminiOk) {
-            return "The AI roast engine is currently offline. (API Keys not configured in backend)";
-        }
-        
-        return "The AI roast engine is currently overloaded. Please try again in a few minutes.";
+        return Optional.empty();
     }
 
     /**

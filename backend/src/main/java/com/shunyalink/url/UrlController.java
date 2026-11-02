@@ -4,7 +4,9 @@ import com.shunyalink.auth.UserEntity;
 import com.shunyalink.auth.UserRepository;
 import com.shunyalink.exception.BadRequestException;
 import com.shunyalink.exception.ForbiddenException;
+import com.shunyalink.exception.UnauthorizedException;
 import com.shunyalink.rate.RateLimiterService;
+import com.shunyalink.security.ClientIpResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -16,16 +18,14 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
-import com.shunyalink.util.EncryptionUtils;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -38,41 +38,31 @@ public class UrlController {
     private final RateLimiterService rateLimiterService;
     private final UrlRepository urlRepository;
     private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
     private final CsvExportService csvExportService;
     private final com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository;
-    private final EncryptionUtils encryptionUtils;
     private final com.shunyalink.analytics.AnalyticsService analyticsService;
     private final CsvImportService csvImportService;
+    private final ClientIpResolver clientIpResolver;
 
     @Value("${app.base-url}")
     private String baseUrl;
 
     public UrlController(UrlService urlService, RateLimiterService rateLimiterService,
                          UrlRepository urlRepository, UserRepository userRepository,
-                         PasswordEncoder passwordEncoder, CsvExportService csvExportService,
+                         CsvExportService csvExportService,
                          com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository,
-                         EncryptionUtils encryptionUtils,
                          com.shunyalink.analytics.AnalyticsService analyticsService,
-                         CsvImportService csvImportService) {
+                         CsvImportService csvImportService,
+                         ClientIpResolver clientIpResolver) {
         this.urlService = urlService;
         this.rateLimiterService = rateLimiterService;
         this.urlRepository = urlRepository;
         this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
         this.csvExportService = csvExportService;
         this.globalStatsRepository = globalStatsRepository;
-        this.encryptionUtils = encryptionUtils;
         this.analyticsService = analyticsService;
         this.csvImportService = csvImportService;
-    }
-
-    private String getClientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
+        this.clientIpResolver = clientIpResolver;
     }
 
     private Long getCurrentUserId() {
@@ -81,6 +71,20 @@ public class UrlController {
             return n.longValue();
         }
         return null;
+    }
+
+    /** Accounts must verify their email before creating links, one at a time or by CSV import. */
+    private void requireVerifiedEmail(Long userId) {
+        UserEntity user = userRepository.findById(userId).orElse(null);
+        if (user != null && !user.isEmailVerified() && !"GOOGLE".equals(user.getAuthProvider())) {
+            throw new ForbiddenException("You must verify your email address before you can create links.");
+        }
+    }
+
+    private Long requireUserId() {
+        Long userId = getCurrentUserId();
+        if (userId == null) throw new UnauthorizedException("Authentication required");
+        return userId;
     }
 
     private Long getUserIdFromPrincipal(Object principal) {
@@ -92,15 +96,12 @@ public class UrlController {
     @Operation(summary = "Create a short URL", description = "Generates a unique short ID for a long URL. Supports custom aliases and password protection.")
     @PostMapping("/shorten")
     public ShortenResponse shorten(@Valid @RequestBody ShortenRequest request, HttpServletRequest httpRequest) {
-        String ip = getClientIp(httpRequest);
+        String ip = clientIpResolver.resolve(httpRequest);
         rateLimiterService.checkLimit("rate:shorten:" + ip, 10, 60);
 
         Long userId = getCurrentUserId();
         if (userId != null) {
-            UserEntity user = userRepository.findById(userId).orElse(null);
-            if (user != null && !user.isEmailVerified() && !"GOOGLE".equals(user.getAuthProvider())) {
-                throw new ForbiddenException("You must verify your email address before you can create links.");
-            }
+            requireVerifiedEmail(userId);
         }
 
         UrlEntity entity = urlService.shortenUrl(request.getLongUrl(), request.getCustomAlias(), request.getExpiryDays(), userId, request.getTitle(), request.getPassword(), request.isUseAutoTitle(), request.getTags());
@@ -111,7 +112,6 @@ public class UrlController {
                 entity.getCreatedAt(),
                 entity.getTitle(),
                 entity.getPassword() != null,
-                entity.getPassword() != null ? encryptionUtils.decrypt(entity.getPassword()) : null,
                 entity.getCategory(),
                 entity.getTags()
         );
@@ -149,14 +149,13 @@ public class UrlController {
             default -> 0L; // All time
         };
         
-        return urlService.getStats(shortId, lookbackMs);
+        return urlService.getStats(shortId, requireUserId(), lookbackMs);
     }
 
     @Operation(summary = "Export link stats to CSV", description = "Downloads analytics for a specific short ID as CSV.", security = @SecurityRequirement(name = "Bearer Authentication"))
     @GetMapping("/stats/{shortId}/export")
     public ResponseEntity<byte[]> exportStats(@PathVariable String shortId) {
-        Long userId = getCurrentUserId();
-        if (userId == null) throw new BadRequestException("Authentication required");
+        Long userId = requireUserId();
 
         UrlEntity entity = urlRepository.findByShortId(shortId)
                 .orElseThrow(() -> new com.shunyalink.exception.NotFoundException("URL not found"));
@@ -190,10 +189,10 @@ public class UrlController {
     @PostMapping("/bulk-import")
     @Operation(summary = "Bulk import short URLs via CSV", security = @SecurityRequirement(name = "Bearer Authentication"))
     public ResponseEntity<?> bulkImport(@org.springframework.web.bind.annotation.RequestParam("file") org.springframework.web.multipart.MultipartFile file, HttpServletRequest httpRequest) {
-        Long userId = getCurrentUserId();
-        if (userId == null) throw new BadRequestException("Authentication required");
-        
-        String ip = getClientIp(httpRequest);
+        Long userId = requireUserId();
+        requireVerifiedEmail(userId);
+
+        String ip = clientIpResolver.resolve(httpRequest);
         rateLimiterService.checkLimit("rate:import:" + ip, 5, 3600); // 5 imports per hour max
 
         Map<String, Object> result = csvImportService.importCsv(file, userId);
@@ -203,8 +202,7 @@ public class UrlController {
     @Operation(summary = "Toggle Bio Link visibility", description = "Shows or hides a link on your public Bio Profile.", security = @SecurityRequirement(name = "Bearer Authentication"))
     @PutMapping("/{shortId}/bio-visibility")
     public void toggleBioVisibility(@PathVariable String shortId, @RequestBody Map<String, Boolean> request) {
-        Long userId = getCurrentUserId();
-        if (userId == null) throw new BadRequestException("Authentication required");
+        Long userId = requireUserId();
         Boolean showOnBio = request.get("showOnBio");
         if (showOnBio == null) throw new BadRequestException("showOnBio parameter is required");
         urlService.toggleShowOnBio(shortId, userId, showOnBio);
@@ -213,8 +211,7 @@ public class UrlController {
     @Operation(summary = "Update link metadata", description = "Allows editing the title and password of an existing link.", security = @SecurityRequirement(name = "Bearer Authentication"))
     @PatchMapping("/{shortId}/metadata")
     public void updateMetadata(@PathVariable String shortId, @RequestBody Map<String, String> request) {
-        Long userId = getCurrentUserId();
-        if (userId == null) throw new BadRequestException("Authentication required");
+        Long userId = requireUserId();
         
         String title = request.get("title");
         String password = request.get("password");
@@ -225,8 +222,7 @@ public class UrlController {
     @Operation(summary = "Update link tags", description = "Allows editing the tags of an existing link.", security = @SecurityRequirement(name = "Bearer Authentication"))
     @PatchMapping("/{shortId}/tags")
     public void updateTags(@PathVariable String shortId, @RequestBody Map<String, java.util.Set<String>> request) {
-        Long userId = getCurrentUserId();
-        if (userId == null) throw new BadRequestException("Authentication required");
+        Long userId = requireUserId();
         
         java.util.Set<String> tags = request.get("tags");
         urlService.updateTags(shortId, userId, tags);
@@ -244,65 +240,37 @@ public class UrlController {
 
     @Operation(summary = "Resolve password-protected link", description = "Verifies password and returns the original long URL.")
     @PostMapping("/resolve/{shortId}")
-    public ResponseEntity<?> resolvePassword(@PathVariable String shortId, @RequestBody Map<String, String> body, HttpServletRequest request) {
-        String password = body.get("password");
-        UrlEntity entity = urlRepository.findByShortId(shortId)
-                .orElseThrow(() -> new com.shunyalink.exception.NotFoundException("URL not found"));
+    public Map<String, String> resolvePassword(@PathVariable String shortId, @Valid @RequestBody ResolveRequest body, HttpServletRequest request) {
+        String ip = clientIpResolver.resolve(request);
+        // The per-client limit stops a single guesser; the per-link ceiling bounds guessing
+        // spread across many IPs. Both run before any password comparison.
+        rateLimiterService.checkLimit("rate:resolve:" + shortId + ":" + ip, 5, 60);
+        rateLimiterService.checkLimit("rate:resolve:" + shortId, 100, 3600);
 
-        String storedPassword = entity.getPassword();
-        boolean matches = false;
-        
-        if (storedPassword == null) {
-            matches = true;
-        } else {
-            // AES-encrypted password — decrypt and compare
-             matches = checkPassword(password, storedPassword);
-        }
-
-        if (matches) {
-            // NEW: Record Analytics with IP
-            analyticsService.recordClick(shortId, getClientIp(request), request.getHeader("User-Agent"), request.getHeader("Referer"));
-            return ResponseEntity.ok(Map.of("longUrl", entity.getLongUrl()));
-        } else {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Incorrect password");
-        }
+        // Throws 401 on a wrong password; verification (and legacy upgrade) lives in the service
+        String longUrl = urlService.resolveProtectedLink(shortId, body.password());
+        analyticsService.recordClick(shortId, clientIpResolver.resolve(request), request.getHeader("User-Agent"), request.getHeader("Referer"));
+        return Map.of("longUrl", longUrl);
     }
 
-    private boolean checkPassword(String plain, String stored) {
-        try {
-            // Try BCrypt first (legacy)
-            if (stored.startsWith("$2a$") || stored.startsWith("$2b$")) {
-                return passwordEncoder.matches(plain, stored);
-            }
-            // Use injected AES encryption (new)
-            return plain.equals(encryptionUtils.decrypt(stored));
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    @Operation(summary = "Reveal link password", description = "Returns the decrypted password for a link owned by the authenticated user.", security = @SecurityRequirement(name = "Bearer Authentication"))
+    @Operation(summary = "Reveal link password", description = "Owner-only: returns the link's password so it can be shared again. Rate-limited per user.", security = @SecurityRequirement(name = "Bearer Authentication"))
     @GetMapping("/{shortId}/reveal-password")
-    public ResponseEntity<?> revealPassword(@PathVariable String shortId) {
-        Long userId = getCurrentUserId();
-        if (userId == null) throw new BadRequestException("Authentication required");
+    public Map<String, Object> revealPassword(@PathVariable String shortId) {
+        Long userId = requireUserId();
+        // Bounds how many passwords a stolen session could extract
+        rateLimiterService.checkLimit("rate:reveal:" + userId, 20, 3600);
 
-        UrlEntity entity = urlRepository.findByShortIdAndUserId(shortId, userId)
-                .orElseThrow(() -> new com.shunyalink.exception.NotFoundException("URL not found or not owned by you"));
-
-        if (entity.getPassword() == null) {
-            return ResponseEntity.ok(Map.of("password", ""));
-        }
-
-        String decrypted = encryptionUtils.decrypt(entity.getPassword());
-        return ResponseEntity.ok(Map.of("password", decrypted));
+        String password = urlService.revealLinkPassword(shortId, userId);
+        Map<String, Object> body = new HashMap<>();
+        body.put("password", password);
+        body.put("recoverable", password != null);
+        return body;
     }
 
     @Operation(summary = "Export all user links to CSV", description = "Downloads all user links as a CSV file.", security = @SecurityRequirement(name = "Bearer Authentication"))
     @GetMapping("/export/csv")
     public ResponseEntity<byte[]> exportCsv() {
-        Long userId = getCurrentUserId();
-        if (userId == null) throw new BadRequestException("Authentication required");
+        Long userId = requireUserId();
 
         List<UrlEntity> urls = urlRepository.findByUserIdOrderByCreatedAtDesc(userId);
         String csvContent = csvExportService.exportToCsv(urls);

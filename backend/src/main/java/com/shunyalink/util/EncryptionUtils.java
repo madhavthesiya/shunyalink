@@ -8,6 +8,12 @@ import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
+/**
+ * Read-only support for legacy link passwords stored as AES/ECB ciphertext (deterministic, no
+ * integrity check, string-derived key). There is deliberately no encrypt method: nothing may write
+ * this format again. LinkPasswordBackfill re-encrypts every legacy value with AES-256-GCM at
+ * startup; once it reports converted=0 in production, this class and ENCRYPTION_SECRET can go.
+ */
 @Component
 public class EncryptionUtils {
 
@@ -23,18 +29,6 @@ public class EncryptionUtils {
             this.secretKey = String.format("%-32s", secretKey).substring(0, 32);
         } else {
             this.secretKey = secretKey.substring(0, 32);
-        }
-    }
-
-    public String encrypt(String strToEncrypt) {
-        if (strToEncrypt == null || strToEncrypt.isEmpty()) return null;
-        try {
-            SecretKeySpec secretKeySpec = new SecretKeySpec(secretKey.getBytes(StandardCharsets.UTF_8), "AES");
-            Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
-            cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec);
-            return Base64.getEncoder().encodeToString(cipher.doFinal(strToEncrypt.getBytes(StandardCharsets.UTF_8)));
-        } catch (Exception e) {
-            throw new RuntimeException("Error while encrypting: " + e.toString());
         }
     }
 

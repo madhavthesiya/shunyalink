@@ -42,10 +42,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // 3. Extract and validate the token
         String token = authHeader.substring(7); // Remove "Bearer "
 
-        // NEW: Check if the token has been revoked via logout
+        // Reject tokens revoked individually (logout) or user-wide (password reset, takeover remediation)
         if (jwtService.isTokenValid(token) && !blacklistService.isTokenBlacklisted(token)) {
-            String email = jwtService.extractEmail(token);
             Long userId = jwtService.extractUserId(token);
+            if (userId == null || blacklistService.isRevokedForUser(userId, jwtService.extractIssuedAt(token))) {
+                filterChain.doFilter(request, response);
+                return;
+            }
 
             // 4. Create an authentication object and set it in the context
             UsernamePasswordAuthenticationToken authToken =

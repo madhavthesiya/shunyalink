@@ -183,7 +183,7 @@ Benchmarked with [k6](https://k6.io/) at 50 concurrent virtual users against the
 | **Bio-Link** | Drag-and-Drop Link Reordering · Public `/@username` profiles · Dynamic OG tags for social sharing · Theme customization · Show/hide links toggle |
 | **Data** | CSV bulk import (drag-and-drop) · CSV export · Global dashboard search (title, URL, short ID, tags) · Custom tags |
 | **Infra** | 3-node cluster · Nginx LB · Lua rate limiting · Cache warmup (top 1000) · **Branded QR Generation** (with logo overlay) · **Puppeteer Scraper** (headless Chrome for anti-bot bypass) · Actuator lockdown |
-| **Security** | On-demand password reveal · AES-256 encryption · AI-driven URL safety verification |
+| **Security** | AES-256-GCM link passwords with owner reveal · Owner-only analytics · Spoof-resistant rate limiting · SSRF-guarded link previews · Session revocation · AI-driven URL safety verification |
 
 ---
 
@@ -201,11 +201,33 @@ Benchmarked with [k6](https://k6.io/) at 50 concurrent virtual users against the
 
 **Geo-IP Self-Healing** — If the external lookup returns "Unknown" and later resolves, the system retroactively shifts one count from "Unknown" to the real country.
 
-**On-demand password reveal** — Link passwords are never included in list/stats API responses. A dedicated authenticated endpoint (`/reveal-password`) decrypts and returns the password only when the owner explicitly requests it — same pattern as Google Password Manager.
+**Encrypted, not hashed, link passwords** — A link password is a shared access code, not an account credential: the owner gives the same code to many people and must be able to look it up again, because resetting it would lock out everyone who already has it. So link passwords are *encrypted* (account passwords stay BCrypt-hashed). AES-256-GCM uses a random IV per value, so identical codes look different in the database, and an authentication tag, so tampering is detected; the link's short ID is bound in as associated data, so a ciphertext copied onto another link will not decrypt. Values carry a `v1:` version prefix for future key rotation. The trade-off is that someone holding both the database *and* the key could read the codes, so the UI generates random codes and warns against reusing personal passwords. The previous AES/ECB format is converted to GCM by an idempotent backfill at startup.
 
 **Synchronous AI Phishing Detection** — Scammers abuse URL shorteners to hide malware links. By passing the long URL through a Gemini LLM prompt synchronously during the `/shorten` request, we intercept and block typosquatting and scam links before they are even created. We implemented a **Resilient Fallback Pattern**: if Gemini rate-limits or fails, the request automatically falls back to Groq (Llama 3), and if both fail, the system fails-open to prevent breaking the core shortening functionality.
 
 ---
+
+## Security Model
+
+Every item below has a regression test that reproduces the attack.
+
+| Threat | Mitigation |
+|--------|------------|
+| Reading someone else's link (stats, destination, password) | Stats are owner-only and looked up by `(shortId, owner)`; other users' links return 404, same as missing ones. Custom aliases are reusable only by their creator. Responses never contain link passwords. |
+| Bypassing a password-protected link | The password check runs before the social-preview path, so a spoofed bot `User-Agent` gets a generic preview, never the destination. |
+| Brute-forcing link passwords | 5 attempts/min per client and 100/hour per link, checked before any comparison (constant-time); expired links return 410. |
+| Link passwords exposed by a database leak | AES-256-GCM with a separate key, per-value random IV and the short ID as associated data. Reveal is owner-only, rate-limited (20/hour) and logged. |
+| Rate-limit evasion via `X-Forwarded-For` | The client is the right-most *public* address our edge appended; client-supplied entries are ignored, ports stripped, IPv6 normalized. |
+| SSRF through link previews | The title fetcher allows only http(s) on 80/443, rejects hosts that resolve to any internal address, and re-validates every redirect hop. |
+| Account takeover via Google sign-in | Unverified Google emails are rejected; when Google proves ownership of an unverified account, its unproven password is deleted and earlier sessions are revoked. |
+| Stale sessions after a password reset | Per-user "issued-before" revocation in Redis; reset also invalidates every outstanding reset link. |
+| Account enumeration and email bombing | Identical responses for existing/unknown emails, constant-work login, per-IP and per-address limits on email-sending endpoints. |
+| Abuse of paid or heavy endpoints | AI roasts rate-limited and cached per user for 24h; the scraper requires a shared secret, validates handles and caps concurrent browser tabs. |
+| Leaking internals | Unexpected errors return a generic message (details are logged); public health shows component status only. |
+
+Known limitations: DNS rebinding between the SSRF check and the connection is not covered, and per-IP limits are weaker for IPv6 clients who control a whole /64.
+
+The reasoning behind these choices, including the alternatives that were rejected, is recorded as [Architecture Decision Records](docs/adr/README.md).
 
 ## Reliability & Observability
 
@@ -238,9 +260,9 @@ Benchmarked with [k6](https://k6.io/) at 50 concurrent virtual users against the
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| `POST` | `/api/v1/url/shorten` | ✅ | Shorten a URL (supports custom alias, password, tags, auto-title) |
+| `POST` | `/api/v1/url/shorten` | Optional | Shorten a URL (supports custom alias, password, tags, auto-title); anonymous links are rate-limited |
 | `GET` | `/{shortId}` | — | Redirect (or OG preview for social bots) |
-| `GET` | `/api/v1/url/stats/{shortId}` | — | Click count + timestamps (supports `?range=24h\|7d\|all`) |
+| `GET` | `/api/v1/url/stats/{shortId}` | ✅ | Click analytics for a link you own (supports `?range=24h\|7d\|all`) |
 | `GET` | `/api/v1/url/my-links` | ✅ | Paginated user links (supports `?search=` full-text) |
 | `POST` | `/api/v1/url/bulk-delete` | ✅ | Bulk delete links |
 | `POST` | `/api/v1/url/bulk-import` | ✅ | CSV bulk import (drag-and-drop) |
@@ -249,8 +271,8 @@ Benchmarked with [k6](https://k6.io/) at 50 concurrent virtual users against the
 | `PUT` | `/api/v1/url/{shortId}/bio-visibility` | ✅ | Toggle show/hide on bio profile |
 | `PATCH` | `/api/v1/url/{shortId}/metadata` | ✅ | Update link title and password |
 | `PATCH` | `/api/v1/url/{shortId}/tags` | ✅ | Update link tags |
-| `GET` | `/api/v1/url/{shortId}/reveal-password` | ✅ | On-demand password reveal (owner only) |
-| `POST` | `/api/v1/url/resolve/{shortId}` | — | Verify password and resolve long URL |
+| `POST` | `/api/v1/url/resolve/{shortId}` | — | Verify a link password (rate-limited) and resolve the long URL |
+| `GET` | `/api/v1/url/{shortId}/reveal-password` | ✅ | Owner-only: show the link's access code to share it again (rate-limited) |
 | `GET` | `/api/v1/url/qr/{shortId}` | — | QR code image (PNG) |
 | `GET` | `/api/v1/url/stats/public` | — | Public system stats (links, users, clicks) |
 | `POST` | `/api/v1/auth/register` | — | Register |
@@ -264,7 +286,7 @@ Benchmarked with [k6](https://k6.io/) at 50 concurrent virtual users against the
 | `GET` | `/api/v1/portfolio/{username}` | — | Public CP Portfolio stats |
 | `GET` | `/api/v1/portfolio/{username}/roast` | — | AI profile roast (Gemini/Groq) |
 
-Error codes: `400` invalid input · `404` not found · `409` alias taken · `410` expired · `429` rate limited
+Error codes: `400` invalid input · `401` not signed in / wrong link password · `403` email not verified · `404` not found · `409` alias taken · `410` expired · `429` rate limited
 
 ---
 
@@ -321,7 +343,8 @@ backend/src/main/java/com/shunyalink/
 │   ├── QrController.java             # QR code generation
 │   └── ReorderRequest.java           # DTO for drag-and-drop ordering
 └── util/
-    └── EncryptionUtils.java          # AES-256 encryption/decryption
+    ├── EncryptionUtils.java          # Decrypt-only legacy AES/ECB, used by the GCM backfill
+    └── InternalAddresses.java        # Shared internal/private IP classification (rate limits + SSRF guard)
 
 frontend/
 ├── app/
@@ -400,6 +423,8 @@ docker-compose up --build
 | `GEMINI_API_KEY` | Google Gemini API key (AI categorization + phishing detection) |
 | `GROQ_API_KEY` | Groq API key (AI profile roasts) |
 | `CLOUDINARY_URL` | Cloudinary environment URL (profile picture uploads) |
+| `LINK_PASSWORD_KEY` | **Required.** AES-256-GCM key for link passwords: base64 of 32 random bytes (`openssl rand -base64 32`). Keep it safe: losing it makes existing link passwords unreadable |
+| `SCRAPER_API_KEY` | Shared secret between backend and scraper (`openssl rand -hex 32`). Optional locally; set it in production so only the backend can use the scraper |
 | `GOOGLE_CLIENT_ID` | Optional. Your own Google OAuth client ID (defaults to the ShunyaLink client) |
 
 | Service | URL |

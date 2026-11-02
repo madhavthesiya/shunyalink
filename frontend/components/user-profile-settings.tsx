@@ -170,11 +170,12 @@ export function UserProfileSettings() {
           themeColor: themeColor,
           name: displayName,
           profileType: profileType,
-          githubUsername: githubUsername || null,
-          leetcodeUsername: leetcodeUsername || null,
-          codeforcesUsername: codeforcesUsername || null,
-          codeChefHandle: codeChefHandle || null,
-          atCoderHandle: atCoderHandle || null
+          // An empty string disconnects the platform (null would mean "unchanged")
+          githubUsername: githubUsername ?? "",
+          leetcodeUsername: leetcodeUsername ?? "",
+          codeforcesUsername: codeforcesUsername ?? "",
+          codeChefHandle: codeChefHandle ?? "",
+          atCoderHandle: atCoderHandle ?? ""
         })
       });
 

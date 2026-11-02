@@ -62,12 +62,14 @@ services:
       # Required secrets: compose refuses to start if they are unset or empty
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
       ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:?ENCRYPTION_SECRET must be set in .env}
+      LINK_PASSWORD_KEY: ${LINK_PASSWORD_KEY:?LINK_PASSWORD_KEY must be set in .env}
       MAIL_USERNAME: ${MAIL_USERNAME:-noreply.shunyalink@gmail.com}
       MAIL_PASSWORD: ${MAIL_PASSWORD}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GROQ_API_KEY: ${GROQ_API_KEY}
       CLOUDINARY_URL: ${CLOUDINARY_URL}
       SCRAPER_URL: http://scraper:3001
+      SCRAPER_API_KEY: ${SCRAPER_API_KEY:-}
     # No direct port exposure — only Nginx can talk to backend
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
@@ -82,6 +84,8 @@ services:
       dockerfile: Dockerfile
     container_name: urlshortener-scraper
     restart: unless-stopped
+    environment:
+      SCRAPER_API_KEY: ${SCRAPER_API_KEY:-}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 15s

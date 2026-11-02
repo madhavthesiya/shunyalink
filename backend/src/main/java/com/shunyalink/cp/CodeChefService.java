@@ -1,6 +1,10 @@
 package com.shunyalink.cp;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import java.util.regex.Pattern;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -14,16 +18,31 @@ import java.util.HashMap;
 @Service
 public class CodeChefService {
 
+    /** CodeChef handles are letters, digits and underscores; anything else never leaves this service. */
+    private static final Pattern VALID_HANDLE = Pattern.compile("^[A-Za-z0-9_]{1,30}$");
+
     private final RestTemplate restTemplate;
     private final String scraperUrl;
+    private final String scraperApiKey;
 
+    @Autowired
     public CodeChefService(
-            @Value("${SCRAPER_URL:http://localhost:3001}") String scraperUrl) {
+            @Value("${SCRAPER_URL:http://localhost:3001}") String scraperUrl,
+            @Value("${SCRAPER_API_KEY:}") String scraperApiKey) {
+        this(scraperRestTemplate(), scraperUrl, scraperApiKey);
+    }
+
+    CodeChefService(RestTemplate restTemplate, String scraperUrl, String scraperApiKey) {
+        this.restTemplate = restTemplate;
+        this.scraperUrl = scraperUrl;
+        this.scraperApiKey = scraperApiKey;
+    }
+
+    private static RestTemplate scraperRestTemplate() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(5000);
         factory.setReadTimeout(15000);
-        this.restTemplate = new RestTemplate(factory);
-        this.scraperUrl = scraperUrl;
+        return new RestTemplate(factory);
     }
 
     @Cacheable(value = "codechef-stats", key = "#handle")
@@ -31,12 +50,22 @@ public class CodeChefService {
     public Map<String, Object> getStats(String handle) {
         Map<String, Object> result = new HashMap<>();
 
+        if (handle == null || !VALID_HANDLE.matcher(handle).matches()) {
+            System.err.println("CodeChef: Rejected invalid handle");
+            return withFallbacks(result);
+        }
+
         try {
             String url = scraperUrl + "/codechef/" + handle;
             System.out.println("CodeChef: Calling Puppeteer scraper at " + url);
 
+            // The scraper is a public service; the shared secret keeps it for our backend only
+            HttpHeaders headers = new HttpHeaders();
+            if (scraperApiKey != null && !scraperApiKey.isBlank()) {
+                headers.set("X-Scraper-Key", scraperApiKey);
+            }
             ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
-                    url, HttpMethod.GET, null,
+                    url, HttpMethod.GET, new HttpEntity<>(headers),
                     new ParameterizedTypeReference<Map<String, Object>>() {}
             );
 
@@ -60,11 +89,14 @@ public class CodeChefService {
             System.err.println("CodeChef: Scraper call failed for " + handle + ": " + e.getMessage());
         }
 
-        // Graceful fallbacks so the widget never disappears
+        return withFallbacks(result);
+    }
+
+    /** Graceful fallbacks so the widget never disappears. */
+    private static Map<String, Object> withFallbacks(Map<String, Object> result) {
         result.putIfAbsent("rating", "N/A");
         result.putIfAbsent("stars", "—");
         result.putIfAbsent("totalSolved", 0);
-
         return result;
     }
 

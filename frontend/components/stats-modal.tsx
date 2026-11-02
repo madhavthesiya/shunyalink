@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { X, MousePointerClick, Hash, Link2, CalendarDays, Clock, Loader2, AlertCircle, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
@@ -46,14 +47,29 @@ export function StatsModal({ shortId, isOpen, onClose }: StatsModalProps) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Per-link analytics are owner-only; anonymous visitors get a sign-up prompt instead.
+  const [needsSignIn, setNeedsSignIn] = useState(false);
 
   const fetchStats = useCallback(async (showLoading: boolean = true) => {
+    const token = localStorage.getItem("authToken");
+    if (!token) {
+      setNeedsSignIn(true);
+      return;
+    }
     if (showLoading) setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_URL}/api/v1/url/stats/${shortId}`);
+      const response = await fetch(`${API_URL}/api/v1/url/stats/${shortId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.status === 401) {
+        throw new Error("Your session has expired. Please sign in again.");
+      }
+      if (response.status === 404) {
+        throw new Error("Analytics are only available for links in your account.");
+      }
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(data.message || "Failed to fetch stats");
       }
@@ -70,8 +86,13 @@ export function StatsModal({ shortId, isOpen, onClose }: StatsModalProps) {
     let intervalId: NodeJS.Timeout;
     
     if (isOpen && shortId) {
+      if (!localStorage.getItem("authToken")) {
+        setNeedsSignIn(true);
+        return;
+      }
+      setNeedsSignIn(false);
       fetchStats();
-      
+
       intervalId = setInterval(() => {
         fetchStats(false);
       }, 3000);
@@ -136,6 +157,22 @@ export function StatsModal({ shortId, isOpen, onClose }: StatsModalProps) {
             <div className="flex flex-col items-center justify-center py-16">
               <Loader2 className="w-8 h-8 text-primary animate-spin mb-3" />
               <p className="text-sm text-muted-foreground">Loading analytics...</p>
+            </div>
+          )}
+
+          {needsSignIn && (
+            <div className="flex flex-col items-center text-center gap-4 py-10">
+              <MousePointerClick className="w-8 h-8 text-primary" />
+              <p className="text-sm text-muted-foreground max-w-xs">
+                Click analytics are private to each link&apos;s owner. Create a free account and every link you
+                shorten is tracked in your dashboard.
+              </p>
+              <Link
+                href="/register"
+                className="inline-flex items-center justify-center h-10 px-5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
+              >
+                Create free account
+              </Link>
             </div>
           )}
 

@@ -10,6 +10,13 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import com.shunyalink.exception.UnauthorizedException;
+import com.shunyalink.security.LinkPasswordCipher;
+import org.springframework.security.crypto.password.PasswordEncoder;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
@@ -33,6 +40,8 @@ public class DbUrlService implements UrlService {
     private final com.shunyalink.util.EncryptionUtils encryptionUtils;
     private final AnalyticsService analyticsService;
     private final com.shunyalink.cp.LlmIntegrationService llmIntegrationService;
+    private final PasswordEncoder passwordEncoder;
+    private final LinkPasswordCipher linkPasswordCipher;
 
     public DbUrlService(UrlRepository urlRepository,
                         IdEncoder idEncoder,
@@ -41,7 +50,9 @@ public class DbUrlService implements UrlService {
                         MetadataService metadataService,
                         com.shunyalink.util.EncryptionUtils encryptionUtils,
                         AnalyticsService analyticsService,
-                        com.shunyalink.cp.LlmIntegrationService llmIntegrationService) {
+                        com.shunyalink.cp.LlmIntegrationService llmIntegrationService,
+                        PasswordEncoder passwordEncoder,
+                        LinkPasswordCipher linkPasswordCipher) {
         this.urlRepository = urlRepository;
         this.idEncoder = idEncoder;
         this.redisTemplate = redisTemplate;
@@ -50,6 +61,24 @@ public class DbUrlService implements UrlService {
         this.encryptionUtils = encryptionUtils;
         this.analyticsService = analyticsService;
         this.llmIntegrationService = llmIntegrationService;
+        this.passwordEncoder = passwordEncoder;
+        this.linkPasswordCipher = linkPasswordCipher;
+    }
+
+    /**
+     * Link passwords are shared access codes the owner may need to look up again, so they are
+     * encrypted (AES-256-GCM, bound to this link) rather than hashed. See LinkPasswordCipher.
+     */
+    private String encryptLinkPassword(String rawPassword, String shortId) {
+        if (rawPassword.length() < 4 || rawPassword.length() > 20) {
+            throw new BadRequestException("Password must be 4-20 characters");
+        }
+        return linkPasswordCipher.encrypt(rawPassword, shortId);
+    }
+
+    /** Some of the oldest links were stored as BCrypt hashes: verifiable, never recoverable. */
+    private static boolean isBcryptHash(String stored) {
+        return stored.startsWith("$2a$") || stored.startsWith("$2b$") || stored.startsWith("$2y$");
     }
 
     private long getTtlSeconds(LocalDateTime expiryTime) {
@@ -80,10 +109,19 @@ public class DbUrlService implements UrlService {
             validateAlias(normalized);
             Optional<UrlEntity> existing = urlRepository.findByShortId(normalized);
             if (existing.isPresent()) {
-                if (!existing.get().getLongUrl().equals(longUrl)) {
-                    throw new ConflictException("Alias '" + normalized + "' is already in use by a different URL");
-                }
                 UrlEntity ext = existing.get();
+                // An alias belongs to its creator. Any other caller gets the same answer whether or
+                // not the URL matches, so the response never reveals someone else's link.
+                if (!Objects.equals(ext.getUserId(), userId) || !ext.getLongUrl().equals(longUrl)) {
+                    throw new ConflictException("Alias '" + normalized + "' is already in use");
+                }
+                // Idempotent only for plain links: silently returning the existing link would leave
+                // the caller believing it is password-protected or expiring when it is not.
+                boolean wantsPassword = password != null && !password.isBlank();
+                if (wantsPassword || expiryDays != null || ext.getPassword() != null || ext.getExpiryTime() != null) {
+                    throw new ConflictException("Alias '" + normalized
+                            + "' already exists. Edit that link to change its password or expiry.");
+                }
                 if (ext.getCategory() == null || ext.getCategory().isBlank() || "GENERAL".equals(ext.getCategory())) {
                     metadataService.fetchAndProcessMetadataAsync(ext.getShortId(), longUrl, useAutoTitle);
                 }
@@ -102,7 +140,7 @@ public class DbUrlService implements UrlService {
                 entity.setExpiryTime(LocalDateTime.now().plusDays(expiryDays));
             }
             if (password != null && !password.isBlank()) {
-                entity.setPassword(encryptionUtils.encrypt(password));
+                entity.setPassword(encryptLinkPassword(password, normalized));
             }
             UrlEntity saved = urlRepository.save(entity);
             redisTemplate.opsForValue().set(
@@ -146,7 +184,7 @@ public class DbUrlService implements UrlService {
             entity.setExpiryTime(LocalDateTime.now().plusDays(expiryDays));
         }
         if (password != null && !password.isBlank()) {
-            entity.setPassword(encryptionUtils.encrypt(password));
+            entity.setPassword(encryptLinkPassword(password, shortId));
         }
         UrlEntity saved = urlRepository.save(entity);
         globalStatsRepository.incrementLinks();
@@ -187,20 +225,98 @@ public class DbUrlService implements UrlService {
                 .orElseThrow(() -> new NotFoundException("URL not found or not owned by you"));
         
         if (title != null) {
+            if (title.trim().length() > 100) {
+                throw new BadRequestException("Title cannot exceed 100 characters");
+            }
             entity.setTitle(title.trim().isEmpty() ? null : title.trim());
         }
-        
+
         if (password != null) {
             if (password.trim().isEmpty()) {
                 entity.setPassword(null);
             } else {
-                entity.setPassword(encryptionUtils.encrypt(password));
+                entity.setPassword(encryptLinkPassword(password, shortId));
             }
         }
-        
+
         urlRepository.save(entity);
         // Invalidate redirect Hash cache — password or title may have changed
         redisTemplate.delete("url:entity:" + shortId);
+    }
+
+    @Override
+    @Transactional
+    public String resolveProtectedLink(String shortId, String rawPassword) {
+        UrlEntity entity = urlRepository.findByShortId(shortId)
+                .orElseThrow(() -> new NotFoundException("URL not found"));
+        if (entity.getExpiryTime() != null && entity.getExpiryTime().isBefore(LocalDateTime.now())) {
+            throw new GoneException("Short URL has expired");
+        }
+
+        String stored = entity.getPassword();
+        if (stored == null) {
+            return entity.getLongUrl();
+        }
+        if (rawPassword == null || !matchesStoredPassword(entity, stored, rawPassword)) {
+            throw new UnauthorizedException("Incorrect password");
+        }
+        return entity.getLongUrl();
+    }
+
+    @Override
+    @Transactional
+    public String revealLinkPassword(String shortId, Long userId) {
+        UrlEntity entity = urlRepository.findByShortIdAndUserId(shortId, userId)
+                .orElseThrow(() -> new NotFoundException("URL not found or not owned by you"));
+        String stored = entity.getPassword();
+        if (stored == null) {
+            return "";
+        }
+        String plaintext = decryptLinkPassword(entity, stored);
+        if (plaintext != null && !LinkPasswordCipher.isCurrentFormat(stored)) {
+            upgradeLegacyPassword(entity, plaintext);
+        }
+        log.info("Link password revealed to owner: shortId={} userId={}", shortId, userId);
+        return plaintext; // null: stored as a one-way hash by an older version, so not recoverable
+    }
+
+    /**
+     * Comparison is constant-time. A legacy value is upgraded to the current format only after a
+     * correct password, so wrong guesses never cause writes.
+     */
+    private boolean matchesStoredPassword(UrlEntity entity, String stored, String rawPassword) {
+        if (isBcryptHash(stored)) {
+            return passwordEncoder.matches(rawPassword, stored);
+        }
+        String plaintext = decryptLinkPassword(entity, stored);
+        boolean matches = plaintext != null && MessageDigest.isEqual(
+                plaintext.getBytes(StandardCharsets.UTF_8), rawPassword.getBytes(StandardCharsets.UTF_8));
+        if (matches && !LinkPasswordCipher.isCurrentFormat(stored)) {
+            upgradeLegacyPassword(entity, plaintext);
+        }
+        return matches;
+    }
+
+    /**
+     * Current values are decrypted with the link-bound GCM key; legacy AES/ECB values with the old
+     * key. Null when the value can't be read: tampered, bound to another link, or a BCrypt hash.
+     */
+    private String decryptLinkPassword(UrlEntity entity, String stored) {
+        if (LinkPasswordCipher.isCurrentFormat(stored)) {
+            try {
+                return linkPasswordCipher.decrypt(stored, entity.getShortId());
+            } catch (IllegalStateException e) {
+                log.error("Link password failed authentication for shortId={} (tampered or moved)", entity.getShortId());
+                return null;
+            }
+        }
+        return isBcryptHash(stored) ? null : encryptionUtils.decrypt(stored);
+    }
+
+    private void upgradeLegacyPassword(UrlEntity entity, String plaintext) {
+        entity.setPassword(linkPasswordCipher.encrypt(plaintext, entity.getShortId()));
+        urlRepository.save(entity);
+        log.info("Upgraded legacy link password to AES-GCM for shortId={}", entity.getShortId());
     }
 
     @Override
@@ -218,8 +334,10 @@ public class DbUrlService implements UrlService {
 
     @Override
     @Transactional(readOnly = true)
-    public UrlStatsResponse getStats(String shortId, long lookbackMs) {
-        UrlEntity entity = urlRepository.findByShortId(shortId)
+    public UrlStatsResponse getStats(String shortId, Long userId, long lookbackMs) {
+        // Ownership is part of the lookup: other users' (and anonymous) links are
+        // indistinguishable from links that don't exist.
+        UrlEntity entity = urlRepository.findByShortIdAndUserId(shortId, userId)
                 .orElseThrow(() -> new NotFoundException("Short URL not found"));
         long dbClicks = entity.getClickCount();
         Object redisClicksObj = redisTemplate.opsForHash().get("analytics:click_counts", shortId);
@@ -260,7 +378,6 @@ public class DbUrlService implements UrlService {
                 entity.isShowOnBio(),
                 entity.getTitle(),
                 entity.getPassword() != null,
-                null, // Use /reveal-password endpoint instead
                 timeSeries,
                 countries,
                 referrers,
@@ -307,7 +424,6 @@ public class DbUrlService implements UrlService {
                     entity.isShowOnBio(),
                     entity.getTitle(),
                     entity.getPassword() != null,
-                    null, // Use /reveal-password endpoint instead
                     new HashMap<>(), // No time-series
                     new HashMap<>(), // No geo-distribution
                     new HashMap<>(), // No referrers
@@ -339,7 +455,6 @@ public class DbUrlService implements UrlService {
                     entity.isShowOnBio(),
                     entity.getTitle(),
                     entity.getPassword() != null,
-                    null, // Use /reveal-password endpoint instead
                     new HashMap<>(),
                     new HashMap<>(),
                     new HashMap<>(),

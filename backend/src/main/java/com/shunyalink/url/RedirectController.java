@@ -13,40 +13,44 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.util.HtmlUtils;
 import java.net.URI;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import com.shunyalink.analytics.AnalyticsService;
+import com.shunyalink.security.ClientIpResolver;
 
 @RestController
 @Tag(name = "Redirect & Previews", description = "Endpoints for handling short URL redirects and social media rich previews (OG tags)")
 public class RedirectController {
 
+    private static final String DEFAULT_TITLE = "ShunyaLink | Smart URL Shortener & Digital Identity";
+    private static final String DEFAULT_DESCRIPTION =
+            "AI-secured short link by ShunyaLink — smart URL shortener with analytics and Bio-Link profiles.";
+    private static final String PROTECTED_TITLE = "Password-protected link | ShunyaLink";
+    private static final String PROTECTED_DESCRIPTION =
+            "This link is password-protected. Open it to enter the password.";
+
     private final UrlService urlService;
     private final UrlRepository urlRepository;
     private final AnalyticsService analyticsService;
     private final RedisTemplate<String, String> redisTemplate;
+    private final ClientIpResolver clientIpResolver;
 
     @Value("${app.frontend-url:http://localhost:3000}")
     private String frontendUrl;
 
     public RedirectController(UrlService urlService, UrlRepository urlRepository,
                               AnalyticsService analyticsService,
-                              RedisTemplate<String, String> redisTemplate) {
+                              RedisTemplate<String, String> redisTemplate,
+                              ClientIpResolver clientIpResolver) {
         this.urlService = urlService;
         this.urlRepository = urlRepository;
         this.analyticsService = analyticsService;
         this.redisTemplate = redisTemplate;
-    }
-
-    private String getClientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
+        this.clientIpResolver = clientIpResolver;
     }
 
     @Operation(summary = "Redirect or Social Preview", description = "Handles the core redirection logic. Detects social media bots (WhatsApp, Twitter, FB) and returns OG tags for rich previews. Otherwise, redirects to the target URL (or password challenge).")
@@ -90,24 +94,29 @@ public class RedirectController {
         }
 
         // Social Bot Detection for Rich Previews (WhatsApp, Twitter, FB, etc.)
-        String userAgent = request.getHeader("User-Agent");
-        if (isSocialBot(userAgent)) {
-            return ResponseEntity.ok()
-                    .header("Content-Type", "text/html; charset=UTF-8")
-                    .body(generateSocialHtml(title, longUrl, shortId, request));
-        }
+        boolean socialBot = isSocialBot(request.getHeader("User-Agent"));
 
-        // If password is set, don't redirect yet. Tell the frontend to ask for a password.
+        // Password check comes first: the User-Agent is client-controlled, so "being a bot"
+        // must never unlock the destination of a protected link.
         if (hasPassword) {
+            String challengeUrl = frontendUrl + "/p/" + shortId;
+            if (socialBot) {
+                return socialPreview(PROTECTED_TITLE, PROTECTED_DESCRIPTION, challengeUrl, shortId, request);
+            }
             // Redirect to the frontend password challenge page
             return ResponseEntity.status(HttpStatus.FOUND)
-                    .location(URI.create(frontendUrl + "/p/" + shortId))
+                    .location(URI.create(challengeUrl))
                     .build();
+        }
+
+        if (socialBot) {
+            String displayTitle = (title != null && !title.isBlank()) ? title : DEFAULT_TITLE;
+            return socialPreview(displayTitle, DEFAULT_DESCRIPTION, longUrl, shortId, request);
         }
 
         // Record Analytics with IP (Only for non-password links here)
         // Password links are recorded in UrlController.resolvePassword instead
-        analyticsService.recordClick(shortId, getClientIp(request), request.getHeader("User-Agent"), request.getHeader("Referer"));
+        analyticsService.recordClick(shortId, clientIpResolver.resolve(request), request.getHeader("User-Agent"), request.getHeader("Referer"));
 
         // No password -> Proceed with normal redirect (Fix #3: use longUrl directly, no redundant getLongUrl call)
         return ResponseEntity.status(HttpStatus.FOUND)
@@ -143,17 +152,30 @@ public class RedirectController {
                lowerUa.contains("telegrambot");
     }
 
-    private String generateSocialHtml(String title, String longUrl, String shortId, HttpServletRequest request) {
-        String displayTitle = (title != null && !title.isBlank()) ? title : "ShunyaLink | Smart URL Shortener & Digital Identity";
-        String description = "AI-secured short link by ShunyaLink — smart URL shortener with analytics and Bio-Link profiles.";
-        
+    private ResponseEntity<String> socialPreview(String title, String description, String targetUrl,
+                                                 String shortId, HttpServletRequest request) {
+        return ResponseEntity.ok()
+                .header("Content-Type", "text/html; charset=UTF-8")
+                .body(generateSocialHtml(title, description, targetUrl, shortId, request));
+    }
+
+    /**
+     * Every interpolated value is HTML-escaped: titles come from users or scraped pages,
+     * the target URL from users, and the host from the request's Host header.
+     */
+    private String generateSocialHtml(String rawTitle, String rawDescription, String rawTargetUrl,
+                                      String shortId, HttpServletRequest request) {
+        String displayTitle = HtmlUtils.htmlEscape(rawTitle);
+        String description = HtmlUtils.htmlEscape(rawDescription);
+        String targetUrl = HtmlUtils.htmlEscape(rawTargetUrl);
+
         // Dynamically detect the host (sl.madhavv.me vs shunyalink.madhavv.me)
         String scheme = request.getScheme();
         String serverName = request.getServerName();
-        String url = scheme + "://" + serverName + "/" + shortId;
-        
+        String url = HtmlUtils.htmlEscape(scheme + "://" + serverName + "/" + shortId);
+
         // Branded social image remains on the main frontend domain
-        String imageUrl = "https://shunyalink.madhavv.me/logo-social.png"; 
+        String imageUrl = "https://shunyalink.madhavv.me/logo-social.png";
 
         return "<!DOCTYPE html>\n" +
                 "<html>\n" +
@@ -169,10 +191,10 @@ public class RedirectController {
                 "    <meta name=\"twitter:title\" content=\"" + displayTitle + "\">\n" +
                 "    <meta name=\"twitter:description\" content=\"" + description + "\">\n" +
                 "    <meta name=\"twitter:image\" content=\"" + imageUrl + "\">\n" +
-                "    <meta http-equiv=\"refresh\" content=\"0;url=" + longUrl + "\">\n" +
+                "    <meta http-equiv=\"refresh\" content=\"0;url=" + targetUrl + "\">\n" +
                 "</head>\n" +
                 "<body>\n" +
-                "    <p>Redirecting to <a href=\"" + longUrl + "\">" + longUrl + "</a>...</p>\n" +
+                "    <p>Redirecting to <a href=\"" + targetUrl + "\">" + targetUrl + "</a>...</p>\n" +
                 "</body>\n" +
                 "</html>";
     }

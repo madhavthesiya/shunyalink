@@ -11,18 +11,17 @@ public class ShortenResponse {
     private LocalDateTime createdAt;
     private String title;
     private boolean passwordProtected;
-    private String password;
+    // Deliberately no password field: link passwords are never sent back to clients.
     private String category;
     private Set<String> tags;
 
-    public ShortenResponse(String shortId, String shortUrl, String longUrl, LocalDateTime createdAt, String title, boolean passwordProtected, String password, String category, Set<String> tags) {
+    public ShortenResponse(String shortId, String shortUrl, String longUrl, LocalDateTime createdAt, String title, boolean passwordProtected, String category, Set<String> tags) {
         this.shortId = shortId;
         this.shortUrl = shortUrl;
         this.longUrl = longUrl;
         this.createdAt = createdAt;
         this.title = title;
         this.passwordProtected = passwordProtected;
-        this.password = password;
         this.category = category;
         this.tags = tags;
     }
@@ -42,8 +41,6 @@ public class ShortenResponse {
     public LocalDateTime getCreatedAt() { return createdAt; }
 
     public boolean isPasswordProtected() { return passwordProtected; }
-
-    public String getPassword() { return password; }
 
     public String getCategory() { return category; }
     

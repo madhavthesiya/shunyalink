@@ -1,10 +1,12 @@
 package com.shunyalink.analytics;
 
+import com.shunyalink.util.InternalAddresses;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.InetAddress;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -80,19 +82,13 @@ public class AnalyticsService {
     }
 
     private String getCountryFromIp(String ip) {
-        // Loopback and private/CGNAT addresses can't be geolocated; skip the external lookup
-        if (ip == null || ip.equals("127.0.0.1") || ip.equalsIgnoreCase("::1")) {
+        // Loopback and private/CGNAT addresses can't be geolocated; skip the external lookup.
+        // The IP arrives already normalized by ClientIpResolver (no port, IPv6 intact).
+        InetAddress address = InternalAddresses.parseLiteral(ip);
+        if (address == null || InternalAddresses.isInternal(address)) {
             return "Local/Dev";
         }
-
-        // Clean IPv6 brackets or ports if present
-        String cleanIp = ip.replace("[", "").replace("]", "").split(":")[0];
-
-        // Handle private/internal ranges
-        if (cleanIp.startsWith("192.168.") || cleanIp.startsWith("10.") || cleanIp.startsWith("172.") || 
-            cleanIp.startsWith("100.64.") || cleanIp.startsWith("169.254.")) {
-            return "Local/Dev";
-        }
+        String cleanIp = address.getHostAddress();
 
         // 1. Check Redis Cache First
         String cacheKey = GEO_CACHE_PREFIX + cleanIp;
