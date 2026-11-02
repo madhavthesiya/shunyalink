@@ -29,6 +29,9 @@ class AnalyticsSchedulerTest {
     private UrlRepository urlRepository;
 
     @Mock
+    private GlobalStatsRepository globalStatsRepository;
+
+    @Mock
     private ValueOperations<String, String> valueOperations;
 
     @Mock
@@ -90,6 +93,24 @@ class AnalyticsSchedulerTest {
         // Both URLs should be flushed to DB
         verify(urlRepository).incrementClickCount("abc123", 10L);
         verify(urlRepository).incrementClickCount("xyz789", 5L);
+        // ...and the homepage "total clicks" counter gets the batch total exactly once
+        verify(globalStatsRepository).incrementClicks(15L);
+        // The counters are moved aside before reading, then the snapshot is deleted
+        verify(redisTemplate).rename(eq("analytics:click_counts"), startsWith("click_counts_processing:"));
+        verify(redisTemplate).delete(startsWith("click_counts_processing:"));
+    }
+
+    @Test
+    void sync_releasesOnlyItsOwnLock() {
+        when(valueOperations.setIfAbsent(anyString(), anyString(), anyLong(), any()))
+                .thenReturn(true);
+        when(redisTemplate.hasKey("analytics:click_counts")).thenReturn(false);
+        // The lock expired mid-run and another instance now owns it
+        when(valueOperations.get("analytics:sync:lock")).thenReturn("someone-elses-lock");
+
+        analyticsScheduler.syncClicksToDatabase();
+
+        verify(redisTemplate, never()).delete("analytics:sync:lock");
     }
 
     @Test
@@ -103,6 +124,7 @@ class AnalyticsSchedulerTest {
         analyticsScheduler.syncClicksToDatabase();
 
         verify(urlRepository, never()).incrementClickCount(anyString(), anyLong());
+        verify(globalStatsRepository, never()).incrementClicks(anyLong());
     }
 
     @Test
