@@ -55,6 +55,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/profile/settings").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/v1/profile/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/actuator/health").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/actuator/info").permitAll()
                         // Everything else needs auth
                         .anyRequest().authenticated()
                 )

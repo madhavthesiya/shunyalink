@@ -75,4 +75,16 @@ class ApplicationContextWiringTest {
                 // the mail indicator opened an SMTP connection on every poll
                 .andExpect(jsonPath("$.components.mail").doesNotExist());
     }
+
+    @Test
+    void publicInfoEndpoint_reportsOnlyTheDeployedCommit() throws Exception {
+        // The deploy pipeline polls this to prove the NEW build is serving, not just "something healthy".
+        // Without APP_COMMIT (local runs) it reports "unknown".
+        mockMvc.perform(get("/actuator/info"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andExpect(jsonPath("$.app.commit").value("unknown"))
+                // nothing else from the environment leaks through the env info contributor
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$.app.length()").value(1));
+    }
 }
