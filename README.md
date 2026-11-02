@@ -227,6 +227,8 @@ Every item below has a regression test that reproduces the attack.
 
 Known limitations: DNS rebinding between the SSRF check and the connection is not covered, and per-IP limits are weaker for IPv6 clients who control a whole /64.
 
+The reasoning behind these choices, including the alternatives that were rejected, is recorded as [Architecture Decision Records](docs/adr/README.md).
+
 ## Reliability & Observability
 
 *   **Health Monitoring**: Integrated **Spring Boot Actuator** to provide real-time status of the JVM, Hibernate connection pool, and Redis connectivity.
