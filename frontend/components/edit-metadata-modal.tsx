@@ -5,6 +5,7 @@ import { X, Save, Key, Type, Loader2, Eye, EyeOff, ShieldCheck, Tag, Plus } from
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { generateAccessCode } from "@/lib/access-code";
 
 interface EditMetadataModalProps {
   shortId: string;
@@ -32,6 +33,9 @@ export function EditMetadataModal({
   const [removePassword, setRemovePassword] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isRevealing, setIsRevealing] = useState(false);
+  // The current password as revealed by the owner; re-saving it unchanged is not an update
+  const [revealedPassword, setRevealedPassword] = useState<string | null>(null);
   const [tags, setTags] = useState<string[]>(initialTags);
   const [tagInput, setTagInput] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +44,7 @@ export function EditMetadataModal({
     if (isOpen) {
       setTitle(initialTitle || "");
       setPassword("");
+      setRevealedPassword(null);
       setRemovePassword(false);
       setTags(initialTags || []);
       setTagInput("");
@@ -61,6 +66,37 @@ export function EditMetadataModal({
     };
   }, [isOpen, onClose]);
 
+  const handleRevealPassword = async () => {
+    setIsRevealing(true);
+    setError(null);
+    const token = localStorage.getItem("authToken");
+    try {
+      const response = await fetch(`${API_URL}/api/v1/url/${shortId}/reveal-password`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.status === 429) {
+        setError("Too many password reveals. Please try again later.");
+        return;
+      }
+      if (!response.ok) {
+        setError("Failed to reveal password.");
+        return;
+      }
+      const data: { password: string | null; recoverable: boolean } = await response.json();
+      if (!data.recoverable) {
+        setError("This link's password was saved by an older version and can't be shown. Set a new one below.");
+        return;
+      }
+      setPassword(data.password ?? "");
+      setRevealedPassword(data.password ?? "");
+      setShowPassword(true);
+    } catch {
+      setError("Network error.");
+    } finally {
+      setIsRevealing(false);
+    }
+  };
+
   const handleSave = async () => {
     setIsUpdating(true);
     setError(null);
@@ -68,12 +104,12 @@ export function EditMetadataModal({
 
     // Logic for password:
     // - If removePassword is true -> send "" (remove)
-    // - If password has value -> send password (update)
-    // - Otherwise -> send null (no change)
+    // - If password has a new value -> send password (update)
+    // - Otherwise (empty, or just the revealed current one) -> send null (no change)
     let passwordToSend: string | null = null;
     if (removePassword) {
       passwordToSend = "";
-    } else if (password.trim() !== "") {
+    } else if (password.trim() !== "" && password !== revealedPassword) {
       passwordToSend = password.trim();
     }
 
@@ -110,7 +146,7 @@ export function EditMetadataModal({
         if (!failedResponse) {
           let isNowProtected = initialPasswordProtected;
           if (removePassword) isNowProtected = false;
-          else if (password.trim() !== "") isNowProtected = true;
+          else if (passwordToSend) isNowProtected = true;
 
           onUpdate(shortId, title.trim(), isNowProtected, tags);
           onClose();
@@ -276,15 +312,38 @@ export function EditMetadataModal({
                   <Input
                     id="edit-password"
                     type={showPassword ? "text" : "password"}
-                    placeholder={initialPasswordProtected ? "Enter a new password to replace the current one" : "Enter password"}
+                    placeholder={initialPasswordProtected
+                      ? (revealedPassword === null ? "Click 'Reveal' to see the current code" : "")
+                      : "Enter or generate an access code"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     minLength={4}
                     maxLength={20}
-                    className="h-12 bg-background/50 border-border/50 rounded-xl premium-input focus:border-primary/50 focus:ring-2 focus:ring-primary/10 transition-all pr-12"
+                    className="h-12 bg-background/50 border-border/50 rounded-xl premium-input focus:border-primary/50 focus:ring-2 focus:ring-primary/10 transition-all pr-36"
                     disabled={isUpdating}
                   />
                   <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                    {initialPasswordProtected && revealedPassword === null && (
+                      <button
+                        type="button"
+                        onClick={handleRevealPassword}
+                        disabled={isRevealing || isUpdating}
+                        className="px-2 py-1 rounded-lg text-[10px] font-bold text-primary hover:bg-primary/10 transition-colors uppercase tracking-wider"
+                      >
+                        {isRevealing ? <Loader2 className="w-3 h-3 animate-spin" /> : "Reveal"}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPassword(generateAccessCode());
+                        setShowPassword(true);
+                      }}
+                      disabled={isUpdating}
+                      className="px-2 py-1 rounded-lg text-[10px] font-bold text-primary hover:bg-primary/10 transition-colors uppercase tracking-wider"
+                    >
+                      Generate
+                    </button>
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
@@ -303,8 +362,8 @@ export function EditMetadataModal({
               
               <p className="text-[10px] text-muted-foreground/60 italic leading-snug">
                 {initialPasswordProtected 
-                  ? (removePassword ? "Changes will be applied." : "Link is protected. Passwords are stored as one-way hashes, so they can't be shown — enter a new one to change it, or remove protection above.")
-                  : "Link is public. Provide a password to protect it."}
+                  ? (removePassword ? "Changes will be applied." : "Link is protected. Reveal the current code to share it again, or enter a new one to replace it. Changing it means viewers need the new code.")
+                  : "Link is public. Add an access code to protect it — don't reuse a personal password."}
               </p>
             </div>
           </div>

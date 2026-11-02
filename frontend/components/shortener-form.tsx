@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Sparkles } from "lucide-react";
+import { generateAccessCode } from "@/lib/access-code";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 interface ShortenResponse {
@@ -267,22 +268,43 @@ export function ShortenerForm({ onSuccess, onError }: ShortenerFormProps) {
         </div>
         {showPasswordInput && (
           <div className="animate-in fade-in slide-in-from-top-2 duration-300 relative">
-            <Input
-              type={showPassword ? "text" : "password"}
-              placeholder="Enter link password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="h-12 bg-background/50 border-border/50 rounded-xl premium-input focus:border-primary/50 focus:ring-2 focus:ring-primary/10 transition-all pr-12"
-              disabled={isLoading}
-              required={showPasswordInput}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary transition-all transition-colors"
-            >
-              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
+            <div className="relative">
+              <Input
+                type={showPassword ? "text" : "password"}
+                placeholder="Enter or generate an access code"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="h-12 bg-background/50 border-border/50 rounded-xl premium-input focus:border-primary/50 focus:ring-2 focus:ring-primary/10 transition-all pr-28"
+                disabled={isLoading}
+                required={showPasswordInput}
+                minLength={4}
+                maxLength={20}
+              />
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPassword(generateAccessCode());
+                    setShowPassword(true);
+                  }}
+                  disabled={isLoading}
+                  className="px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider text-primary hover:bg-primary/10 transition-colors"
+                >
+                  Generate
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  className="p-1.5 rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+            <p className="mt-1.5 text-[11px] text-muted-foreground">
+              This is an access code you&apos;ll share with viewers. Don&apos;t reuse a personal password.
+            </p>
           </div>
         )}
       </div>

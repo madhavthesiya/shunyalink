@@ -77,4 +77,8 @@ public interface UrlRepository extends JpaRepository<UrlEntity, Long> {
     @Query("SELECT COALESCE(SUM(u.clickCount), 0) FROM UrlEntity u")
     long sumTotalClicks();
 
+    /** Links whose password is not yet in the current format (pattern is e.g. "v1:%"). */
+    @Query("SELECT u FROM UrlEntity u WHERE u.password IS NOT NULL AND u.password NOT LIKE :currentFormatPattern")
+    List<UrlEntity> findWithLegacyPasswordFormat(@Param("currentFormatPattern") String currentFormatPattern);
+
 }

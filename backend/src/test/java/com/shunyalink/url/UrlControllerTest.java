@@ -175,9 +175,40 @@ class UrlControllerTest {
     }
 
     @Test
-    void removedRevealEndpoint_returns404NotA500() throws Exception {
-        mockMvc.perform(get("/api/v1/url/abc123/reveal-password").with(asUser(OWNER_ID)))
+    void unknownPath_returns404NotA500() throws Exception {
+        mockMvc.perform(get("/api/v1/url/abc123/no-such-endpoint").with(asUser(OWNER_ID)))
                 .andExpect(status().isNotFound());
+    }
+
+    // ─── GET /api/v1/url/{shortId}/reveal-password ────────────────────
+
+    @Test
+    void reveal_owner_getsThePasswordAndIsRateLimited() throws Exception {
+        when(urlService.revealLinkPassword("mine", OWNER_ID)).thenReturn("access-code");
+
+        mockMvc.perform(get("/api/v1/url/mine/reveal-password").with(asUser(OWNER_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.password").value("access-code"))
+                .andExpect(jsonPath("$.recoverable").value(true));
+
+        verify(rateLimiterService).checkLimit("rate:reveal:" + OWNER_ID, 20, 3600);
+    }
+
+    @Test
+    void reveal_anonymous_returns401() throws Exception {
+        mockMvc.perform(get("/api/v1/url/mine/reveal-password"))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(urlService);
+    }
+
+    @Test
+    void reveal_legacyOneWayHash_isReportedAsNotRecoverable() throws Exception {
+        when(urlService.revealLinkPassword("old", OWNER_ID)).thenReturn(null);
+
+        mockMvc.perform(get("/api/v1/url/old/reveal-password").with(asUser(OWNER_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.recoverable").value(false));
     }
 
     // ─── POST /api/v1/url/resolve/{shortId} ──────────────────────────

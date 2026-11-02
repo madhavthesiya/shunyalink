@@ -11,6 +11,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import com.shunyalink.exception.UnauthorizedException;
+import com.shunyalink.security.LinkPasswordCipher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.nio.charset.StandardCharsets;
@@ -40,6 +41,7 @@ public class DbUrlService implements UrlService {
     private final AnalyticsService analyticsService;
     private final com.shunyalink.cp.LlmIntegrationService llmIntegrationService;
     private final PasswordEncoder passwordEncoder;
+    private final LinkPasswordCipher linkPasswordCipher;
 
     public DbUrlService(UrlRepository urlRepository,
                         IdEncoder idEncoder,
@@ -49,7 +51,8 @@ public class DbUrlService implements UrlService {
                         com.shunyalink.util.EncryptionUtils encryptionUtils,
                         AnalyticsService analyticsService,
                         com.shunyalink.cp.LlmIntegrationService llmIntegrationService,
-                        PasswordEncoder passwordEncoder) {
+                        PasswordEncoder passwordEncoder,
+                        LinkPasswordCipher linkPasswordCipher) {
         this.urlRepository = urlRepository;
         this.idEncoder = idEncoder;
         this.redisTemplate = redisTemplate;
@@ -59,16 +62,21 @@ public class DbUrlService implements UrlService {
         this.analyticsService = analyticsService;
         this.llmIntegrationService = llmIntegrationService;
         this.passwordEncoder = passwordEncoder;
+        this.linkPasswordCipher = linkPasswordCipher;
     }
 
-    /** Link passwords are stored as one-way BCrypt hashes; they can be verified, never recovered. */
-    private String hashLinkPassword(String rawPassword) {
+    /**
+     * Link passwords are shared access codes the owner may need to look up again, so they are
+     * encrypted (AES-256-GCM, bound to this link) rather than hashed. See LinkPasswordCipher.
+     */
+    private String encryptLinkPassword(String rawPassword, String shortId) {
         if (rawPassword.length() < 4 || rawPassword.length() > 20) {
             throw new BadRequestException("Password must be 4-20 characters");
         }
-        return passwordEncoder.encode(rawPassword);
+        return linkPasswordCipher.encrypt(rawPassword, shortId);
     }
 
+    /** Some of the oldest links were stored as BCrypt hashes: verifiable, never recoverable. */
     private static boolean isBcryptHash(String stored) {
         return stored.startsWith("$2a$") || stored.startsWith("$2b$") || stored.startsWith("$2y$");
     }
@@ -132,7 +140,7 @@ public class DbUrlService implements UrlService {
                 entity.setExpiryTime(LocalDateTime.now().plusDays(expiryDays));
             }
             if (password != null && !password.isBlank()) {
-                entity.setPassword(hashLinkPassword(password));
+                entity.setPassword(encryptLinkPassword(password, normalized));
             }
             UrlEntity saved = urlRepository.save(entity);
             redisTemplate.opsForValue().set(
@@ -176,7 +184,7 @@ public class DbUrlService implements UrlService {
             entity.setExpiryTime(LocalDateTime.now().plusDays(expiryDays));
         }
         if (password != null && !password.isBlank()) {
-            entity.setPassword(hashLinkPassword(password));
+            entity.setPassword(encryptLinkPassword(password, shortId));
         }
         UrlEntity saved = urlRepository.save(entity);
         globalStatsRepository.incrementLinks();
@@ -227,7 +235,7 @@ public class DbUrlService implements UrlService {
             if (password.trim().isEmpty()) {
                 entity.setPassword(null);
             } else {
-                entity.setPassword(hashLinkPassword(password));
+                entity.setPassword(encryptLinkPassword(password, shortId));
             }
         }
 
@@ -255,24 +263,60 @@ public class DbUrlService implements UrlService {
         return entity.getLongUrl();
     }
 
+    @Override
+    @Transactional
+    public String revealLinkPassword(String shortId, Long userId) {
+        UrlEntity entity = urlRepository.findByShortIdAndUserId(shortId, userId)
+                .orElseThrow(() -> new NotFoundException("URL not found or not owned by you"));
+        String stored = entity.getPassword();
+        if (stored == null) {
+            return "";
+        }
+        String plaintext = decryptLinkPassword(entity, stored);
+        if (plaintext != null && !LinkPasswordCipher.isCurrentFormat(stored)) {
+            upgradeLegacyPassword(entity, plaintext);
+        }
+        log.info("Link password revealed to owner: shortId={} userId={}", shortId, userId);
+        return plaintext; // null: stored as a one-way hash by an older version, so not recoverable
+    }
+
     /**
-     * BCrypt hashes are verified directly. Values written before BCrypt are legacy AES ciphertext:
-     * they are checked once more and, on a correct password, transparently re-stored as BCrypt,
-     * so legacy values disappear as links get used, without a bulk migration.
+     * Comparison is constant-time. A legacy value is upgraded to the current format only after a
+     * correct password, so wrong guesses never cause writes.
      */
     private boolean matchesStoredPassword(UrlEntity entity, String stored, String rawPassword) {
         if (isBcryptHash(stored)) {
             return passwordEncoder.matches(rawPassword, stored);
         }
-        String legacyPlaintext = encryptionUtils.decrypt(stored);
-        boolean matches = legacyPlaintext != null && MessageDigest.isEqual(
-                legacyPlaintext.getBytes(StandardCharsets.UTF_8), rawPassword.getBytes(StandardCharsets.UTF_8));
-        if (matches) {
-            entity.setPassword(passwordEncoder.encode(rawPassword));
-            urlRepository.save(entity);
-            log.info("Upgraded legacy link password to BCrypt for shortId={}", entity.getShortId());
+        String plaintext = decryptLinkPassword(entity, stored);
+        boolean matches = plaintext != null && MessageDigest.isEqual(
+                plaintext.getBytes(StandardCharsets.UTF_8), rawPassword.getBytes(StandardCharsets.UTF_8));
+        if (matches && !LinkPasswordCipher.isCurrentFormat(stored)) {
+            upgradeLegacyPassword(entity, plaintext);
         }
         return matches;
+    }
+
+    /**
+     * Current values are decrypted with the link-bound GCM key; legacy AES/ECB values with the old
+     * key. Null when the value can't be read: tampered, bound to another link, or a BCrypt hash.
+     */
+    private String decryptLinkPassword(UrlEntity entity, String stored) {
+        if (LinkPasswordCipher.isCurrentFormat(stored)) {
+            try {
+                return linkPasswordCipher.decrypt(stored, entity.getShortId());
+            } catch (IllegalStateException e) {
+                log.error("Link password failed authentication for shortId={} (tampered or moved)", entity.getShortId());
+                return null;
+            }
+        }
+        return isBcryptHash(stored) ? null : encryptionUtils.decrypt(stored);
+    }
+
+    private void upgradeLegacyPassword(UrlEntity entity, String plaintext) {
+        entity.setPassword(linkPasswordCipher.encrypt(plaintext, entity.getShortId()));
+        urlRepository.save(entity);
+        log.info("Upgraded legacy link password to AES-GCM for shortId={}", entity.getShortId());
     }
 
     @Override

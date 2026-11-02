@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
@@ -60,6 +61,11 @@ class DbUrlServiceTest {
 
     @Mock
     private com.shunyalink.cp.LlmIntegrationService llmIntegrationService;
+
+    /** Real cipher (spied so Mockito injects it): tests exercise actual GCM round trips. */
+    @Spy
+    private com.shunyalink.security.LinkPasswordCipher linkPasswordCipher =
+            new com.shunyalink.security.LinkPasswordCipher("MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=");
 
     @InjectMocks
     private DbUrlService dbUrlService;
@@ -174,32 +180,36 @@ class DbUrlServiceTest {
                 dbUrlService.shortenUrl("https://example.com/sale", "promo", 7, 1L, null, null, false, null));
     }
 
-    // ─── Link passwords: BCrypt storage + legacy AES migration ───────
+    // ─── Link passwords: AES-256-GCM, owner reveal, legacy upgrade ───
+
+    private static final String LEGACY_ECB = "bGVnYWN5Q2lwaGVydGV4dA==";
 
     private UrlEntity protectedLink(String shortId, String storedPassword) {
         UrlEntity entity = new UrlEntity(shortId, "https://example.com/private", false);
         entity.setPassword(storedPassword);
+        entity.setUserId(1L);
         when(urlRepository.findByShortId(shortId)).thenReturn(Optional.of(entity));
+        when(urlRepository.findByShortIdAndUserId(shortId, 1L)).thenReturn(Optional.of(entity));
         return entity;
     }
 
     @Test
-    void shortenUrl_withPassword_storesBcryptHashNotReversibleCiphertext() {
+    void shortenUrl_withPassword_storesAuthenticatedCiphertextBoundToTheLink() {
         when(urlRepository.getNextId()).thenReturn(5L);
         when(idEncoder.encode(5L)).thenReturn("f");
         when(urlRepository.save(any())).thenAnswer(i -> i.getArgument(0));
-        when(passwordEncoder.encode("s3cret")).thenReturn("$2a$10$hashed");
 
         UrlEntity result = dbUrlService.shortenUrl("https://example.com", null, null, 1L, null, "s3cret", false, null);
 
-        assertEquals("$2a$10$hashed", result.getPassword());
+        assertTrue(result.getPassword().startsWith("v1:"));
+        assertNotEquals("s3cret", result.getPassword());
+        assertEquals("s3cret", linkPasswordCipher.decrypt(result.getPassword(), "f"));
         verifyNoInteractions(encryptionUtils);
     }
 
     @Test
-    void resolve_correctBcryptPassword_returnsDestination() {
-        protectedLink("locked", "$2a$10$hashed");
-        when(passwordEncoder.matches("s3cret", "$2a$10$hashed")).thenReturn(true);
+    void resolve_correctPassword_returnsDestination() {
+        protectedLink("locked", linkPasswordCipher.encrypt("s3cret", "locked"));
 
         assertEquals("https://example.com/private", dbUrlService.resolveProtectedLink("locked", "s3cret"));
         verify(urlRepository, never()).save(any());
@@ -207,40 +217,55 @@ class DbUrlServiceTest {
 
     @Test
     void resolve_wrongPassword_throwsUnauthorized() {
-        protectedLink("locked", "$2a$10$hashed");
-        when(passwordEncoder.matches("guess", "$2a$10$hashed")).thenReturn(false);
+        protectedLink("locked", linkPasswordCipher.encrypt("s3cret", "locked"));
 
         assertThrows(com.shunyalink.exception.UnauthorizedException.class,
                 () -> dbUrlService.resolveProtectedLink("locked", "guess"));
     }
 
     @Test
-    void resolve_correctLegacyAesPassword_succeedsAndUpgradesStorageToBcrypt() {
-        UrlEntity entity = protectedLink("legacy", "bGVnYWN5Q2lwaGVydGV4dA==");
-        when(encryptionUtils.decrypt("bGVnYWN5Q2lwaGVydGV4dA==")).thenReturn("s3cret");
-        when(passwordEncoder.encode("s3cret")).thenReturn("$2a$10$upgraded");
+    void resolve_ciphertextCopiedFromAnotherLink_isRejectedNotA500() {
+        // Someone with database write access moves a known ciphertext onto a different link
+        protectedLink("victim", linkPasswordCipher.encrypt("known", "attacker"));
+
+        assertThrows(com.shunyalink.exception.UnauthorizedException.class,
+                () -> dbUrlService.resolveProtectedLink("victim", "known"));
+    }
+
+    @Test
+    void resolve_legacyBcryptValue_isStillVerified() {
+        protectedLink("old", "$2a$10$hashed");
+        when(passwordEncoder.matches("s3cret", "$2a$10$hashed")).thenReturn(true);
+
+        assertEquals("https://example.com/private", dbUrlService.resolveProtectedLink("old", "s3cret"));
+    }
+
+    @Test
+    void resolve_correctLegacyEcbPassword_succeedsAndUpgradesToGcm() {
+        UrlEntity entity = protectedLink("legacy", LEGACY_ECB);
+        when(encryptionUtils.decrypt(LEGACY_ECB)).thenReturn("s3cret");
 
         assertEquals("https://example.com/private", dbUrlService.resolveProtectedLink("legacy", "s3cret"));
-        assertEquals("$2a$10$upgraded", entity.getPassword());
+        assertTrue(entity.getPassword().startsWith("v1:"));
+        assertEquals("s3cret", linkPasswordCipher.decrypt(entity.getPassword(), "legacy"));
         verify(urlRepository).save(entity);
     }
 
     @Test
-    void resolve_wrongLegacyAesPassword_failsAndKeepsStoredValue() {
-        UrlEntity entity = protectedLink("legacy", "bGVnYWN5Q2lwaGVydGV4dA==");
-        when(encryptionUtils.decrypt("bGVnYWN5Q2lwaGVydGV4dA==")).thenReturn("s3cret");
+    void resolve_wrongLegacyEcbPassword_failsAndKeepsStoredValue() {
+        UrlEntity entity = protectedLink("legacy", LEGACY_ECB);
+        when(encryptionUtils.decrypt(LEGACY_ECB)).thenReturn("s3cret");
 
         assertThrows(com.shunyalink.exception.UnauthorizedException.class,
                 () -> dbUrlService.resolveProtectedLink("legacy", "wrong"));
-        assertEquals("bGVnYWN5Q2lwaGVydGV4dA==", entity.getPassword());
+        assertEquals(LEGACY_ECB, entity.getPassword());
         verify(urlRepository, never()).save(any());
     }
 
     @Test
     void resolve_expiredLink_throwsGoneEvenWithTheCorrectPassword() {
-        UrlEntity entity = protectedLink("old", "$2a$10$hashed");
+        UrlEntity entity = protectedLink("old", linkPasswordCipher.encrypt("s3cret", "old"));
         entity.setExpiryTime(LocalDateTime.now().minusMinutes(1));
-        when(passwordEncoder.matches("s3cret", "$2a$10$hashed")).thenReturn(true);
 
         assertThrows(GoneException.class, () -> dbUrlService.resolveProtectedLink("old", "s3cret"));
     }
@@ -253,14 +278,51 @@ class DbUrlServiceTest {
     }
 
     @Test
-    void updateMetadata_newPassword_isHashed() {
+    void reveal_owner_getsThePasswordBack() {
+        protectedLink("mine", linkPasswordCipher.encrypt("access-code", "mine"));
+
+        assertEquals("access-code", dbUrlService.revealLinkPassword("mine", 1L));
+    }
+
+    @Test
+    void reveal_notTheOwner_isNotFound() {
+        protectedLink("mine", linkPasswordCipher.encrypt("access-code", "mine"));
+        when(urlRepository.findByShortIdAndUserId("mine", 99L)).thenReturn(Optional.empty());
+
+        assertThrows(NotFoundException.class, () -> dbUrlService.revealLinkPassword("mine", 99L));
+    }
+
+    @Test
+    void reveal_unprotectedLink_returnsEmpty() {
+        protectedLink("open", null);
+
+        assertEquals("", dbUrlService.revealLinkPassword("open", 1L));
+    }
+
+    @Test
+    void reveal_legacyEcbValue_returnsItAndUpgradesToGcm() {
+        UrlEntity entity = protectedLink("legacy", LEGACY_ECB);
+        when(encryptionUtils.decrypt(LEGACY_ECB)).thenReturn("old-code");
+
+        assertEquals("old-code", dbUrlService.revealLinkPassword("legacy", 1L));
+        assertTrue(entity.getPassword().startsWith("v1:"));
+    }
+
+    @Test
+    void reveal_legacyBcryptValue_isNotRecoverable() {
+        protectedLink("old", "$2a$10$hashed");
+
+        assertNull(dbUrlService.revealLinkPassword("old", 1L));
+    }
+
+    @Test
+    void updateMetadata_newPassword_isEncryptedForThatLink() {
         UrlEntity entity = new UrlEntity("mine", "https://example.com", false);
         when(urlRepository.findByShortIdAndUserId("mine", 1L)).thenReturn(Optional.of(entity));
-        when(passwordEncoder.encode("newpass")).thenReturn("$2a$10$new");
 
         dbUrlService.updateUrlMetadata("mine", 1L, null, "newpass");
 
-        assertEquals("$2a$10$new", entity.getPassword());
+        assertEquals("newpass", linkPasswordCipher.decrypt(entity.getPassword(), "mine"));
     }
 
     @Test

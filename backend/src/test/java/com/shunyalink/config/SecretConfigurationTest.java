@@ -1,6 +1,7 @@
 package com.shunyalink.config;
 
 import com.shunyalink.security.JwtService;
+import com.shunyalink.security.LinkPasswordCipher;
 import com.shunyalink.util.EncryptionUtils;
 import io.jsonwebtoken.security.WeakKeyException;
 import org.junit.jupiter.api.Test;
@@ -42,6 +43,29 @@ class SecretConfigurationTest {
         runner.withUserConfiguration(EncryptionUtils.class)
                 .withPropertyValues("app.encryption.secret=test-only-encryption-key-32chars")
                 .run(context -> assertThat(context).hasNotFailed().hasSingleBean(EncryptionUtils.class));
+    }
+
+    @Test
+    void linkPasswordKey_missing_failsStartup() {
+        runner.withUserConfiguration(LinkPasswordCipher.class)
+                .run(context -> assertThat(context).getFailure().rootCause()
+                        .hasMessageContaining("app.link-password.key"));
+    }
+
+    @Test
+    void linkPasswordKey_wrongLength_failsStartup() {
+        runner.withUserConfiguration(LinkPasswordCipher.class)
+                .withPropertyValues("app.link-password.key=dG9vLXNob3J0")
+                .run(context -> assertThat(context).getFailure().rootCause()
+                        .isInstanceOf(IllegalStateException.class)
+                        .hasMessageContaining("32 bytes"));
+    }
+
+    @Test
+    void linkPasswordKey_valid_starts() {
+        runner.withUserConfiguration(LinkPasswordCipher.class)
+                .withPropertyValues("app.link-password.key=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
+                .run(context -> assertThat(context).hasNotFailed().hasSingleBean(LinkPasswordCipher.class));
     }
 
     @Test

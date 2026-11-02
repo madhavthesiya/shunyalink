@@ -62,6 +62,7 @@ services:
       # Required secrets: compose refuses to start if they are unset or empty
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
       ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:?ENCRYPTION_SECRET must be set in .env}
+      LINK_PASSWORD_KEY: ${LINK_PASSWORD_KEY:?LINK_PASSWORD_KEY must be set in .env}
       MAIL_USERNAME: ${MAIL_USERNAME:-noreply.shunyalink@gmail.com}
       MAIL_PASSWORD: ${MAIL_PASSWORD}
       GEMINI_API_KEY: ${GEMINI_API_KEY}

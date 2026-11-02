@@ -25,6 +25,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -250,6 +251,20 @@ public class UrlController {
         String longUrl = urlService.resolveProtectedLink(shortId, body.password());
         analyticsService.recordClick(shortId, clientIpResolver.resolve(request), request.getHeader("User-Agent"), request.getHeader("Referer"));
         return Map.of("longUrl", longUrl);
+    }
+
+    @Operation(summary = "Reveal link password", description = "Owner-only: returns the link's password so it can be shared again. Rate-limited per user.", security = @SecurityRequirement(name = "Bearer Authentication"))
+    @GetMapping("/{shortId}/reveal-password")
+    public Map<String, Object> revealPassword(@PathVariable String shortId) {
+        Long userId = requireUserId();
+        // Bounds how many passwords a stolen session could extract
+        rateLimiterService.checkLimit("rate:reveal:" + userId, 20, 3600);
+
+        String password = urlService.revealLinkPassword(shortId, userId);
+        Map<String, Object> body = new HashMap<>();
+        body.put("password", password);
+        body.put("recoverable", password != null);
+        return body;
     }
 
     @Operation(summary = "Export all user links to CSV", description = "Downloads all user links as a CSV file.", security = @SecurityRequirement(name = "Bearer Authentication"))
