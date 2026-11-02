@@ -1,0 +1,161 @@
+# Runs on every pull request and every push to main.
+# - Pull requests: every check below must pass before merging (enforced by branch protection on main).
+# - main: the same checks, then the backend is deployed, but only once its tests have passed and only
+#   if something the backend is built from changed (a deploy restarts the single backend instance).
+#
+# Third-party actions are pinned to full commit SHAs (tags can be moved; see docs/adr/0007).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  # A new push to a PR cancels that PR's previous run; runs on main are never cancelled midway.
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  backend:
+    name: Backend · tests & coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      # Unit tests, Testcontainers integration tests (real PostgreSQL + Redis), JaCoCo coverage gate
+      - name: Build and test
+        working-directory: backend
+        run: ./mvnw -B -ntp verify
+
+      - name: Coverage summary
+        if: ${{ !cancelled() && hashFiles('backend/target/site/jacoco/jacoco.csv') != '' }}
+        working-directory: backend
+        run: |
+          {
+            echo "### Backend line coverage"
+            echo
+            echo "| Package | Lines | Branches |"
+            echo "|---|---:|---:|"
+            awk -F, 'NR > 1 {
+                       p = $2; sub(/^com\.shunyalink\.?/, "", p); if (p == "") p = "(root)";
+                       lm[p] += $8; lc[p] += $9; bm[p] += $6; bc[p] += $7;
+                       tl += $8 + $9; tc += $9; tb += $6 + $7; tbc += $7 }
+                     END {
+                       for (p in lm) {
+                         b = bm[p] + bc[p];
+                         printf "| %s | %.1f%% | %s |\n", p, 100 * lc[p] / (lm[p] + lc[p]), (b ? sprintf("%.1f%%", 100 * bc[p] / b) : "n/a")
+                       }
+                       printf "| **total** | **%.1f%%** | **%.1f%%** |\n", 100 * tc / tl, 100 * tbc / tb
+                     }' target/site/jacoco/jacoco.csv | sort
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test and coverage reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: backend-reports
+          path: |
+            backend/target/surefire-reports/
+            backend/target/site/jacoco/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  frontend:
+    name: Frontend · types, lint & build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+
+  workflows:
+    name: Workflows · actionlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Type-checks workflow expressions and runs shellcheck on every `run:` script
+      - name: actionlint
+        run: >-
+          docker run --rm -v "$PWD:/repo" -w /repo
+          rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+          -color
+
+  dependency-review:
+    name: Dependencies · review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Blocks a PR that adds or upgrades to a runtime dependency with a known high/critical advisory
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+
+  changes:
+    name: Detect backend changes
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      backend: ${{ steps.diff.outputs.backend }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: diff
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          # Unknown previous commit (first push, force push): deploy to be safe
+          if ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            echo "backend=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Captured first: piping git into `grep -q` can end in SIGPIPE, which pipefail turns into "no match"
+          changed=$(git diff --name-only "$BEFORE" "$GITHUB_SHA")
+          if grep -qE '^(backend/|\.github/workflows/(ci|deploy-backend-azure)\.yml$|\.github/scripts/)' <<< "$changed"; then
+            echo "backend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "backend=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy-backend:
+    name: Deploy backend
+    needs: [backend, changes]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.backend == 'true'
+    uses: ./.github/workflows/deploy-backend-azure.yml
+    secrets: inherit
