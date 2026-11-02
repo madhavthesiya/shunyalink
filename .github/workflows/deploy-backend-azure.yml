@@ -1,71 +1,180 @@
-name: Deploy Backend to Azure App Service
+# Builds, scans and deploys the backend image to Azure App Service, proves the new build is serving
+# (smoke test), and rolls back to the previously running image if it is not. See docs/adr/0006.
+#
+# - Called by CI (ci.yml) on main, only after the backend tests pass.
+# - Run by hand (Actions → Deploy backend → Run workflow) with `image_tag` = an earlier commit SHA to
+#   redeploy that already-built image, e.g. a manual rollback. Nothing is rebuilt.
+name: Deploy backend
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "backend/**"
-      - ".github/workflows/**"
-  workflow_dispatch: # allows manual trigger from GitHub UI
+  workflow_call:
+    inputs:
+      image_tag:
+        description: Existing image tag (full commit SHA) to redeploy instead of building
+        type: string
+        required: false
+        default: ""
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Existing image tag (full commit SHA) to redeploy. Empty = build the selected branch.
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  # One deployment at a time, never cancelled halfway
+  group: deploy-backend-production
+  cancel-in-progress: false
 
 env:
-  AZURE_WEBAPP_NAME: shunyalink-backend # ← Must match exact App Service name in Azure Portal
-  DOCKER_IMAGE_NAME: shunyalink-backend
+  AZURE_WEBAPP_NAME: shunyalink-backend
+  PUBLIC_URL: https://sl.madhavv.me
+  # A real short link that must keep redirecting. Override with the repository variable SMOKE_SHORT_ID.
+  SMOKE_SHORT_ID: ${{ vars.SMOKE_SHORT_ID || 'ce' }}
+  # Official image pinned by digest, not the trivy-action (its tags were hijacked in March 2026)
+  TRIVY_IMAGE: aquasec/trivy:0.76.0@sha256:2416d1f74045b57274df1a340eee6b510cacd73c66a6ccb8da092b117eb7d222
 
 jobs:
-  build-and-deploy:
+  deploy:
+    name: Build, scan, deploy & verify
     runs-on: ubuntu-latest
-
+    timeout-minutes: 45
+    environment:
+      name: backend-production
+      url: https://sl.madhavv.me/actuator/info
     steps:
-      # ── 1. Checkout code ─────────────────────────────────────────
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # ── 2. Set up Java 21 ───────────────────────────────────────
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          java-version: "21"
-          distribution: "temurin"
-          cache: "maven"
+          persist-credentials: false
 
-      # ── 3. Build JAR with Maven ─────────────────────────────────
-      - name: Build with Maven
-        working-directory: ./backend
+      - name: Choose the image to deploy
+        id: target
+        env:
+          REQUESTED_TAG: ${{ inputs.image_tag }}
+          REGISTRY: ${{ secrets.ACR_LOGIN_SERVER }}
         run: |
-          chmod +x mvnw
-          ./mvnw package -DskipTests -B
+          if [ -n "$REQUESTED_TAG" ]; then
+            [[ "$REQUESTED_TAG" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::image_tag must be a full 40-character commit SHA"; exit 1; }
+            tag=$REQUESTED_TAG build=false
+          else
+            tag=$GITHUB_SHA build=true
+          fi
+          {
+            echo "tag=$tag"
+            echo "build=$build"
+            echo "image=$REGISTRY/shunyalink-backend:$tag"
+          } >> "$GITHUB_OUTPUT"
 
-      # ── 4. Login to Azure ───────────────────────────────────────
-      - name: Login to Azure
-        uses: azure/login@v2
+      - name: Log in to Azure
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # ── 5. Build & push Docker image to Azure Container Registry
-      - name: Build and push Docker image
-        working-directory: ./backend
+      # Best effort: without it the deploy still runs, it just cannot roll back automatically
+      - name: Record the image serving traffic now (rollback target)
+        id: previous
+        continue-on-error: true
         run: |
-          docker build -f Dockerfile.backend -t ${{ env.AZURE_WEBAPP_NAME }}:${{ github.sha }} .
-          docker tag ${{ env.AZURE_WEBAPP_NAME }}:${{ github.sha }} ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:latest
-          docker tag ${{ env.AZURE_WEBAPP_NAME }}:${{ github.sha }} ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}
+          group=$(az resource list --name "$AZURE_WEBAPP_NAME" --resource-type Microsoft.Web/sites --query "[0].resourceGroup" -o tsv)
+          current=$(az webapp config show --resource-group "$group" --name "$AZURE_WEBAPP_NAME" --query linuxFxVersion -o tsv)
+          image=${current#DOCKER|}
+          tag=${image##*:}
+          echo "Currently serving: ${image:-unknown}"
+          if [[ "$tag" =~ ^[0-9a-f]{40}$ ]]; then
+            { echo "image=$image"; echo "tag=$tag"; } >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Could not read a commit-tagged image from App Service; automatic rollback is unavailable for this run"
+          fi
 
-      - name: Login to Azure Container Registry
+      - name: Log in to the container registry
+        env:
+          REGISTRY: ${{ secrets.ACR_LOGIN_SERVER }}
+          REGISTRY_USERNAME: ${{ secrets.ACR_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+        run: printf '%s' "$REGISTRY_PASSWORD" | docker login "$REGISTRY" --username "$REGISTRY_USERNAME" --password-stdin
+
+      - name: Build the image
+        if: steps.target.outputs.build == 'true'
+        working-directory: backend
+        env:
+          IMAGE: ${{ steps.target.outputs.image }}
+        run: docker build -f Dockerfile.backend --build-arg APP_COMMIT="$GITHUB_SHA" -t "$IMAGE" .
+
+      # Gate: fixable CRITICAL vulnerabilities block the release. HIGH ones are reported, not blocking.
+      - name: Scan the image (Trivy)
+        if: steps.target.outputs.build == 'true'
+        env:
+          IMAGE: ${{ steps.target.outputs.image }}
         run: |
-          echo ${{ secrets.ACR_PASSWORD }} | docker login ${{ secrets.ACR_LOGIN_SERVER }} -u ${{ secrets.ACR_USERNAME }} --password-stdin
+          trivy() {
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+              "$TRIVY_IMAGE" image --quiet --scanners vuln --ignore-unfixed "$@" "$IMAGE"
+          }
+          {
+            echo "### Image scan (HIGH and CRITICAL with a fix available)"
+            echo '```'
+            trivy --severity HIGH,CRITICAL --format table
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          trivy --severity CRITICAL --exit-code 1 --format table
 
-      - name: Push Docker image
-        run: |
-          docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:latest
-          docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}
+      - name: Push the image
+        if: steps.target.outputs.build == 'true'
+        env:
+          IMAGE: ${{ steps.target.outputs.image }}
+        run: docker push "$IMAGE"
 
-      # ── 6. Deploy to Azure App Service ──────────────────────────
-      - name: Deploy to Azure Web App
-        uses: azure/webapps-deploy@v3
+      - name: Deploy to Azure App Service
+        id: deploy
+        uses: azure/webapps-deploy@02a81bead70021f5284939794bcec79c271ab383 # v3.0.8
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
-          images: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}
+          images: ${{ steps.target.outputs.image }}
 
-      # ── 7. Logout ───────────────────────────────────────────────
-      - name: Azure logout
-        run: az logout
+      - name: Smoke test the new build
+        id: smoke
+        env:
+          EXPECTED_COMMIT: ${{ steps.target.outputs.tag }}
+        run: .github/scripts/smoke-test.sh "$PUBLIC_URL" "$EXPECTED_COMMIT" "$SMOKE_SHORT_ID"
+
+      - name: Roll back to the previous image
+        id: rollback
+        if: failure() && steps.previous.outputs.image != '' && (steps.deploy.outcome == 'failure' || steps.smoke.outcome == 'failure')
+        uses: azure/webapps-deploy@02a81bead70021f5284939794bcec79c271ab383 # v3.0.8
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          images: ${{ steps.previous.outputs.image }}
+
+      # Images built before this pipeline do not publish their commit, so verifying a rollback to one
+      # of them times out here; check /actuator/health by hand in that case.
+      - name: Verify the rollback
+        if: failure() && steps.rollback.outcome == 'success'
+        env:
+          PREVIOUS_COMMIT: ${{ steps.previous.outputs.tag }}
+        run: .github/scripts/smoke-test.sh "$PUBLIC_URL" "$PREVIOUS_COMMIT" "$SMOKE_SHORT_ID"
+
+      - name: Summary
+        if: always()
+        env:
+          IMAGE_TAG: ${{ steps.target.outputs.tag }}
+          PREVIOUS_TAG: ${{ steps.previous.outputs.tag }}
+          SMOKE: ${{ steps.smoke.outcome }}
+          ROLLBACK: ${{ steps.rollback.outcome }}
+        run: |
+          {
+            echo "### Backend deployment"
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Deployed commit | \`${IMAGE_TAG:-none}\` |"
+            echo "| Previous commit | \`${PREVIOUS_TAG:-unknown}\` |"
+            echo "| Smoke test | ${SMOKE:-not run} |"
+            echo "| Rollback | ${ROLLBACK:-not needed} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Log out of Azure
+        if: always()
+        run: az logout || true
