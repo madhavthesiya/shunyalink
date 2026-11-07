@@ -1,7 +1,7 @@
 # ADR 0013: Resolve countries from a local DB-IP database
 
-- **Status:** Accepted for the Phase 3 analytics pipeline (not yet integrated)
-- **Code:** `LocalCountryResolver`, `LocalCountryResolverTest`
+- **Status:** Accepted
+- **Code:** `LocalCountryResolver`, `CountryResolverConfig`, `AnalyticsService`, `Dockerfile.backend`
 
 ## Context
 
@@ -22,14 +22,17 @@ attribution on the Insights page. No existing chart data should be discarded dur
 Use a reusable local MMDB reader in the new pipeline. Parse IP literals without DNS; private addresses
 are `Local/Dev`, invalid inputs and unavailable, corrupt or unmatched databases return `Unknown`.
 Load the database into memory so files are not held open by a Windows memory mapping; the tested
-October 2026 country database occupies about 8.3 MB uncompressed. The data has not yet been bundled
-or wired into production. Before integration, provide a reproducible, checksum-verified database
-distribution and update process and add the required [DB-IP attribution](https://db-ip.com/db/lite.php)
-on pages displaying the results. Do not write raw IPs into persistent analytics events.
+October 2026 country database occupies about 8.3 MB uncompressed. The container build downloads that
+specific release and verifies its SHA-256; the Insights page contains the required
+[DB-IP attribution](https://db-ip.com/db/lite.php). To update, select a released monthly country
+MMDB, independently verify its download and checksum, update both the URL and checksum in
+`Dockerfile.backend`, test country lookups and build the image. Builds depend on DB-IP remaining
+available. For local development, `app.geoip.database` can point at a downloaded database; a missing
+file returns Unknown. Do not write raw IPs into persistent analytics events.
 
 ## Consequences
 
 - (+) Lookups can occur without transmitting visitor IPs to an external geolocation API.
 - (−) Database updates, licensing attribution and memory use become operational responsibilities.
 - (−) Location data is approximate, and missing data stays unknown rather than being guessed.
-- (−) The existing external lookup remains active until the pipeline is integrated and deployed.
+- (−) Existing historic geographic data is unchanged; new data uses the DB-IP database after deployment.

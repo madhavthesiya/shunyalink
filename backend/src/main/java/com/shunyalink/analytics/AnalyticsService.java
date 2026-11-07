@@ -1,12 +1,9 @@
 package com.shunyalink.analytics;
 
-import com.shunyalink.util.InternalAddresses;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 
-import java.net.InetAddress;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -17,17 +14,16 @@ import java.util.stream.Collectors;
 @Service
 public class AnalyticsService {
     private final StringRedisTemplate redisTemplate;
-    private final RestTemplate restTemplate;
+    private final LocalCountryResolver countryResolver;
     
     private static final String CLICK_KEY_PREFIX = "analytics:clicks:";
     private static final String GEO_KEY_PREFIX = "analytics:geo:";
-    private static final String GEO_CACHE_PREFIX = "geo:cache:";
     private static final String REFERRER_KEY_PREFIX = "analytics:referrer:";
     private static final String DEVICE_KEY_PREFIX = "analytics:device:";
 
-    public AnalyticsService(StringRedisTemplate redisTemplate, RestTemplate restTemplate) {
+    public AnalyticsService(StringRedisTemplate redisTemplate, LocalCountryResolver countryResolver) {
         this.redisTemplate = redisTemplate;
-        this.restTemplate = restTemplate;
+        this.countryResolver = countryResolver;
     }
 
     /**
@@ -56,7 +52,7 @@ public class AnalyticsService {
         redisTemplate.expire(lastAccessKey, 30, TimeUnit.DAYS);
 
         // 5. Record the result for this click without changing earlier observations.
-        String country = getCountryFromIp(ipAddress);
+        String country = countryResolver.resolve(ipAddress);
         redisTemplate.opsForHash().increment(GEO_KEY_PREFIX + shortId, country, 1);
 
         // 6. Record Referrer Source
@@ -79,37 +75,6 @@ public class AnalyticsService {
         redisTemplate.opsForZSet().add("analytics:device:ts:" + shortId,
                 UUID.randomUUID() + "|" + device, (double) timestamp);
         redisTemplate.opsForZSet().removeRangeByScore("analytics:device:ts:" + shortId, 0, thirtyDaysAgo);
-    }
-
-    private String getCountryFromIp(String ip) {
-        // Loopback and private/CGNAT addresses can't be geolocated; skip the external lookup.
-        // The IP arrives already normalized by ClientIpResolver (no port, IPv6 intact).
-        InetAddress address = InternalAddresses.parseLiteral(ip);
-        if (address == null || InternalAddresses.isInternal(address)) {
-            return "Local/Dev";
-        }
-        String cleanIp = address.getHostAddress();
-
-        // 1. Check Redis Cache First
-        String cacheKey = GEO_CACHE_PREFIX + cleanIp;
-        String cachedCountry = redisTemplate.opsForValue().get(cacheKey);
-        if (cachedCountry != null) return cachedCountry;
-
-        // 2. External API Lookup (ipapi.co) - Switch to HTTPS for reliability
-        try {
-            String url = "https://ipapi.co/" + cleanIp + "/json/";
-            Map<?, ?> response = restTemplate.getForObject(url, Map.class);
-            
-            if (response != null && response.containsKey("country_name")) {
-                String country = (String) response.get("country_name");
-                // Cache the result for 7 days
-                redisTemplate.opsForValue().set(cacheKey, country, 7, TimeUnit.DAYS);
-                return country;
-            }
-        } catch (Exception e) {
-            System.err.println("Geo-IP Lookup ERROR for " + cleanIp + ": " + e.getMessage());
-        }
-        return "Unknown";
     }
 
     /**
