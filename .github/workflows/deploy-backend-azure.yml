@@ -112,7 +112,8 @@ jobs:
         run: |
           trivy() {
             docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy:/root/.cache/trivy" \
-              "$TRIVY_IMAGE" image --quiet --scanners vuln --ignore-unfixed "$@" "$IMAGE"
+              -v "$GITHUB_WORKSPACE/.github/trivy-exceptions.yaml:/policy/exceptions.yaml:ro" \
+              "$TRIVY_IMAGE" image --timeout 20m --quiet --scanners vuln --ignore-unfixed "$@" "$IMAGE"
           }
           {
             echo "### Image scan (HIGH and CRITICAL with a fix available)"
@@ -120,7 +121,7 @@ jobs:
             trivy --severity HIGH,CRITICAL --format table
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          trivy --severity CRITICAL --exit-code 1 --format table
+          trivy --severity CRITICAL --exit-code 1 --format table --ignorefile /policy/exceptions.yaml
 
       - name: Push the image
         if: steps.target.outputs.build == 'true'

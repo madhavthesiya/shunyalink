@@ -1,0 +1,13 @@
+vulnerabilities:
+  # Spring rates this medium; this API has no XSLT view configuration.
+  - id: CVE-2026-47884
+    purls:
+      - pkg:maven/org.springframework/spring-webmvc
+    expired_at: 2027-02-07
+    statement: Reassess with the Spring Framework 7 migration; see ADR 0007.
+  # Spring rates this low; this API does not send SSE view fragments.
+  - id: CVE-2026-47890
+    purls:
+      - pkg:maven/org.springframework/spring-webmvc
+    expired_at: 2027-02-07
+    statement: Reassess with the Spring Framework 7 migration; see ADR 0007.

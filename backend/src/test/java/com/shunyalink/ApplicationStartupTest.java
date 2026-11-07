@@ -36,4 +36,14 @@ class ApplicationStartupTest extends BaseIntegrationTest {
         // Component details (database product, Redis version, disk paths) stay private
         assertThat(response.getBody()).doesNotContain("details");
     }
+
+    @Test
+    void openApiDocumentIsGenerated() throws Exception {
+        ResponseEntity<String> response = http.getForEntity("/v3/api-docs", String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode document = objectMapper.readTree(response.getBody());
+        assertThat(document.path("openapi").asText()).startsWith("3.");
+        assertThat(document.path("paths").has("/api/v1/auth/login")).isTrue();
+    }
 }
