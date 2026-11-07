@@ -38,3 +38,15 @@ check fail workflow_dispatch refs/heads/main 'latest'
 check fail workflow_dispatch refs/heads/main 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 check fail pull_request refs/heads/main "$first"
 echo 'Deployment input validation: 11 cases passed'
+
+# Keep the mock rehearsal tied to the expression used by the real deployment.
+workflow_dir="$script_dir/../workflows"
+real_condition=$(grep -F 'if: ${{ !cancelled() && steps.previous.outputs.image' "$workflow_dir/deploy-backend-azure.yml" | sed 's/^[[:space:]]*//')
+test -n "$real_condition"
+count=0
+while IFS= read -r condition; do
+  [ "$condition" = "$real_condition" ] || { echo 'Rollback rehearsal condition differs from deploy workflow' >&2; exit 1; }
+  count=$((count + 1))
+done < <(grep -F 'if: ${{ !cancelled() && steps.previous.outputs.image' "$workflow_dir/rollback-rehearsal.yml" | sed 's/^[[:space:]]*//')
+[ "$count" -eq 4 ] || { echo "Expected 4 rehearsal predicates, got $count" >&2; exit 1; }
+echo 'Rollback rehearsal predicates match deployment workflow'

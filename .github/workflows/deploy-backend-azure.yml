@@ -152,7 +152,7 @@ jobs:
 
       - name: Roll back to the previous image
         id: rollback
-        if: failure() && steps.previous.outputs.image != '' && (steps.deploy.outcome == 'failure' || steps.smoke.outcome == 'failure')
+        if: ${{ !cancelled() && steps.previous.outputs.image != '' && (steps.deploy.outcome == 'failure' || steps.smoke.outcome == 'failure') }}
         uses: azure/webapps-deploy@02a81bead70021f5284939794bcec79c271ab383 # v3.0.8
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}

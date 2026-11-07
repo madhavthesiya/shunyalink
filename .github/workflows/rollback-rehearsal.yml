@@ -9,7 +9,6 @@ permissions:
 jobs:
   smoke-failure:
     runs-on: ubuntu-latest
-    continue-on-error: true
     outputs:
       verified: ${{ steps.verify.outputs.verified }}
     steps:
@@ -18,9 +17,10 @@ jobs:
       - id: deploy
         run: echo 'mock deploy succeeded'
       - id: smoke
+        continue-on-error: true
         run: exit 1
       - id: rollback
-        if: failure() && steps.previous.outputs.image != '' && (steps.deploy.outcome == 'failure' || steps.smoke.outcome == 'failure')
+        if: ${{ !cancelled() && steps.previous.outputs.image != '' && (steps.deploy.outcome == 'failure' || steps.smoke.outcome == 'failure') }}
         run: echo 'mock rollback invoked'
       - id: verify
         if: always()
@@ -32,18 +32,19 @@ jobs:
           echo 'verified=true' >> "$GITHUB_OUTPUT"
   deploy-failure:
     runs-on: ubuntu-latest
-    continue-on-error: true
     outputs:
       verified: ${{ steps.verify.outputs.verified }}
     steps:
       - id: previous
         run: echo 'image=example/previous:sha' >> "$GITHUB_OUTPUT"
       - id: deploy
+        continue-on-error: true
         run: exit 1
       - id: smoke
+        if: steps.deploy.outcome == 'success'
         run: echo 'must be skipped'
       - id: rollback
-        if: failure() && steps.previous.outputs.image != '' && (steps.deploy.outcome == 'failure' || steps.smoke.outcome == 'failure')
+        if: ${{ !cancelled() && steps.previous.outputs.image != '' && (steps.deploy.outcome == 'failure' || steps.smoke.outcome == 'failure') }}
         run: echo 'mock rollback invoked'
       - id: verify
         if: always()
@@ -66,7 +67,7 @@ jobs:
       - id: smoke
         run: echo 'mock smoke succeeded'
       - id: rollback
-        if: failure() && steps.previous.outputs.image != '' && (steps.deploy.outcome == 'failure' || steps.smoke.outcome == 'failure')
+        if: ${{ !cancelled() && steps.previous.outputs.image != '' && (steps.deploy.outcome == 'failure' || steps.smoke.outcome == 'failure') }}
         run: echo 'must be skipped'
       - id: verify
         if: always()
@@ -77,18 +78,19 @@ jobs:
           echo 'verified=true' >> "$GITHUB_OUTPUT"
   no-previous-image:
     runs-on: ubuntu-latest
-    continue-on-error: true
     outputs:
       verified: ${{ steps.verify.outputs.verified }}
     steps:
       - id: previous
         run: echo 'No previous image available'
       - id: deploy
+        continue-on-error: true
         run: exit 1
       - id: smoke
+        if: steps.deploy.outcome == 'success'
         run: echo 'must be skipped'
       - id: rollback
-        if: failure() && steps.previous.outputs.image != '' && (steps.deploy.outcome == 'failure' || steps.smoke.outcome == 'failure')
+        if: ${{ !cancelled() && steps.previous.outputs.image != '' && (steps.deploy.outcome == 'failure' || steps.smoke.outcome == 'failure') }}
         run: echo 'must be skipped'
       - id: verify
         if: always()
