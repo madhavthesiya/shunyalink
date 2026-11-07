@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Lock, ArrowRight, Loader2, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -119,12 +120,12 @@ export default function PasswordPage() {
             <p className="text-[10px] uppercase tracking-widest text-muted-foreground/40 font-semibold">
                 Securely powered by <span className="text-primary/60">ShunyaLink</span>
             </p>
-            <a 
-                href="/" 
+            <Link
+                href="/"
                 className="inline-block text-xs font-medium text-primary/70 hover:text-primary transition-all hover:scale-105 active:scale-95"
             >
                 Create your own password protected link →
-            </a>
+            </Link>
         </div>
       </div>
     </div>
