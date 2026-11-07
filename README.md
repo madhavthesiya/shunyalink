@@ -1,5 +1,8 @@
 # ShunyaLink
 
+[![CI](https://github.com/madhavthesiya/shunyalink/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/madhavthesiya/shunyalink/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/madhavthesiya/shunyalink/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/madhavthesiya/shunyalink/actions/workflows/codeql.yml)
+
 > An all-in-one Smart URL Shortener and Digital Identity Platform featuring write-behind analytics, Geo-IP tracking, Link-in-Bio profiles, and a real-time Competitive Programming dashboard.
 > Engineered with distributed caching, horizontal scaling, and real-world security &amp; AI trade-offs.
 
@@ -238,6 +241,37 @@ The reasoning behind these choices, including the alternatives that were rejecte
 
 ---
 
+## CI/CD
+
+Review these checks before merging a pull request into `main` (branch protection is planned):
+
+| Check | What it proves |
+|---|---|
+| **Backend · tests & coverage** | 230+ tests. Integration tests run the real app against PostgreSQL and Redis in Testcontainers; coverage may not fall below per-package floors |
+| **Frontend · types, lint & build** | `tsc`, ESLint and a production build. New lint violations fail; the pre-existing ones are baselined and can only shrink |
+| **Workflows · actionlint** | Workflow expressions are valid and every shell step passes shellcheck |
+| **Dependencies · review** | The PR adds no runtime dependency with a known high or critical advisory |
+| **CodeQL** | Static security analysis of the Java, TypeScript and workflow code |
+
+Changes to the backend or its pipeline on `main` trigger a backend deploy (Vercel deploys the frontend). The deploy checks the new build and, when a previous commit-tagged image is available, attempts to restore it on failure:
+
+```mermaid
+flowchart LR
+    T[Backend tests pass] --> B[Build image<br/>tagged with commit SHA]
+    B --> S{Trivy scan:<br/>fixable CRITICAL?}
+    S -- yes, outside reviewed exceptions --> X[Stop: nothing deployed]
+    S -- no --> D[Deploy to App Service]
+    D --> V{Smoke test:<br/>new commit serving?<br/>health UP?<br/>real link 302?}
+    V -- yes --> OK[Done]
+    V -- no --> R[Redeploy previous image<br/>and smoke-test it]
+```
+
+Manual rollback, without a rebuild: **Actions → Deploy backend → Run workflow** with `image_tag` set to an earlier commit SHA. To see which commit is live: `curl https://sl.madhavv.me/actuator/info`.
+
+Supply chain: third-party actions are pinned to commit SHAs, Dependabot proposes updates weekly once a release is 14 days old, and GitHub secret scanning with push protection is enabled. The reasoning is in [ADR 0006](docs/adr/0006-gated-deploys-with-smoke-test-and-rollback.md), [0007](docs/adr/0007-supply-chain-controls-for-the-pipeline.md) and [0008](docs/adr/0008-ratchet-quality-gates.md).
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -382,7 +416,7 @@ docker-compose.yml                     # Full stack: PG + Redis + 3×Backend + S
 
 | Component | Provider | Details |
 |-----------|----------|---------|
-| **Frontend** | Vercel | Next.js 15 SSR · Custom domain `shunyalink.madhavv.me` |
+| **Frontend** | Vercel | Next.js 16 SSR · Custom domain `shunyalink.madhavv.me` |
 | **Backend** | Azure App Service | Spring Boot 3 · Java 21 · Custom domain `sl.madhavv.me` |
 | **Database** | Supabase | PostgreSQL 17 · Connection pooling via Supavisor |
 | **Cache** | Upstash | Serverless Redis · TLS · Write-behind analytics pipeline |
