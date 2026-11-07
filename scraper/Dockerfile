@@ -1,5 +1,5 @@
 # ── Build Stage ──────────────────────────────────────────────────────────────
-FROM node:20-slim
+FROM node:25-slim
 
 # Install Chromium + all system libraries it needs
 RUN apt-get update && apt-get install -y \
