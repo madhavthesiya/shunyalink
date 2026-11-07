@@ -224,7 +224,9 @@ export default function InsightsPage() {
           <Card className="glass-card border-border/50 overflow-hidden flex flex-col">
             <CardHeader className="border-b border-border/50 bg-secondary/10 pb-4">
               <CardTitle className="text-lg">Geo-Distribution</CardTitle>
-              <CardDescription>Traffic sources by country</CardDescription>
+              <CardDescription>
+                Traffic sources by country · <a href="https://db-ip.com" target="_blank" rel="noopener noreferrer" className="underline">IP Geolocation by DB-IP</a>
+              </CardDescription>
             </CardHeader>
             <CardContent className="flex-1 p-6 flex items-center justify-center">
               {loading ? (
