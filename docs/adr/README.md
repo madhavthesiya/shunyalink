@@ -15,6 +15,7 @@ Each one states the context, the options considered, what was chosen and what it
 | [0008](0008-ratchet-quality-gates.md) | Quality gates are ratchets on today's baseline, not fixed targets | Accepted |
 | [0009](0009-upgrade-frontend-security-dependencies.md) | Upgrade frontend dependencies to address production advisories | Accepted |
 | [0010](0010-manual-deploys-use-existing-main-images.md) | Manual deployments reuse images from main history | Accepted |
+| [0011](0011-preserve-unknown-analytics-countries.md) | Keep unresolved click countries unknown | Accepted |
 
 Format: *Context → Options → Decision → Consequences*. A superseded decision stays in place with
 its status changed, so the history of *why* is never lost.

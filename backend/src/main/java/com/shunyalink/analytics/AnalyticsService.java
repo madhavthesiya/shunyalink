@@ -55,9 +55,9 @@ public class AnalyticsService {
         redisTemplate.opsForValue().set(lastAccessKey, java.time.LocalDateTime.now().toString());
         redisTemplate.expire(lastAccessKey, 30, TimeUnit.DAYS);
 
-        // 5. Record Geo-Location (with Caching, External Lookup & Self-Healing)
+        // 5. Record the result for this click without changing earlier observations.
         String country = getCountryFromIp(ipAddress);
-        recordGeoWithSelfHealing(shortId, country);
+        redisTemplate.opsForHash().increment(GEO_KEY_PREFIX + shortId, country, 1);
 
         // 6. Record Referrer Source
         String source = parseReferrerSource(referer);
@@ -110,31 +110,6 @@ public class AnalyticsService {
             System.err.println("Geo-IP Lookup ERROR for " + cleanIp + ": " + e.getMessage());
         }
         return "Unknown";
-    }
-
-    /**
-     * Moves one previously "Unknown" count to the newly resolved country.
-     * Approximate: the earlier unresolved click may have come from a different country.
-     */
-    private void recordGeoWithSelfHealing(String shortId, String country) {
-        String key = GEO_KEY_PREFIX + shortId;
-        
-        // If we found a real country and it's not "Unknown" or "Local/Dev"
-        if (!"Unknown".equals(country) && !"Local/Dev".equals(country)) {
-            Object unknownCountObj = redisTemplate.opsForHash().get(key, "Unknown");
-            if (unknownCountObj != null) {
-                long unknownCount = Long.parseLong(unknownCountObj.toString());
-                if (unknownCount > 0) {
-                    // "Repair" history: Shift one count from Unknown to the Real Country
-                    redisTemplate.opsForHash().increment(key, "Unknown", -1);
-                    redisTemplate.opsForHash().increment(key, country, 1);
-                    // WE NO LONGER RETURN EARLY HERE — MUST CONTINUE TO COUNT THE CURRENT CLICK
-                }
-            }
-        }
-        
-        // Standard increment: Always record the CURRENT click
-        redisTemplate.opsForHash().increment(key, country, 1);
     }
 
     /**
