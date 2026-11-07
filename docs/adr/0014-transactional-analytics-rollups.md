@@ -22,7 +22,8 @@ exclude identified bots and keep redirects working when analytics storage is una
 The future consumer supplies a stable UUID per event and the original immutable URL database ID.
 One transaction inserts previously unseen IDs and applies hourly human/bot counts, daily dimensions,
 URL totals and the platform total. A deleted URL is not replaced by a newly created link with the same
-alias. URL rows are visited in stable order and the shared platform total is updated once per batch.
+alias. URL rows are locked for update in stable order before bucket rows, and the shared platform
+total is updated once per batch. Daily unique sketches are updated in the same transaction (ADR 0016).
 Buckets use UTC; a late event cannot move last access backwards. Additive tables leave existing Redis
 history untouched. The applier is disabled unless explicitly configured, and no live writer or reader
 uses these tables yet.
@@ -40,6 +41,6 @@ handling for malformed events and test recovery after a committed batch but befo
 - (−) Deduplication storage grows until a safe cleanup strategy is implemented. Current per-event
   updates require batching and performance measurement before high-volume use.
 - (−) The transaction protects events only after they reach PostgreSQL; it cannot recover unprocessed
-  events removed from Redis, and does not make separate unique-visitor updates atomic.
+  events removed from Redis.
 - (−) Migration, Redis stream retention, unique counts, read paths and crash recovery still need
   implementation and end-to-end tests before this component can be enabled.

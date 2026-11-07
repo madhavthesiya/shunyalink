@@ -122,4 +122,43 @@ class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT last_accessed_time FROM urls WHERE id = ?", java.sql.Timestamp.class, urlId)
                 .toLocalDateTime()).isEqualTo(LocalDateTime.parse("2026-11-08T01:23:45"));
     }
+
+    @Test
+    void uniqueSketchIsCommittedWithClicksAndIgnoresBotsAndReplay() {
+        AnalyticsClick human = new AnalyticsClick(first, urlId, time, false,
+                "India", "Direct", "Chrome / Linux", "a".repeat(64));
+        AnalyticsClick bot = new AnalyticsClick(second, urlId, time, true,
+                "India", "Direct", "Chrome / Linux", "b".repeat(64));
+        applier.applyBatch(List.of(human, bot));
+        applier.applyBatch(List.of(human));
+        byte[] bytes = jdbc.queryForObject("SELECT sketch FROM analytics_unique_daily WHERE url_id = ?", byte[].class, urlId);
+        assertThat(UniqueVisitorSketch.fromBytes(bytes).estimate()).isEqualTo(1);
+    }
+
+    @Test
+    void uniqueSketchRollsBackWithFailedBatch() {
+        UUID before = first.compareTo(second) < 0 ? first : second;
+        UUID after = before.equals(first) ? second : first;
+        AnalyticsClick human = new AnalyticsClick(before, urlId, time, false,
+                "India", "Direct", "Chrome / Linux", "a".repeat(64));
+        assertThatThrownBy(() -> applier.applyBatch(List.of(human, event(after, urlId, false, "x".repeat(256)))))
+                .isInstanceOf(RuntimeException.class);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM analytics_unique_daily WHERE url_id = ?", Long.class, urlId)).isZero();
+    }
+
+    @Test
+    void concurrentDistinctVisitorsAreBothRetained() throws Exception {
+        AnalyticsClick one = new AnalyticsClick(first, urlId, time, false, "India", "Direct", "Chrome", "a".repeat(64));
+        AnalyticsClick two = new AnalyticsClick(second, urlId, time, false, "India", "Direct", "Chrome", "b".repeat(64));
+        CountDownLatch start = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var a = executor.submit(() -> { start.await(); applier.applyBatch(List.of(one)); return null; });
+            var b = executor.submit(() -> { start.await(); applier.applyBatch(List.of(two)); return null; });
+            start.countDown();
+            a.get(30, TimeUnit.SECONDS);
+            b.get(30, TimeUnit.SECONDS);
+        }
+        byte[] bytes = jdbc.queryForObject("SELECT sketch FROM analytics_unique_daily WHERE url_id = ?", byte[].class, urlId);
+        assertThat(UniqueVisitorSketch.fromBytes(bytes).estimate()).isEqualTo(2);
+    }
 }
