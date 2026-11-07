@@ -181,6 +181,12 @@
 			<version>1.18.1</version>
 		</dependency>
 
+		<!-- Approximate unique-visitor sketches for the future analytics pipeline. -->
+		<dependency>
+			<groupId>org.apache.datasketches</groupId>
+			<artifactId>datasketches-java</artifactId>
+			<version>6.2.0</version>
+		</dependency>
 		<!-- Local MMDB reader for the future analytics pipeline. -->
 		<dependency>
 			<groupId>com.maxmind.db</groupId>

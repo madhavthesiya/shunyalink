@@ -20,6 +20,7 @@ Each one states the context, the options considered, what was chosen and what it
 | [0013](0013-local-country-lookup.md) | Resolve countries from a local DB-IP database | Accepted for Phase 3 |
 | [0014](0014-transactional-analytics-rollups.md) | Apply analytics events transactionally with stable identities | Accepted for Phase 3 |
 | [0015](0015-scope-visitor-pseudonyms-by-link-and-day.md) | Scope visitor pseudonyms to a link and UTC day | Accepted for Phase 3 |
+| [0016](0016-transactional-daily-unique-sketches.md) | Keep daily unique-visitor sketches with transactional rollups | Accepted for Phase 3 |
 
 Format: *Context → Options → Decision → Consequences*. A superseded decision stays in place with
 its status changed, so the history of *why* is never lost.
