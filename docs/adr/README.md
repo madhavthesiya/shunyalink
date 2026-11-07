@@ -13,6 +13,7 @@ Each one states the context, the options considered, what was chosen and what it
 | [0006](0006-gated-deploys-with-smoke-test-and-rollback.md) | Deploys are gated on CI, verified by a smoke test, and rolled back automatically | Accepted |
 | [0007](0007-supply-chain-controls-for-the-pipeline.md) | Pin actions to SHAs, cool down new releases, gate images on fixable criticals | Accepted |
 | [0008](0008-ratchet-quality-gates.md) | Quality gates are ratchets on today's baseline, not fixed targets | Accepted |
+| [0009](0009-upgrade-frontend-security-dependencies.md) | Upgrade frontend dependencies to address production advisories | Accepted |
 
 Format: *Context → Options → Decision → Consequences*. A superseded decision stays in place with
 its status changed, so the history of *why* is never lost.
