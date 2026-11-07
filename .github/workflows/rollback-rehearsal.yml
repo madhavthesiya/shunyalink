@@ -1,0 +1,113 @@
+# Exercises the deploy workflow's failure predicates with mock steps only. No cloud credentials.
+name: Rollback rehearsal
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  smoke-failure:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    outputs:
+      verified: ${{ steps.verify.outputs.verified }}
+    steps:
+      - id: previous
+        run: echo 'image=example/previous:sha' >> "$GITHUB_OUTPUT"
+      - id: deploy
+        run: echo 'mock deploy succeeded'
+      - id: smoke
+        run: exit 1
+      - id: rollback
+        if: failure() && steps.previous.outputs.image != '' && (steps.deploy.outcome == 'failure' || steps.smoke.outcome == 'failure')
+        run: echo 'mock rollback invoked'
+      - id: verify
+        if: always()
+        env:
+          SMOKE: ${{ steps.smoke.outcome }}
+          ROLLBACK: ${{ steps.rollback.outcome }}
+        run: |
+          [[ "$SMOKE" == failure && "$ROLLBACK" == success ]]
+          echo 'verified=true' >> "$GITHUB_OUTPUT"
+  deploy-failure:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    outputs:
+      verified: ${{ steps.verify.outputs.verified }}
+    steps:
+      - id: previous
+        run: echo 'image=example/previous:sha' >> "$GITHUB_OUTPUT"
+      - id: deploy
+        run: exit 1
+      - id: smoke
+        run: echo 'must be skipped'
+      - id: rollback
+        if: failure() && steps.previous.outputs.image != '' && (steps.deploy.outcome == 'failure' || steps.smoke.outcome == 'failure')
+        run: echo 'mock rollback invoked'
+      - id: verify
+        if: always()
+        env:
+          DEPLOY: ${{ steps.deploy.outcome }}
+          SMOKE: ${{ steps.smoke.outcome }}
+          ROLLBACK: ${{ steps.rollback.outcome }}
+        run: |
+          [[ "$DEPLOY" == failure && "$SMOKE" == skipped && "$ROLLBACK" == success ]]
+          echo 'verified=true' >> "$GITHUB_OUTPUT"
+  success:
+    runs-on: ubuntu-latest
+    outputs:
+      verified: ${{ steps.verify.outputs.verified }}
+    steps:
+      - id: previous
+        run: echo 'image=example/previous:sha' >> "$GITHUB_OUTPUT"
+      - id: deploy
+        run: echo 'mock deploy succeeded'
+      - id: smoke
+        run: echo 'mock smoke succeeded'
+      - id: rollback
+        if: failure() && steps.previous.outputs.image != '' && (steps.deploy.outcome == 'failure' || steps.smoke.outcome == 'failure')
+        run: echo 'must be skipped'
+      - id: verify
+        if: always()
+        env:
+          ROLLBACK: ${{ steps.rollback.outcome }}
+        run: |
+          [[ "$ROLLBACK" == skipped ]]
+          echo 'verified=true' >> "$GITHUB_OUTPUT"
+  no-previous-image:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    outputs:
+      verified: ${{ steps.verify.outputs.verified }}
+    steps:
+      - id: previous
+        run: echo 'No previous image available'
+      - id: deploy
+        run: exit 1
+      - id: smoke
+        run: echo 'must be skipped'
+      - id: rollback
+        if: failure() && steps.previous.outputs.image != '' && (steps.deploy.outcome == 'failure' || steps.smoke.outcome == 'failure')
+        run: echo 'must be skipped'
+      - id: verify
+        if: always()
+        env:
+          ROLLBACK: ${{ steps.rollback.outcome }}
+        run: |
+          [[ "$ROLLBACK" == skipped ]]
+          echo 'verified=true' >> "$GITHUB_OUTPUT"
+  verify:
+    name: Verify rollback rehearsal
+    needs: [smoke-failure, deploy-failure, success, no-previous-image]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          SMOKE_CASE: ${{ needs.smoke-failure.outputs.verified }}
+          DEPLOY_CASE: ${{ needs.deploy-failure.outputs.verified }}
+          SUCCESS_CASE: ${{ needs.success.outputs.verified }}
+          NO_IMAGE_CASE: ${{ needs.no-previous-image.outputs.verified }}
+        run: |
+          [[ "$SMOKE_CASE" == true && "$DEPLOY_CASE" == true && "$SUCCESS_CASE" == true && "$NO_IMAGE_CASE" == true ]]
+          echo 'Rollback predicates passed all four mock cases.'
