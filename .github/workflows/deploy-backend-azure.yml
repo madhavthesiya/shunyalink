@@ -17,10 +17,9 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: Existing image tag (full commit SHA) to redeploy. Empty = build the selected branch.
+        description: Existing image tag (full commit SHA in main history) to redeploy. Select main.
         type: string
-        required: false
-        default: ""
+        required: true
 
 permissions:
   contents: read
@@ -50,6 +49,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
+
+      - name: Validate deployment source
+        env:
+          REQUESTED_TAG: ${{ inputs.image_tag }}
+          DEPLOY_EVENT: ${{ github.event_name }}
+          DEPLOY_REF: ${{ github.ref }}
+          DEPLOY_SHA: ${{ github.sha }}
+        run: bash .github/scripts/validate-deploy-inputs.sh "$DEPLOY_EVENT" "$DEPLOY_REF" "$REQUESTED_TAG" "$DEPLOY_SHA"
 
       - name: Choose the image to deploy
         id: target
@@ -144,7 +152,7 @@ jobs:
 
       - name: Roll back to the previous image
         id: rollback
-        if: failure() && steps.previous.outputs.image != '' && (steps.deploy.outcome == 'failure' || steps.smoke.outcome == 'failure')
+        if: ${{ !cancelled() && steps.previous.outputs.image != '' && (steps.deploy.outcome == 'failure' || steps.smoke.outcome == 'failure') }}
         uses: azure/webapps-deploy@02a81bead70021f5284939794bcec79c271ab383 # v3.0.8
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}

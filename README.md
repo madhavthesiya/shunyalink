@@ -243,7 +243,7 @@ The reasoning behind these choices, including the alternatives that were rejecte
 
 ## CI/CD
 
-Review these checks before merging a pull request into `main` (branch protection is planned):
+Branch protection requires these checks before merging a pull request into `main`:
 
 | Check | What it proves |
 |---|---|
@@ -266,7 +266,7 @@ flowchart LR
     V -- no --> R[Redeploy previous image<br/>and smoke-test it]
 ```
 
-Manual rollback, without a rebuild: **Actions → Deploy backend → Run workflow** with `image_tag` set to an earlier commit SHA. To see which commit is live: `curl https://sl.madhavv.me/actuator/info`.
+Manual rollback, without a rebuild: **Actions → Deploy backend → Run workflow**, select `main`, and set `image_tag` to a full commit SHA from its history with an existing image. To see which commit is live: `curl https://sl.madhavv.me/actuator/info`.
 
 Supply chain: third-party actions are pinned to commit SHAs, dependency updates are reviewed manually, and GitHub secret scanning with push protection is enabled. The reasoning is in [ADR 0006](docs/adr/0006-gated-deploys-with-smoke-test-and-rollback.md), [0007](docs/adr/0007-supply-chain-controls-for-the-pipeline.md) and [0008](docs/adr/0008-ratchet-quality-gates.md).
 

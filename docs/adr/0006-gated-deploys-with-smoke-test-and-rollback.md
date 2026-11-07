@@ -25,8 +25,8 @@ build is still running.
 ## Decision
 
 1. **Gate.** Deploy is a job in the CI workflow that `needs` the backend test job, and runs only on
-   `main` automatically. Branch protection to require CI checks is planned and needs owner approval;
-   until then, checks must be reviewed before merging. Manual runs can deploy a selected branch.
+   `main` automatically. Branch protection requires PR checks and applies to administrators. Manual
+   runs are restricted to existing image tags from `main` history (ADR 0010).
 2. **Build once, tag by commit.** The image is tagged only with the commit SHA. `latest` is no longer
    pushed, because a moving tag makes "what is running?" and "what do we roll back to?" ambiguous.
 3. **Prove the new build is serving.** The image carries its commit (`APP_COMMIT`), published at
@@ -41,7 +41,7 @@ build is still running.
 ## Consequences
 
 - (+) Automatic deploys through CI require backend tests; a failed deploy can restore a known
-  previous image when one was recorded. Manual runs and direct pushes need operational care.
+  previous image when one was recorded. Manual redeployment still needs operational care.
 - (+) "Which commit is live?" has a one-request answer: `curl https://sl.madhavv.me/actuator/info`.
 - (−) Not zero-downtime. If the new build is broken, users can see errors until the rollback finishes.
   Deployment slots would fix this if the plan is ever upgraded.
