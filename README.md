@@ -268,7 +268,7 @@ flowchart LR
 
 Manual rollback, without a rebuild: **Actions → Deploy backend → Run workflow** with `image_tag` set to an earlier commit SHA. To see which commit is live: `curl https://sl.madhavv.me/actuator/info`.
 
-Supply chain: third-party actions are pinned to commit SHAs, Dependabot proposes updates weekly once a release is 14 days old, and GitHub secret scanning with push protection is enabled. The reasoning is in [ADR 0006](docs/adr/0006-gated-deploys-with-smoke-test-and-rollback.md), [0007](docs/adr/0007-supply-chain-controls-for-the-pipeline.md) and [0008](docs/adr/0008-ratchet-quality-gates.md).
+Supply chain: third-party actions are pinned to commit SHAs, dependency updates are reviewed manually, and GitHub secret scanning with push protection is enabled. The reasoning is in [ADR 0006](docs/adr/0006-gated-deploys-with-smoke-test-and-rollback.md), [0007](docs/adr/0007-supply-chain-controls-for-the-pipeline.md) and [0008](docs/adr/0008-ratchet-quality-gates.md).
 
 ---
 

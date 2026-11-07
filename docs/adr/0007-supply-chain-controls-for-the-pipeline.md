@@ -1,7 +1,7 @@
 # ADR 0007: Pin pipeline inputs and gate images on actionable vulnerabilities
 
 - **Status:** Accepted (2026-11-07)
-- **Code:** `.github/workflows/ci.yml`, `.github/workflows/deploy-backend-azure.yml`, `.github/dependabot.yml`, `.github/trivy-exceptions.yaml`
+- **Code:** `.github/workflows/ci.yml`, `.github/workflows/deploy-backend-azure.yml`, `.github/trivy-exceptions.yaml`
 
 ## Context
 
@@ -20,9 +20,9 @@ packages. In March 2025 attackers moved `tj-actions/changed-files` tags to malic
 
 ## Decision
 
-- Pin actions to full commit SHAs and label the version in a comment. Dependabot proposes updates
-  for `github-actions` as well as Maven, npm and Docker. Pinning limits later tag movement, not a
-  compromised revision chosen initially; review advisories and update compromised pins promptly.
+- Pin actions to full commit SHAs and label the version in a comment. Pinning limits later tag
+  movement, not a compromised revision chosen initially; review advisories and update compromised
+  pins promptly. Dependency updates are reviewed manually.
 - Apply a 14-day cooldown to ordinary dependency releases; security updates are not delayed. This
   allows time for broken or malicious releases to be discovered, at the cost of slower updates.
 - Dependency review blocks newly introduced high or critical runtime advisories on pull requests.
@@ -32,6 +32,11 @@ packages. In March 2025 attackers moved `tj-actions/changed-files` tags to malic
   Trivy's default five minutes locally. A scanner error must fail the job.
 - GitHub secret scanning and push protection are already enabled, so a second gitleaks action was
   not added. These controls do not replace review or secret rotation after exposure.
+
+**Update (2026-11-07):** The initial Dependabot version-update configuration opened a large batch
+of PRs immediately after merge. The owner chose to stop these proposals and close the batch; the
+configuration was removed. Vulnerability alerts remain enabled, while checking and updating
+dependencies and pinned actions becomes a manual responsibility.
 
 ### Initial scan and exceptions
 
