@@ -181,6 +181,13 @@
 			<version>1.18.1</version>
 		</dependency>
 
+		<!-- Local MMDB reader for the future analytics pipeline. -->
+		<dependency>
+			<groupId>com.maxmind.db</groupId>
+			<artifactId>maxmind-db</artifactId>
+			<version>4.2.0</version>
+		</dependency>
+
 		<!-- Cloudinary — Cloud Image Uploads & Compression -->
 		<dependency>
 			<groupId>com.cloudinary</groupId>
