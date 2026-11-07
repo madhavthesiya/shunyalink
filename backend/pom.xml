@@ -24,7 +24,7 @@
 		<tomcat.version>10.1.61</tomcat.version>
 		<netty.version>4.1.137.Final</netty.version>
 		<byte-buddy.version>1.15.10</byte-buddy.version>
-		<testcontainers.version>1.21.4</testcontainers.version>
+		<testcontainers.version>2.0.5</testcontainers.version>
 	</properties>
 
 	<dependencies>
