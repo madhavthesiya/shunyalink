@@ -19,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Set;
 
 /** Applies enriched events atomically; the producer and consumer are not yet connected. */
 @Service
@@ -32,7 +33,15 @@ public class AnalyticsBatchApplier {
 
     @Transactional
     public void applyBatch(List<AnalyticsClick> events) {
-        if (events.isEmpty()) return;
+        if (!applyValidatedBatch(events).isEmpty()) {
+            throw new IllegalArgumentException("Conflicting or unverifiable event identity");
+        }
+    }
+
+    /** Returns identities whose persisted payload differs; independent events still commit. */
+    @Transactional
+    public Set<UUID> applyValidatedBatch(List<AnalyticsClick> events) {
+        if (events.isEmpty()) return Set.of();
         if (events.size() > 500) throw new IllegalArgumentException("Analytics batches are limited to 500 events");
         Map<UUID, AnalyticsClick> distinct = new LinkedHashMap<>();
         events.stream().sorted(Comparator.comparingLong(AnalyticsClick::urlId)
@@ -47,10 +56,21 @@ public class AnalyticsBatchApplier {
         var existingLinks = new HashSet<>(jdbc.query("SELECT id FROM urls WHERE id IN ("
                 + placeholders(urlIds.size()) + ") ORDER BY id FOR UPDATE",
                 (rs, row) -> rs.getLong(1), urlIds.toArray()));
-        String values = String.join(",", Collections.nCopies(distinct.size(), "(?)"));
-        var accepted = new HashSet<>(jdbc.query("INSERT INTO analytics_applied_events (event_id) VALUES "
+        String values = String.join(",", Collections.nCopies(distinct.size(), "(?, ?)"));
+        List<Object> parameters = new ArrayList<>();
+        distinct.values().stream().sorted(Comparator.comparing(AnalyticsClick::eventId)).forEach(event -> {
+            parameters.add(event.eventId());
+            parameters.add(AnalyticsEventCodec.fingerprint(event));
+        });
+        var accepted = new HashSet<>(jdbc.query("INSERT INTO analytics_applied_events (event_id, payload_hash) VALUES "
                         + values + " ON CONFLICT (event_id) DO NOTHING RETURNING event_id",
-                (rs, row) -> rs.getObject(1, UUID.class), distinct.keySet().toArray()));
+                (rs, row) -> rs.getObject(1, UUID.class), parameters.toArray()));
+        Set<UUID> conflicts = new HashSet<>();
+        jdbc.query("SELECT event_id, payload_hash FROM analytics_applied_events WHERE event_id IN ("
+                + placeholders(distinct.size()) + ")", (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
+            UUID id = rs.getObject(1, UUID.class);
+            if (!AnalyticsEventCodec.fingerprint(distinct.get(id)).equals(rs.getString(2))) conflicts.add(id);
+        }, distinct.keySet().toArray());
 
         Map<Hour, long[]> hourly = new LinkedHashMap<>();
         Map<Dimension, Long> dimensions = new LinkedHashMap<>();
@@ -74,14 +94,14 @@ public class AnalyticsBatchApplier {
                     (a, b) -> new LinkTotal(a.clicks + b.clicks, a.last.isAfter(b.last) ? a.last : b.last));
             humanTotal++;
         }
-        if (hourly.isEmpty()) return;
+        if (hourly.isEmpty()) return conflicts;
         jdbc.batchUpdate("INSERT INTO analytics_hourly (url_id, bucket_start, human_clicks, bot_clicks) "
                         + "VALUES (?, ?, ?, ?) ON CONFLICT (url_id, bucket_start) DO UPDATE SET "
                         + "human_clicks = analytics_hourly.human_clicks + EXCLUDED.human_clicks, "
                         + "bot_clicks = analytics_hourly.bot_clicks + EXCLUDED.bot_clicks",
                 hourly.entrySet().stream().map(e -> new Object[]{e.getKey().urlId, e.getKey().hour,
                         e.getValue()[0], e.getValue()[1]}).toList());
-        if (humanTotal == 0) return;
+        if (humanTotal == 0) return conflicts;
         jdbc.batchUpdate("INSERT INTO analytics_daily_dimensions (url_id, day, dimension, value, clicks) "
                         + "VALUES (?, ?, ?, ?, ?) ON CONFLICT (url_id, day, dimension, value) "
                         + "DO UPDATE SET clicks = analytics_daily_dimensions.clicks + EXCLUDED.clicks",
@@ -109,6 +129,7 @@ public class AnalyticsBatchApplier {
         if (jdbc.update("UPDATE platform_stats SET total_clicks = total_clicks + ? WHERE id = 1", humanTotal) != 1) {
             throw new IllegalStateException("Platform statistics row is missing");
         }
+        return conflicts;
     }
 
     private static String placeholders(int count) {

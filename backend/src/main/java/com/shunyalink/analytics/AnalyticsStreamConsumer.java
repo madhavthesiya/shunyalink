@@ -22,7 +22,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Bounded consumer processing; lifecycle wiring is deferred until the combined cutover is ready. */
+/** Bounded consumer processing; automatic polling requires a separate explicit lifecycle switch. */
 public final class AnalyticsStreamConsumer {
     static final String GROUP = "analytics-v1";
     private static final int BATCH_SIZE = 500;
@@ -133,7 +133,14 @@ public final class AnalyticsStreamConsumer {
         if (events.isEmpty()) return 0;
         Timer.Sample sample = Timer.start();
         try {
-            applier.applyBatch(events); // Transaction proxy returns only after commit.
+            var persistedConflicts = applier.applyValidatedBatch(events); // Returns only after commit.
+            for (int i = events.size() - 1; i >= 0; i--) {
+                if (persistedConflicts.contains(events.get(i).eventId())) {
+                    ids.remove(i);
+                    malformed.increment();
+                }
+            }
+            if (ids.isEmpty()) return 0;
             Long ack = Objects.requireNonNull(streams.acknowledge(AnalyticsEventPublisher.STREAM,
                     GROUP, ids.toArray(String[]::new)), "Missing acknowledgement response");
             acknowledged.increment(ack);

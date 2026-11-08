@@ -98,7 +98,7 @@ class AnalyticsStreamConsumerIntegrationTest extends BaseIntegrationTest {
     void databaseFailureLeavesPendingWorkForAnotherConsumer() {
         enqueue();
         AnalyticsBatchApplier unavailable = mock(AnalyticsBatchApplier.class);
-        doThrow(new DataAccessResourceFailureException("Simulated database outage")).when(unavailable).applyBatch(anyList());
+        doThrow(new DataAccessResourceFailureException("Simulated database outage")).when(unavailable).applyValidatedBatch(anyList());
         var failed = new AnalyticsStreamConsumer(redis, unavailable, "failed", Duration.ZERO, metrics);
         assertThatThrownBy(failed::pollOnce).isInstanceOf(DataAccessResourceFailureException.class);
         assertThat(clicks()).isZero();
@@ -197,6 +197,34 @@ class AnalyticsStreamConsumerIntegrationTest extends BaseIntegrationTest {
         redis.<String, String>opsForStream().add(AnalyticsEventPublisher.STREAM, invalid);
         enqueue();
         assertThat(worker("invalid-time").pollOnce()).isEqualTo(1);
+        assertThat(clicks()).isEqualTo(1);
+        assertThat(pending()).isEqualTo(1);
+    }
+
+    @Test
+    void conflictingReplayInAnotherBatchStaysPendingWhileIndependentEventsCommit() {
+        var original = event();
+        redis.<String, String>opsForStream().add(AnalyticsEventPublisher.STREAM, AnalyticsEventCodec.encode(original));
+        var consumer = worker("cross-batch");
+        assertThat(consumer.pollOnce()).isEqualTo(1);
+        var conflict = new HashMap<>(AnalyticsEventCodec.encode(original));
+        conflict.put("country", "Japan");
+        redis.<String, String>opsForStream().add(AnalyticsEventPublisher.STREAM, conflict);
+        enqueue();
+        assertThat(consumer.pollOnce()).isEqualTo(1);
+        assertThat(clicks()).isEqualTo(2);
+        assertThat(pending()).isEqualTo(1);
+        assertThat(consumer.pollOnce()).isZero();
+        assertThat(clicks()).isEqualTo(2);
+    }
+
+    @Test
+    void preFingerprintMarkerRemainsPendingWithoutInventingItsPayload() {
+        var original = event();
+        jdbc.update("INSERT INTO analytics_applied_events (event_id) VALUES (?)", original.eventId());
+        redis.<String, String>opsForStream().add(AnalyticsEventPublisher.STREAM, AnalyticsEventCodec.encode(original));
+        enqueue();
+        assertThat(worker("unknown-history").pollOnce()).isEqualTo(1);
         assertThat(clicks()).isEqualTo(1);
         assertThat(pending()).isEqualTo(1);
     }

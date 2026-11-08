@@ -14,6 +14,23 @@ final class AnalyticsEventCodec {
 
     private AnalyticsEventCodec() { }
 
+    static String fingerprint(AnalyticsClick event) {
+        try {
+            var digest = java.security.MessageDigest.getInstance("SHA-256");
+            // Sorted, length-prefixed fields make the canonical encoding unambiguous.
+            new java.util.TreeMap<>(encode(event)).forEach((key, value) -> {
+                for (String part : java.util.List.of(key, value)) {
+                    byte[] bytes = part.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    digest.update(java.nio.ByteBuffer.allocate(4).putInt(bytes.length).array());
+                    digest.update(bytes);
+                }
+            });
+            return java.util.HexFormat.of().formatHex(digest.digest());
+        } catch (java.security.NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 unavailable", impossible);
+        }
+    }
+
     static Map<String, String> encode(AnalyticsClick event) {
         validate(event);
         Map<String, String> fields = new LinkedHashMap<>();
