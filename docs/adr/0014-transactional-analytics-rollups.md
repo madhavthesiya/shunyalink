@@ -44,6 +44,22 @@ The [retention plan](../analytics-retention.md) requires a durable source genera
 an enforced replay floor before bounded pruning can be enabled. UUID-only markers are retained
 until that protocol exists; there is no automatic two-day deletion.
 
+### Producer and storage failure policy
+
+The draft producer enriches events before one Redis stream append: only bounded country, referrer
+host and device labels, bot classification and a scoped visitor pseudonym are stored. Raw IPs and
+request headers stay out of the stream. Events identify the immutable database URL ID, never an
+alias that may be reused. Versioned fields are validated before application.
+
+If Redis fails or its reply is lost, the producer attempts the same event UUID through the
+transactional database applier. A later stream replay then has no additional database effect.
+If neither path confirms success, return an unconfirmed outcome and increment a low-cardinality
+metric; do not throw a storage failure into the redirect. An unconfirmed write may have committed,
+so the metric measures uncertainty, not an exact number of lost clicks. Do not trim unprocessed
+stream events with MAXLEN. No live redirect wiring or consumer is enabled by this producer change.
+Before cutover, configure bounded storage timeouts and securely provision the HMAC key; no
+sub-millisecond latency or guaranteed loss-free operation is claimed.
+
 ## Consequences
 
 - (+) Replays and concurrent duplicate delivery have one committed database effect; a transaction
