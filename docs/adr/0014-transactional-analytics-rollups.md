@@ -38,7 +38,12 @@ with `RETURNING`, aggregate only newly accepted events in memory, then batch wri
 link/day/dimension/value and link/day sketch. Lock parent links in ID order before any bucket rows;
 load each existing sketch once and merge the accepted pseudonyms in memory. This bounds heap use
 and reduces writes for repeated keys, while transactions with many distinct keys still cost more.
-Reject conflicting payloads sharing one UUID rather than selecting one arbitrarily.
+Reject conflicting payloads sharing one UUID rather than selecting one arbitrarily. Persist a
+SHA-256 fingerprint of sorted, length-prefixed v1 fields alongside each UUID. Compare fingerprints
+on redelivery, including across batches and after producer fallback; the marker and rollups commit
+together. A conflicting replay remains pending while independent valid records commit. Existing
+UUID-only markers have unknown payload identity and remain pending for operator reconciliation;
+never infer or overwrite a fingerprint. The digest contains no raw request data.
 
 The [retention plan](../analytics-retention.md) requires a durable source generation/position and
 an enforced replay floor before bounded pruning can be enabled. UUID-only markers are retained
@@ -77,11 +82,14 @@ rejects timestamps outside years 1–9999 before database application. Malformed
 attempts, not distinct records; deleted pending payloads have a separate counter and cannot be
 reconstructed from Redis metadata.
 
-This step provides explicit bounded polling, not automatic lifecycle wiring. Before enabling the
-pipeline, configure an appropriate idle-claim threshold (the roadmap proposes 60 seconds), retry
-backoff, bounded storage timeouts and graceful stop/drain. Tests use zero idle time to recover
-deterministically without sleeping. Retention cleanup, live routing and migration remain required;
-the draft consumer neither trims nor deletes acknowledged stream payloads.
+Automatic polling requires both `app.analytics.pipeline.enabled=true` and the separate
+`app.analytics.consumer.enabled=true` switch. Both remain off by default. Each process uses a fresh
+consumer UUID and an idle-claim threshold of at least 60 seconds. One worker polls serially, waits
+one second between successful polls and exponentially backs off storage failures up to 30 seconds.
+Failures expose a counter without logging exception payloads. Shutdown stops scheduling and drains
+the current transaction and acknowledgement before reporting completion. Storage timeouts must be
+bounded before live cutover. Tests use zero recovery idle time deterministically. Retention cleanup,
+live routing and migration remain required; the draft consumer neither trims nor deletes stream data.
 
 ## Consequences
 

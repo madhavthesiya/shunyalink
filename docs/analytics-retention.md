@@ -25,6 +25,10 @@ Current UUID-only markers cannot enforce that contract yet. Automatic pruning re
 the source metadata, replay-floor checks and recovery tests exist. Storage growth must be measured
 before live cutover; an unbounded table is not an acceptable long-term retention policy.
 
+Payload fingerprints detect conflicting redelivery but do not establish source generation,
+position or a replay floor. Adding a fingerprint does not authorize pruning. Older markers with a
+null fingerprint remain unverifiable and require operator reconciliation if replayed.
+
 Rollup and daily sketch retention is a separate product decision. Existing analytics history must
 be preserved, and no aggregate cleanup is introduced by this change.
 
