@@ -187,7 +187,8 @@ class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
             Class<?>[] parameters = call.getMethod().getParameterTypes();
             if (parameters.length < 2 || parameters[0] != String.class) return false;
             return switch (call.getMethod().getName()) {
-                case "query" -> parameters[1] == org.springframework.jdbc.core.RowMapper.class;
+                case "query" -> parameters[1] == org.springframework.jdbc.core.RowMapper.class
+                        || parameters[1] == org.springframework.jdbc.core.RowCallbackHandler.class;
                 case "update" -> parameters[1] == Object[].class;
                 case "batchUpdate" -> parameters.length == 2 && parameters[1] == List.class;
                 default -> false;
