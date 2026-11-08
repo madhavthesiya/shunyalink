@@ -6,11 +6,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.test.context.TestPropertySource;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -18,6 +21,8 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.mockingDetails;
 
 @TestPropertySource(properties = "app.analytics.pipeline.enabled=true")
 class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
@@ -29,6 +34,7 @@ class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
     private final Instant time = Instant.parse("2026-11-08T01:23:45Z");
     private long urlId;
     private long globalBefore;
+    private final List<UUID> extraIds = new ArrayList<>();
 
     @BeforeEach
     void createLink() {
@@ -40,6 +46,8 @@ class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
     void cleanUp() {
         jdbc.update("DELETE FROM urls WHERE short_id = ?", shortId);
         jdbc.update("DELETE FROM analytics_applied_events WHERE event_id IN (?, ?)", first, second);
+        jdbc.batchUpdate("DELETE FROM analytics_applied_events WHERE event_id = ?",
+                extraIds.stream().map(id -> new Object[]{id}).toList());
         jdbc.update("UPDATE platform_stats SET total_clicks = ? WHERE id = 1", globalBefore);
     }
 
@@ -161,5 +169,79 @@ class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
         }
         byte[] bytes = jdbc.queryForObject("SELECT sketch FROM analytics_unique_daily WHERE url_id = ?", byte[].class, urlId);
         assertThat(UniqueVisitorSketch.fromBytes(bytes).estimate()).isEqualTo(2);
+    }
+
+    @Test
+    void fiveHundredEventsAreAggregatedBeforeDatabaseWrites() {
+        List<AnalyticsClick> events = new ArrayList<>();
+        for (int i = 0; i < 500; i++) {
+            UUID id = UUID.randomUUID();
+            extraIds.add(id);
+            events.add(new AnalyticsClick(id, urlId, time, i < 50, "India", "Direct", "Chrome",
+                    String.format("%064x", i % 25)));
+        }
+        JdbcTemplate measured = spy(jdbc);
+        var transaction = new TransactionTemplate(new DataSourceTransactionManager(jdbc.getDataSource()));
+        transaction.executeWithoutResult(status -> new AnalyticsBatchApplier(measured).applyBatch(events));
+        long operations = mockingDetails(measured).getInvocations().stream().filter(call -> {
+            Class<?>[] parameters = call.getMethod().getParameterTypes();
+            if (parameters.length < 2 || parameters[0] != String.class) return false;
+            return switch (call.getMethod().getName()) {
+                case "query" -> parameters[1] == org.springframework.jdbc.core.RowMapper.class;
+                case "update" -> parameters[1] == Object[].class;
+                case "batchUpdate" -> parameters.length == 2 && parameters[1] == List.class;
+                default -> false;
+            };
+        }).count();
+        assertThat(operations).as("application JDBC operations for 500 events").isLessThanOrEqualTo(12);
+        long writtenRows = mockingDetails(measured).getInvocations().stream()
+                .filter(call -> call.getMethod().getName().equals("batchUpdate")
+                        && call.getMethod().getParameterCount() == 2
+                        && call.getMethod().getParameterTypes()[1] == List.class)
+                .mapToLong(call -> ((List<?>) call.getArgument(1)).size()).sum();
+        assertThat(writtenRows).as("aggregate rows written for one link/hour/day").isLessThanOrEqualTo(8);
+        System.out.printf("500-event workload: %d application JDBC operations, %d aggregate rows%n", operations, writtenRows);
+        assertThat(jdbc.queryForObject("SELECT click_count FROM urls WHERE id=?", Long.class, urlId)).isEqualTo(450);
+        assertThat(jdbc.queryForObject("SELECT total_clicks FROM platform_stats WHERE id=1", Long.class)).isEqualTo(globalBefore + 450);
+        assertThat(jdbc.queryForObject("SELECT human_clicks FROM analytics_hourly WHERE url_id=?", Long.class, urlId)).isEqualTo(450);
+        assertThat(jdbc.queryForObject("SELECT bot_clicks FROM analytics_hourly WHERE url_id=?", Long.class, urlId)).isEqualTo(50);
+        assertThat(jdbc.queryForObject("SELECT SUM(clicks) FROM analytics_daily_dimensions WHERE url_id=?", Long.class, urlId)).isEqualTo(1350);
+        byte[] bytes = jdbc.queryForObject("SELECT sketch FROM analytics_unique_daily WHERE url_id=?", byte[].class, urlId);
+        assertThat(UniqueVisitorSketch.fromBytes(bytes).estimate()).isEqualTo(25);
+        applier.applyBatch(events);
+        assertThat(jdbc.queryForObject("SELECT click_count FROM urls WHERE id=?", Long.class, urlId)).isEqualTo(450);
+    }
+
+    @Test
+    void mixedReplayAndDuplicateIdsOnlyApplyNewEvents() {
+        AnalyticsClick one = event(first, urlId, false, "India");
+        AnalyticsClick two = event(second, urlId, false, "Japan");
+        applier.applyBatch(List.of(one));
+        applier.applyBatch(List.of(one, two, two));
+        assertThat(jdbc.queryForObject("SELECT click_count FROM urls WHERE id=?", Long.class, urlId)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT clicks FROM analytics_daily_dimensions WHERE url_id=? AND dimension='country' AND value='Japan'", Long.class, urlId)).isEqualTo(1);
+    }
+
+    @Test
+    void groupsHoursDaysAndDimensionsIndependently() {
+        UUID third = UUID.randomUUID();
+        extraIds.add(third);
+        applier.applyBatch(List.of(
+                new AnalyticsClick(first, urlId, time, false, "India", "Direct", "Chrome", "a".repeat(64)),
+                new AnalyticsClick(second, urlId, time.plusSeconds(86400), false, "Japan", "Direct", "Chrome", "a".repeat(64)),
+                new AnalyticsClick(third, urlId, time.plusSeconds(90000), false, "Japan", "Direct", "Chrome", "a".repeat(64))));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM analytics_hourly WHERE url_id=?", Long.class, urlId)).isEqualTo(3);
+        assertThat(jdbc.queryForObject("SELECT SUM(human_clicks) FROM analytics_hourly WHERE url_id=?", Long.class, urlId)).isEqualTo(3);
+        assertThat(jdbc.queryForObject("SELECT clicks FROM analytics_daily_dimensions WHERE url_id=? AND dimension='country' AND value='Japan'", Long.class, urlId)).isEqualTo(2);
+        List<byte[]> sketches = jdbc.query("SELECT sketch FROM analytics_unique_daily WHERE url_id=?", (rs, row) -> rs.getBytes(1), urlId);
+        assertThat(sketches).hasSize(2);
+        sketches.forEach(bytes -> assertThat(UniqueVisitorSketch.fromBytes(bytes).estimate()).isEqualTo(1));
+    }
+
+    @Test
+    void conflictingPayloadsForTheSameIdRollBackBeforeWriting() {
+        assertThatThrownBy(() -> applier.applyBatch(List.of(event(first, urlId, false, "India"),
+                event(first, urlId, false, "Japan")))).isInstanceOf(IllegalArgumentException.class);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM analytics_applied_events WHERE event_id=?", Long.class, first)).isZero();
     }
 }
