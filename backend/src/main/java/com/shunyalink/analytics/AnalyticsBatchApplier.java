@@ -74,6 +74,7 @@ public class AnalyticsBatchApplier {
 
         Map<Hour, long[]> hourly = new LinkedHashMap<>();
         Map<Dimension, Long> dimensions = new LinkedHashMap<>();
+        Map<HourDimension, Long> hourlyDimensions = new LinkedHashMap<>();
         Map<Day, List<String>> visitors = new LinkedHashMap<>();
         Map<Long, LinkTotal> totals = new LinkedHashMap<>();
         long humanTotal = 0;
@@ -87,6 +88,9 @@ public class AnalyticsBatchApplier {
             dimensions.merge(new Dimension(event.urlId(), day, "country", event.country()), 1L, Long::sum);
             dimensions.merge(new Dimension(event.urlId(), day, "referrer", event.referrer()), 1L, Long::sum);
             dimensions.merge(new Dimension(event.urlId(), day, "device", event.device()), 1L, Long::sum);
+            hourlyDimensions.merge(new HourDimension(hour, "country", event.country()), 1L, Long::sum);
+            hourlyDimensions.merge(new HourDimension(hour, "referrer", event.referrer()), 1L, Long::sum);
+            hourlyDimensions.merge(new HourDimension(hour, "device", event.device()), 1L, Long::sum);
             if (event.visitorPseudonym() != null) {
                 visitors.computeIfAbsent(new Day(event.urlId(), day), key -> new ArrayList<>()).add(event.visitorPseudonym());
             }
@@ -102,6 +106,11 @@ public class AnalyticsBatchApplier {
                 hourly.entrySet().stream().map(e -> new Object[]{e.getKey().urlId, e.getKey().hour,
                         e.getValue()[0], e.getValue()[1]}).toList());
         if (humanTotal == 0) return conflicts;
+        jdbc.batchUpdate("INSERT INTO analytics_hourly_dimensions (url_id, bucket_start, dimension, value, clicks) "
+                        + "VALUES (?, ?, ?, ?, ?) ON CONFLICT (url_id, bucket_start, dimension, value) "
+                        + "DO UPDATE SET clicks = analytics_hourly_dimensions.clicks + EXCLUDED.clicks",
+                hourlyDimensions.entrySet().stream().map(e -> new Object[]{e.getKey().hour.urlId,
+                        e.getKey().hour.hour, e.getKey().name, e.getKey().value, e.getValue()}).toList());
         jdbc.batchUpdate("INSERT INTO analytics_daily_dimensions (url_id, day, dimension, value, clicks) "
                         + "VALUES (?, ?, ?, ?, ?) ON CONFLICT (url_id, day, dimension, value) "
                         + "DO UPDATE SET clicks = analytics_daily_dimensions.clicks + EXCLUDED.clicks",
@@ -139,5 +148,6 @@ public class AnalyticsBatchApplier {
     private record Hour(long urlId, OffsetDateTime hour) { }
     private record Day(long urlId, LocalDate day) { }
     private record Dimension(long urlId, LocalDate day, String name, String value) { }
+    private record HourDimension(Hour hour, String name, String value) { }
     private record LinkTotal(long clicks, Instant last) { }
 }

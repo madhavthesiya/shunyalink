@@ -137,7 +137,7 @@ public class UrlController {
         return ResponseEntity.ok().build();
     }
 
-    @Operation(summary = "Get link stats", description = "Returns click analytics and metadata for a specific short ID. Supports time ranges: '24h', '7d', and 'all'.")
+    @Operation(summary = "Get link stats", description = "Returns click analytics and metadata for a specific short ID. Supports time ranges: '24h', '7d', '30d', and 'all'.")
     @GetMapping("/stats/{shortId}")
     public UrlStatsResponse getStats(
             @PathVariable String shortId,
@@ -146,6 +146,7 @@ public class UrlController {
         long lookbackMs = switch (range) {
             case "24h" -> 86400000L;
             case "7d" -> 604800000L;
+            case "30d" -> 2592000000L;
             default -> 0L; // All time
         };
         

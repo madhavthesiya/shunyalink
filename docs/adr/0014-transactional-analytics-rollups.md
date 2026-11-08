@@ -1,7 +1,7 @@
 # ADR 0014: Apply analytics events transactionally with stable identities
 
 - **Status:** Accepted for the Phase 3 analytics pipeline (not yet connected to live traffic)
-- **Code:** `AnalyticsBatchApplier`, `AnalyticsClick`, `V14__analytics_rollups.sql`
+- **Code:** `AnalyticsBatchApplier`, `AnalyticsClick`, `DurableAnalyticsReader`, migrations V14–V17
 
 ## Context
 
@@ -116,6 +116,36 @@ All replicas must share this key. Changing it during a UTC day can increase that
 unique counts. The separate read, migration, production configuration and replay-retention requirements still
 block live cutover; passing the routing tests alone does not authorize enabling ingestion.
 
+### Durable reads and historical coverage
+
+Daily-only dimensions cannot filter the first partial UTC day of a rolling 24-hour range. Write
+human dimension counts at both hourly and daily resolution in the same event transaction. Parent
+URL locks serialize both sets of bucket writes. This costs one additional batched JDBC call and
+three more aggregate rows for a single link/hour/day workload; the 500-event regression now expects
+nine aggregate rows rather than six. No existing daily totals are split into invented hours.
+
+`app.analytics.reads.enabled` defaults to false. The prepared reader is wired into owned stats,
+link lists and bio-link summaries. It rejects reads until the durable historical-reconciliation
+marker is ready; merely setting the property cannot silently expose empty replacement charts.
+Owned stats use a repeatable-read database snapshot. Pending Redis counters and timestamps are not
+added to committed URL totals in this mode. Historical all-time dimensions and retained hourly
+series have separate tables so older all-time observations do not acquire fabricated dates.
+
+Preserve the existing response fields and add optional bot counts, per-UTC-day visitor estimates
+and range metadata. Bot counts cover identified new-pipeline bots only; legacy observations have
+no recoverable bot classification. Visitor estimates cover UTC calendar-day scopes intersecting
+the requested range, including the part of its first day before the range starts and the current
+partially observed day. They cover only new events with usable IPs. There is no summed cross-day
+distinct-person field. These scopes are explicit response metadata, not inferred historical data.
+
+Time-series and filtered dimensions use UTC hourly buckets intersecting the requested lookback;
+`analyticsRangeStart` and `analyticsRangeEnd` expose their inclusive/exclusive boundaries. The active
+hour is partial. Seven-day, thirty-day and all-time charts group the available hourly observations
+into days. This is aggregate bucket resolution, not raw-event millisecond filtering. All-time
+dimensions combine the preserved legacy hash snapshot with new daily rows, while filtered reads
+combine only timestamped legacy observations and new hourly dimensions. Existing daily-only draft
+data cannot be backfilled into hours without a verified source; the migration must report gaps.
+
 ## Consequences
 
 - (+) Replays and concurrent duplicate delivery have one committed database effect; a transaction
@@ -126,5 +156,5 @@ block live cutover; passing the routing tests alone does not authorize enabling 
   before high-volume use; a JDBC call count is not a production latency benchmark.
 - (−) The transaction protects events only after they reach PostgreSQL; it cannot recover unprocessed
   events removed from Redis.
-- (−) Migration, Redis stream retention, unique counts, read paths and crash recovery still need
-  implementation and end-to-end tests before this component can be enabled.
+- (−) Historical migration, Redis stream retention and complete cutover/recovery checks remain
+  required before the prepared ingestion and read paths can be enabled.

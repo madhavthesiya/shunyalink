@@ -200,7 +200,8 @@ class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
                         && call.getMethod().getParameterCount() == 2
                         && call.getMethod().getParameterTypes()[1] == List.class)
                 .mapToLong(call -> ((List<?>) call.getArgument(1)).size()).sum();
-        assertThat(writtenRows).as("aggregate rows written for one link/hour/day").isLessThanOrEqualTo(8);
+        // Hourly dimensions add three required rows to the existing six aggregate rows.
+        assertThat(writtenRows).as("aggregate rows written for one link/hour/day").isEqualTo(9);
         System.out.printf("500-event workload: %d application JDBC operations, %d aggregate rows%n", operations, writtenRows);
         assertThat(jdbc.queryForObject("SELECT click_count FROM urls WHERE id=?", Long.class, urlId)).isEqualTo(450);
         assertThat(jdbc.queryForObject("SELECT total_clicks FROM platform_stats WHERE id=1", Long.class)).isEqualTo(globalBefore + 450);

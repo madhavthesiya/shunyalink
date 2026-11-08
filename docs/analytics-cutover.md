@@ -10,6 +10,7 @@ live ingestion until the remaining requirements below are implemented and verifi
 | `app.analytics.pipeline.enabled` | `false` | Transactional database applier |
 | `app.analytics.ingestion.enabled` | `false` | Select the stream producer instead of the legacy writer |
 | `app.analytics.consumer.enabled` | `false` | Automatically poll/recover stream records |
+| `app.analytics.reads.enabled` | `false` | Select committed database stats, lists and bio summaries after historical reconciliation |
 | `ANALYTICS_VISITOR_KEY` | unset | Base64 of exactly 32 cryptographically random bytes, dedicated to analytics |
 
 Ingestion refuses to start without the applier and a valid visitor key. Store the key as an Azure
@@ -23,14 +24,16 @@ to one second, and maximum retry backoff to 30 seconds. An in-flight transaction
 drain during shutdown. Configure bounded Redis and database operations before relying on that drain
 in production. Prepared defaults now set Redis connection/command timeouts to 2s/1s, database pool
 acquisition/validation to 2s/1s, and PostgreSQL connect/socket/cancel-signal waits to 2s/5s/1s.
-Analytics database transactions use a five-second timeout, including statement lock waits. These
+Event-application database transactions use a five-second timeout, including statement lock waits. These
 are individual operation bounds, not an end-to-end redirect latency guarantee. PostgreSQL network
 bounds apply to other database users and migrations as well; slower environments must review their
 configuration before cutover. A socket/commit timeout remains an uncertain write outcome.
 
 ## Remaining gates before enablement
 
-- Durable stats reads must preserve existing API fields and label daily unique estimates honestly.
+- The prepared durable reader preserves the existing API fields and adds bot counts, daily visitor
+  estimates, explicit scope labels and UTC bucket boundaries. Historical readiness is enforced by a
+  database marker, which must not be set manually as a shortcut around migration verification.
 - Preserve available historical all-time distributions and rolling time-series separately. Do not
   invent dates, bot classifications or visitor identities for legacy counts.
 - Stop/drain the legacy writers and scheduler at the documented cutover boundary. Reconcile active
@@ -40,6 +43,20 @@ configuration before cutover. A socket/commit timeout remains an uncertain write
 - Implement the [retention and replay-floor protocol](analytics-retention.md), including retired-source
   rejection and recovery tests. Payload fingerprints and XAUTOCLAIM cursors are not replay floors.
 - Exercise migration, replay, uncertain writes, failure recovery and the final read path together.
+
+## Read resolution and preserved coverage
+
+24h, 7d and 30d queries use UTC hourly buckets intersecting the lookback. Their actual start-inclusive
+and end-exclusive boundaries are returned; the current hour is partially observed. Charts use hourly
+labels for 24h and daily labels for longer ranges. All-time click totals retain committed URL history,
+while chart/distribution data includes only observations actually retained in the source stores.
+
+Legacy all-time dimension hashes do not establish dates, bot status or unique visitors. Preserve them
+separately from the rolling timestamped observations; never distribute their totals over invented days.
+New daily visitor estimates are per UTC day with usable IPs only. The first intersecting day's estimate
+can include observations before the hour-filtered range, and the current day remains partial. Never
+sum these values and label the result distinct visitors across the range. Link lists and bio summaries
+do not query these estimates; their bot count is null rather than an invented zero.
 
 ## Routing behavior prepared
 

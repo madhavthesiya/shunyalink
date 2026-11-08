@@ -20,6 +20,22 @@ public class UrlStatsResponse {
     private Integer orderIndex;
     private String category;
     private Set<String> tags;
+    private Long botClicks;
+    private Map<String, Long> dailyUniqueVisitorEstimates = Map.of();
+    private String analyticsRangeStart;
+    private String analyticsRangeEnd;
+
+    public Long getBotClicks() { return botClicks; }
+    public void setBotClicks(long clicks) { botClicks = clicks; }
+    public Map<String, Long> getDailyUniqueVisitorEstimates() { return dailyUniqueVisitorEstimates; }
+    public String getDailyUniqueVisitorScope() {
+        return "UTC calendar-day scopes intersecting the range (current day partial); new pipeline with usable IPs only; not distinct across days";
+    }
+    public String getBotClickScope() { return botClicks == null ? null : "Identified bots in the new pipeline only"; }
+    public void setDailyUniqueVisitorEstimates(Map<String, Long> estimates) { dailyUniqueVisitorEstimates = Map.copyOf(estimates); }
+    public String getAnalyticsRangeStart() { return analyticsRangeStart; }
+    public String getAnalyticsRangeEnd() { return analyticsRangeEnd; }
+    public void setAnalyticsRange(String start, String end) { analyticsRangeStart = start; analyticsRangeEnd = end; }
 
     public UrlStatsResponse(String shortId, String longUrl, long clickCount, LocalDateTime lastAccessedTime, LocalDateTime createdAt, boolean showOnBio, String title, boolean passwordProtected, Map<String, Long> timeSeries, Map<String, Long> countries, Map<String, Long> referrers, Map<String, Long> devices, Integer orderIndex, String category, Set<String> tags) {
         this.shortId = shortId;

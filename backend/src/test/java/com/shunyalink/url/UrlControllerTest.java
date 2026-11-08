@@ -339,6 +339,14 @@ class UrlControllerTest {
     }
 
     @Test
+    void getStats_thirtyDayRangeIsNotTreatedAsAllTime() throws Exception {
+        when(urlService.getStats("abc123", OWNER_ID, 2592000000L)).thenReturn(sampleStats("abc123"));
+        mockMvc.perform(get("/api/v1/url/stats/abc123?range=30d").with(asUser(OWNER_ID)))
+                .andExpect(status().isOk());
+        verify(urlService).getStats("abc123", OWNER_ID, 2592000000L);
+    }
+
+    @Test
     void getStats_anonymous_returns401AndNeverLoadsStats() throws Exception {
         mockMvc.perform(get("/api/v1/url/stats/abc123"))
                 .andExpect(status().isUnauthorized());
