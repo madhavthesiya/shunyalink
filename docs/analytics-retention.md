@@ -27,3 +27,10 @@ before live cutover; an unbounded table is not an acceptable long-term retention
 
 Rollup and daily sketch retention is a separate product decision. Existing analytics history must
 be preserved, and no aggregate cleanup is introduced by this change.
+
+The draft consumer's in-memory XAUTOCLAIM scan cursor is not a durable replay floor. It only finds
+pending work, including work abandoned by another consumer. Acknowledged payloads remain in the
+stream for now; no XDEL or XTRIM cleanup is enabled. Stream storage also needs a reviewed retention
+implementation before live cutover. If another actor deletes a pending payload, the consumer counts
+the missing entry reported by Redis; this detects missing source data but does not prove a click was
+lost, since its database transaction may already have committed.

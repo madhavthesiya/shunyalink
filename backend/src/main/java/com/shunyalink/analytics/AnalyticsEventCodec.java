@@ -1,6 +1,7 @@
 package com.shunyalink.analytics;
 
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -45,7 +46,9 @@ final class AnalyticsEventCodec {
     }
 
     private static void validate(AnalyticsClick event) {
-        if (!AnalyticsLabels.country(event.country()).equals(event.country())
+        // V1 uses the ordinary four-digit calendar domain, avoiding database timestamp overflow.
+        int year = event.occurredAt().atOffset(ZoneOffset.UTC).getYear();
+        if (year < 1 || year > 9999 || !AnalyticsLabels.country(event.country()).equals(event.country())
                 || !("Direct".equals(event.referrer())
                 || AnalyticsLabels.referrer("https://" + event.referrer()).equals(event.referrer()))
                 || !("Unknown".equals(event.device()) || event.device().matches(

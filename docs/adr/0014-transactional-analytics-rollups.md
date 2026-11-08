@@ -60,6 +60,29 @@ stream events with MAXLEN. No live redirect wiring or consumer is enabled by thi
 Before cutover, configure bounded storage timeouts and securely provision the HMAC key; no
 sub-millisecond latency or guaranteed loss-free operation is claimed.
 
+### Consumer processing and recovery
+
+Create the group at `0-0` with MKSTREAM, retaining events queued before the first consumer starts.
+Each explicit poll first uses Redis XAUTOCLAIM with a scan cursor, then reads fresh group entries.
+Each part is capped at 500 records and gets its own transaction; fresh work has a separate budget
+so malformed pending entries cannot monopolize every poll. The current Spring Data Redis version
+does not expose XAUTOCLAIM through StreamOperations, so a small Lua invocation uses the server
+command and its cursor/deleted-ID response directly.
+
+The database transaction must return successfully before acknowledgement. A database error leaves
+records pending; a crash or failed acknowledgement after commit causes replay with no additional
+database effect. Invalid/unsupported records and conflicting payloads for one UUID within a batch
+remain pending for inspection or a newer decoder. Do not log or copy their payloads. The v1 decoder
+rejects timestamps outside years 1–9999 before database application. Malformed-record counters count
+attempts, not distinct records; deleted pending payloads have a separate counter and cannot be
+reconstructed from Redis metadata.
+
+This step provides explicit bounded polling, not automatic lifecycle wiring. Before enabling the
+pipeline, configure an appropriate idle-claim threshold (the roadmap proposes 60 seconds), retry
+backoff, bounded storage timeouts and graceful stop/drain. Tests use zero idle time to recover
+deterministically without sleeping. Retention cleanup, live routing and migration remain required;
+the draft consumer neither trims nor deletes acknowledged stream payloads.
+
 ## Consequences
 
 - (+) Replays and concurrent duplicate delivery have one committed database effect; a transaction
