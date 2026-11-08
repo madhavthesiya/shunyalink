@@ -5,13 +5,20 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
-import java.util.List;
 import java.util.HashSet;
-import java.util.Set;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 /** Applies enriched events atomically; the producer and consumer are not yet connected. */
 @Service
@@ -25,64 +32,91 @@ public class AnalyticsBatchApplier {
 
     @Transactional
     public void applyBatch(List<AnalyticsClick> events) {
-        long humanTotal = 0;
-        // Consistent link order prevents batches from acquiring URL locks in opposite orders.
-        List<AnalyticsClick> ordered = events.stream()
-                .sorted(Comparator.comparingLong(AnalyticsClick::urlId).thenComparing(AnalyticsClick::eventId))
-                .toList();
-        Set<Long> existingLinks = new HashSet<>();
-        for (long urlId : ordered.stream().map(AnalyticsClick::urlId).distinct().toList()) {
-            // Lock all links in order before deduplication and bucket rows, including on replay.
-            existingLinks.addAll(jdbc.query("SELECT id FROM urls WHERE id = ? FOR UPDATE",
-                    (rs, row) -> rs.getLong(1), urlId));
-        }
-        for (AnalyticsClick event : ordered) {
-            int inserted = jdbc.update("INSERT INTO analytics_applied_events (event_id) VALUES (?) "
-                    + "ON CONFLICT (event_id) DO NOTHING", event.eventId());
-            if (inserted == 0) continue;
-
-            if (!existingLinks.contains(event.urlId())) continue;
-
-            var utc = event.occurredAt().atOffset(ZoneOffset.UTC);
-            jdbc.update("INSERT INTO analytics_hourly (url_id, bucket_start, human_clicks, bot_clicks) "
-                            + "VALUES (?, ?, ?, ?) ON CONFLICT (url_id, bucket_start) DO UPDATE SET "
-                            + "human_clicks = analytics_hourly.human_clicks + EXCLUDED.human_clicks, "
-                            + "bot_clicks = analytics_hourly.bot_clicks + EXCLUDED.bot_clicks",
-                    event.urlId(), utc.truncatedTo(ChronoUnit.HOURS), event.bot() ? 0 : 1, event.bot() ? 1 : 0);
-
-            if (event.bot()) continue;
-            incrementDimension(event.urlId(), utc.toLocalDate(), "country", event.country());
-            incrementDimension(event.urlId(), utc.toLocalDate(), "referrer", event.referrer());
-            incrementDimension(event.urlId(), utc.toLocalDate(), "device", event.device());
-            if (event.visitorPseudonym() != null) {
-                incrementUnique(event.urlId(), utc.toLocalDate(), event.visitorPseudonym());
+        if (events.isEmpty()) return;
+        if (events.size() > 500) throw new IllegalArgumentException("Analytics batches are limited to 500 events");
+        Map<UUID, AnalyticsClick> distinct = new LinkedHashMap<>();
+        events.stream().sorted(Comparator.comparingLong(AnalyticsClick::urlId)
+                .thenComparing(AnalyticsClick::eventId)).forEach(event -> {
+            AnalyticsClick previous = distinct.putIfAbsent(event.eventId(), event);
+            if (previous != null && !previous.equals(event)) {
+                throw new IllegalArgumentException("Conflicting payloads for an event ID");
             }
-            jdbc.update("UPDATE urls SET click_count = click_count + 1, "
-                            + "last_accessed_time = GREATEST(last_accessed_time, ?) WHERE id = ?",
-                    LocalDateTime.ofInstant(event.occurredAt(), ZoneOffset.UTC), event.urlId());
+        });
+        // Acquire parent locks in ID order before deduplication or bucket locks.
+        List<Long> urlIds = distinct.values().stream().map(AnalyticsClick::urlId).distinct().toList();
+        var existingLinks = new HashSet<>(jdbc.query("SELECT id FROM urls WHERE id IN ("
+                + placeholders(urlIds.size()) + ") ORDER BY id FOR UPDATE",
+                (rs, row) -> rs.getLong(1), urlIds.toArray()));
+        String values = String.join(",", Collections.nCopies(distinct.size(), "(?)"));
+        var accepted = new HashSet<>(jdbc.query("INSERT INTO analytics_applied_events (event_id) VALUES "
+                        + values + " ON CONFLICT (event_id) DO NOTHING RETURNING event_id",
+                (rs, row) -> rs.getObject(1, UUID.class), distinct.keySet().toArray()));
+
+        Map<Hour, long[]> hourly = new LinkedHashMap<>();
+        Map<Dimension, Long> dimensions = new LinkedHashMap<>();
+        Map<Day, List<String>> visitors = new LinkedHashMap<>();
+        Map<Long, LinkTotal> totals = new LinkedHashMap<>();
+        long humanTotal = 0;
+        for (AnalyticsClick event : distinct.values()) {
+            if (!accepted.contains(event.eventId()) || !existingLinks.contains(event.urlId())) continue;
+            var utc = event.occurredAt().atOffset(ZoneOffset.UTC);
+            Hour hour = new Hour(event.urlId(), utc.truncatedTo(ChronoUnit.HOURS));
+            hourly.computeIfAbsent(hour, key -> new long[2])[event.bot() ? 1 : 0]++;
+            if (event.bot()) continue;
+            LocalDate day = utc.toLocalDate();
+            dimensions.merge(new Dimension(event.urlId(), day, "country", event.country()), 1L, Long::sum);
+            dimensions.merge(new Dimension(event.urlId(), day, "referrer", event.referrer()), 1L, Long::sum);
+            dimensions.merge(new Dimension(event.urlId(), day, "device", event.device()), 1L, Long::sum);
+            if (event.visitorPseudonym() != null) {
+                visitors.computeIfAbsent(new Day(event.urlId(), day), key -> new ArrayList<>()).add(event.visitorPseudonym());
+            }
+            totals.merge(event.urlId(), new LinkTotal(1, event.occurredAt()),
+                    (a, b) -> new LinkTotal(a.clicks + b.clicks, a.last.isAfter(b.last) ? a.last : b.last));
             humanTotal++;
         }
-        // Update the shared row once, after URL rows, to avoid lock-order inversions between batches.
-        if (humanTotal > 0 && jdbc.update("UPDATE platform_stats SET total_clicks = total_clicks + ? WHERE id = 1", humanTotal) != 1) {
+        if (hourly.isEmpty()) return;
+        jdbc.batchUpdate("INSERT INTO analytics_hourly (url_id, bucket_start, human_clicks, bot_clicks) "
+                        + "VALUES (?, ?, ?, ?) ON CONFLICT (url_id, bucket_start) DO UPDATE SET "
+                        + "human_clicks = analytics_hourly.human_clicks + EXCLUDED.human_clicks, "
+                        + "bot_clicks = analytics_hourly.bot_clicks + EXCLUDED.bot_clicks",
+                hourly.entrySet().stream().map(e -> new Object[]{e.getKey().urlId, e.getKey().hour,
+                        e.getValue()[0], e.getValue()[1]}).toList());
+        if (humanTotal == 0) return;
+        jdbc.batchUpdate("INSERT INTO analytics_daily_dimensions (url_id, day, dimension, value, clicks) "
+                        + "VALUES (?, ?, ?, ?, ?) ON CONFLICT (url_id, day, dimension, value) "
+                        + "DO UPDATE SET clicks = analytics_daily_dimensions.clicks + EXCLUDED.clicks",
+                dimensions.entrySet().stream().map(e -> new Object[]{e.getKey().urlId, e.getKey().day,
+                        e.getKey().name, e.getKey().value, e.getValue()}).toList());
+        List<Object[]> sketches = new ArrayList<>();
+        for (var entry : visitors.entrySet()) {
+            Day day = entry.getKey();
+            // Parent URL locks serialize writers, including creation of an absent sketch.
+            List<byte[]> stored = jdbc.query("SELECT sketch FROM analytics_unique_daily WHERE url_id = ? AND day = ? FOR UPDATE",
+                    (rs, row) -> rs.getBytes(1), day.urlId, day.day);
+            UniqueVisitorSketch sketch = stored.isEmpty() ? UniqueVisitorSketch.empty() : UniqueVisitorSketch.fromBytes(stored.getFirst());
+            entry.getValue().forEach(sketch::add);
+            sketches.add(new Object[]{day.urlId, day.day, sketch.toBytes()});
+        }
+        if (!sketches.isEmpty()) {
+            jdbc.batchUpdate("INSERT INTO analytics_unique_daily (url_id, day, sketch) VALUES (?, ?, ?) "
+                    + "ON CONFLICT (url_id, day) DO UPDATE SET sketch = EXCLUDED.sketch", sketches);
+        }
+        jdbc.batchUpdate("UPDATE urls SET click_count = click_count + ?, "
+                        + "last_accessed_time = GREATEST(last_accessed_time, ?) WHERE id = ?",
+                totals.entrySet().stream().map(e -> new Object[]{e.getValue().clicks,
+                        LocalDateTime.ofInstant(e.getValue().last, ZoneOffset.UTC), e.getKey()}).toList());
+        // Shared platform row is always last, after parent and bucket rows.
+        if (jdbc.update("UPDATE platform_stats SET total_clicks = total_clicks + ? WHERE id = 1", humanTotal) != 1) {
             throw new IllegalStateException("Platform statistics row is missing");
         }
     }
 
-    private void incrementUnique(long urlId, java.time.LocalDate day, String pseudonym) {
-        jdbc.update("INSERT INTO analytics_unique_daily (url_id, day, sketch) VALUES (?, ?, ?) "
-                + "ON CONFLICT (url_id, day) DO NOTHING", urlId, day, UniqueVisitorSketch.empty().toBytes());
-        byte[] bytes = jdbc.queryForObject("SELECT sketch FROM analytics_unique_daily WHERE url_id = ? AND day = ? FOR UPDATE",
-                byte[].class, urlId, day);
-        UniqueVisitorSketch sketch = UniqueVisitorSketch.fromBytes(bytes);
-        sketch.add(pseudonym);
-        jdbc.update("UPDATE analytics_unique_daily SET sketch = ? WHERE url_id = ? AND day = ?",
-                sketch.toBytes(), urlId, day);
+    private static String placeholders(int count) {
+        return String.join(",", Collections.nCopies(count, "?"));
     }
 
-    private void incrementDimension(long urlId, java.time.LocalDate day, String dimension, String value) {
-        jdbc.update("INSERT INTO analytics_daily_dimensions (url_id, day, dimension, value, clicks) "
-                        + "VALUES (?, ?, ?, ?, 1) ON CONFLICT (url_id, day, dimension, value) "
-                        + "DO UPDATE SET clicks = analytics_daily_dimensions.clicks + 1",
-                urlId, day, dimension, value);
-    }
+    private record Hour(long urlId, OffsetDateTime hour) { }
+    private record Day(long urlId, LocalDate day) { }
+    private record Dimension(long urlId, LocalDate day, String name, String value) { }
+    private record LinkTotal(long clicks, Instant last) { }
 }

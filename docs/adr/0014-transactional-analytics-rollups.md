@@ -33,13 +33,25 @@ expiry is unsafe if an older event can be retried. Producers must sanitize and b
 same event UUID across retries, and avoid persisting raw IPs. Before enabling the consumer, implement
 handling for malformed events and test recovery after a committed batch but before acknowledgement.
 
+Process at most 500 events per transaction. Insert deduplication IDs in one parameterized statement
+with `RETURNING`, aggregate only newly accepted events in memory, then batch writes per link/hour,
+link/day/dimension/value and link/day sketch. Lock parent links in ID order before any bucket rows;
+load each existing sketch once and merge the accepted pseudonyms in memory. This bounds heap use
+and reduces writes for repeated keys, while transactions with many distinct keys still cost more.
+Reject conflicting payloads sharing one UUID rather than selecting one arbitrarily.
+
+The [retention plan](../analytics-retention.md) requires a durable source generation/position and
+an enforced replay floor before bounded pruning can be enabled. UUID-only markers are retained
+until that protocol exists; there is no automatic two-day deletion.
+
 ## Consequences
 
 - (+) Replays and concurrent duplicate delivery have one committed database effect; a transaction
   failure rolls back the event marker and rollups together.
 - (+) Existing charts and counts are not changed by adding these tables.
-- (−) Deduplication storage grows until a safe cleanup strategy is implemented. Current per-event
-  updates require batching and performance measurement before high-volume use.
+- (−) Deduplication storage grows until the documented cleanup protocol is implemented. Batching
+  reduces repeated-key writes, but network latency and lock duration still require load measurement
+  before high-volume use; a JDBC call count is not a production latency benchmark.
 - (−) The transaction protects events only after they reach PostgreSQL; it cannot recover unprocessed
   events removed from Redis.
 - (−) Migration, Redis stream retention, unique counts, read paths and crash recovery still need
