@@ -30,6 +30,8 @@ import com.shunyalink.analytics.AnalyticsService;
 
 @Service
 public class DbUrlService implements UrlService {
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.shunyalink.analytics.DurableAnalyticsReader durableAnalyticsReader;
 
     private final UrlRepository urlRepository;
     private final IdEncoder idEncoder;
@@ -247,6 +249,12 @@ public class DbUrlService implements UrlService {
     @Override
     @Transactional
     public String resolveProtectedLink(String shortId, String rawPassword) {
+        return resolveProtectedLinkWithIdentity(shortId, rawPassword).longUrl();
+    }
+
+    @Override
+    @Transactional
+    public ResolvedLink resolveProtectedLinkWithIdentity(String shortId, String rawPassword) {
         UrlEntity entity = urlRepository.findByShortId(shortId)
                 .orElseThrow(() -> new NotFoundException("URL not found"));
         if (entity.getExpiryTime() != null && entity.getExpiryTime().isBefore(LocalDateTime.now())) {
@@ -255,12 +263,12 @@ public class DbUrlService implements UrlService {
 
         String stored = entity.getPassword();
         if (stored == null) {
-            return entity.getLongUrl();
+            return new ResolvedLink(entity.getId(), entity.getLongUrl());
         }
         if (rawPassword == null || !matchesStoredPassword(entity, stored, rawPassword)) {
             throw new UnauthorizedException("Incorrect password");
         }
-        return entity.getLongUrl();
+        return new ResolvedLink(entity.getId(), entity.getLongUrl());
     }
 
     @Override
@@ -333,12 +341,13 @@ public class DbUrlService implements UrlService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public UrlStatsResponse getStats(String shortId, Long userId, long lookbackMs) {
         // Ownership is part of the lookup: other users' (and anonymous) links are
         // indistinguishable from links that don't exist.
         UrlEntity entity = urlRepository.findByShortIdAndUserId(shortId, userId)
                 .orElseThrow(() -> new NotFoundException("Short URL not found"));
+        if (durableAnalyticsReader != null) return durableAnalyticsReader.read(entity, lookbackMs);
         long dbClicks = entity.getClickCount();
         Object redisClicksObj = redisTemplate.opsForHash().get("analytics:click_counts", shortId);
         long redisClicks = 0;
@@ -395,6 +404,10 @@ public class DbUrlService implements UrlService {
         } else {
             entities = urlRepository.findByUserId(userId, pageable);
         }
+        if (durableAnalyticsReader != null) {
+            var summaries = durableAnalyticsReader.summaries(entities.getContent());
+            return entities.map(entity -> summaries.get(entity.getId()));
+        }
         return entities.map(entity -> {
             long dbClicks = entity.getClickCount();
             long redisClicks = 0;
@@ -438,6 +451,9 @@ public class DbUrlService implements UrlService {
 
     public List<UrlStatsResponse> getBioLinks(Long userId) {
         List<UrlEntity> entities = urlRepository.findByUserIdAndShowOnBioTrueOrderByOrderIndexAscCreatedAtDesc(userId);
+        if (durableAnalyticsReader != null) {
+            return List.copyOf(durableAnalyticsReader.summaries(entities).values());
+        }
         return entities.stream().map(entity -> {
             long dbClicks = entity.getClickCount();
             long redisClicks = 0;

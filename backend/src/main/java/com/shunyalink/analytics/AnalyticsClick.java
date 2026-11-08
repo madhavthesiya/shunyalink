@@ -6,7 +6,15 @@ import java.util.UUID;
 
 /** Enriched labels only; the producer must sanitize and bound untrusted input before enqueueing. */
 public record AnalyticsClick(UUID eventId, long urlId, Instant occurredAt, boolean bot,
-                             String country, String referrer, String device, String visitorPseudonym) {
+                             String country, String referrer, String device, String visitorPseudonym, UUID collectionId) {
+    public AnalyticsClick(UUID eventId, long urlId, Instant occurredAt, boolean bot,
+                          String country, String referrer, String device, String visitorPseudonym) {
+        this(eventId, urlId, occurredAt, bot, country, referrer, device, visitorPseudonym, null);
+    }
+
+    public AnalyticsClick withCollection(UUID collection) {
+        return new AnalyticsClick(eventId, urlId, occurredAt, bot, country, referrer, device, visitorPseudonym, collection);
+    }
     public AnalyticsClick(UUID eventId, long urlId, Instant occurredAt, boolean bot,
                           String country, String referrer, String device) {
         this(eventId, urlId, occurredAt, bot, country, referrer, device, null);

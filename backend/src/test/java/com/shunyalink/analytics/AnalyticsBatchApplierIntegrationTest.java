@@ -157,8 +157,8 @@ class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void concurrentDistinctVisitorsAreBothRetained() throws Exception {
-        AnalyticsClick one = new AnalyticsClick(first, urlId, time, false, "India", "Direct", "Chrome", "a".repeat(64));
-        AnalyticsClick two = new AnalyticsClick(second, urlId, time, false, "India", "Direct", "Chrome", "b".repeat(64));
+        AnalyticsClick one = new AnalyticsClick(first, urlId, time, false, "India", "Direct", "Chrome / Linux", "a".repeat(64));
+        AnalyticsClick two = new AnalyticsClick(second, urlId, time, false, "India", "Direct", "Chrome / Linux", "b".repeat(64));
         CountDownLatch start = new CountDownLatch(1);
         try (var executor = Executors.newFixedThreadPool(2)) {
             var a = executor.submit(() -> { start.await(); applier.applyBatch(List.of(one)); return null; });
@@ -177,7 +177,7 @@ class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
         for (int i = 0; i < 500; i++) {
             UUID id = UUID.randomUUID();
             extraIds.add(id);
-            events.add(new AnalyticsClick(id, urlId, time, i < 50, "India", "Direct", "Chrome",
+            events.add(new AnalyticsClick(id, urlId, time, i < 50, "India", "Direct", "Chrome / Linux",
                     String.format("%064x", i % 25)));
         }
         JdbcTemplate measured = spy(jdbc);
@@ -187,7 +187,8 @@ class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
             Class<?>[] parameters = call.getMethod().getParameterTypes();
             if (parameters.length < 2 || parameters[0] != String.class) return false;
             return switch (call.getMethod().getName()) {
-                case "query" -> parameters[1] == org.springframework.jdbc.core.RowMapper.class;
+                case "query" -> parameters[1] == org.springframework.jdbc.core.RowMapper.class
+                        || parameters[1] == org.springframework.jdbc.core.RowCallbackHandler.class;
                 case "update" -> parameters[1] == Object[].class;
                 case "batchUpdate" -> parameters.length == 2 && parameters[1] == List.class;
                 default -> false;
@@ -199,7 +200,8 @@ class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
                         && call.getMethod().getParameterCount() == 2
                         && call.getMethod().getParameterTypes()[1] == List.class)
                 .mapToLong(call -> ((List<?>) call.getArgument(1)).size()).sum();
-        assertThat(writtenRows).as("aggregate rows written for one link/hour/day").isLessThanOrEqualTo(8);
+        // Hourly dimensions add three required rows to the existing six aggregate rows.
+        assertThat(writtenRows).as("aggregate rows written for one link/hour/day").isEqualTo(9);
         System.out.printf("500-event workload: %d application JDBC operations, %d aggregate rows%n", operations, writtenRows);
         assertThat(jdbc.queryForObject("SELECT click_count FROM urls WHERE id=?", Long.class, urlId)).isEqualTo(450);
         assertThat(jdbc.queryForObject("SELECT total_clicks FROM platform_stats WHERE id=1", Long.class)).isEqualTo(globalBefore + 450);
@@ -227,9 +229,9 @@ class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
         UUID third = UUID.randomUUID();
         extraIds.add(third);
         applier.applyBatch(List.of(
-                new AnalyticsClick(first, urlId, time, false, "India", "Direct", "Chrome", "a".repeat(64)),
-                new AnalyticsClick(second, urlId, time.plusSeconds(86400), false, "Japan", "Direct", "Chrome", "a".repeat(64)),
-                new AnalyticsClick(third, urlId, time.plusSeconds(90000), false, "Japan", "Direct", "Chrome", "a".repeat(64))));
+                new AnalyticsClick(first, urlId, time, false, "India", "Direct", "Chrome / Linux", "a".repeat(64)),
+                new AnalyticsClick(second, urlId, time.plusSeconds(86400), false, "Japan", "Direct", "Chrome / Linux", "a".repeat(64)),
+                new AnalyticsClick(third, urlId, time.plusSeconds(90000), false, "Japan", "Direct", "Chrome / Linux", "a".repeat(64))));
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM analytics_hourly WHERE url_id=?", Long.class, urlId)).isEqualTo(3);
         assertThat(jdbc.queryForObject("SELECT SUM(human_clicks) FROM analytics_hourly WHERE url_id=?", Long.class, urlId)).isEqualTo(3);
         assertThat(jdbc.queryForObject("SELECT clicks FROM analytics_daily_dimensions WHERE url_id=? AND dimension='country' AND value='Japan'", Long.class, urlId)).isEqualTo(2);

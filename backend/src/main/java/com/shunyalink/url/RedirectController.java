@@ -19,7 +19,7 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import com.shunyalink.analytics.AnalyticsService;
+import com.shunyalink.analytics.AnalyticsClickRecorder;
 import com.shunyalink.security.ClientIpResolver;
 
 @RestController
@@ -35,7 +35,7 @@ public class RedirectController {
 
     private final UrlService urlService;
     private final UrlRepository urlRepository;
-    private final AnalyticsService analyticsService;
+    private final AnalyticsClickRecorder analyticsService;
     private final RedisTemplate<String, String> redisTemplate;
     private final ClientIpResolver clientIpResolver;
 
@@ -43,7 +43,7 @@ public class RedirectController {
     private String frontendUrl;
 
     public RedirectController(UrlService urlService, UrlRepository urlRepository,
-                              AnalyticsService analyticsService,
+                              AnalyticsClickRecorder analyticsService,
                               RedisTemplate<String, String> redisTemplate,
                               ClientIpResolver clientIpResolver) {
         this.urlService = urlService;
@@ -58,13 +58,19 @@ public class RedirectController {
     public ResponseEntity<?> redirect(@PathVariable String shortId, HttpServletRequest request) {
 
         String cacheKey = "url:entity:" + shortId;
-        Map<Object, Object> cached = redisTemplate.opsForHash().entries(cacheKey);
+        Map<Object, Object> cached;
+        try {
+            cached = redisTemplate.opsForHash().entries(cacheKey);
+        } catch (org.springframework.dao.DataAccessException unavailable) {
+            cached = Map.of();
+        }
 
         String longUrl;
         boolean hasPassword;
         String title;
+        Long urlId = cachedUrlId(cached);
 
-        if (!cached.isEmpty()) {
+        if (urlId != null) {
             // Cache HIT — zero DB hit on the hot path
             longUrl     = (String) cached.get("longUrl");
             hasPassword = "true".equals(cached.get("hasPassword"));
@@ -88,9 +94,14 @@ public class RedirectController {
             longUrl     = entity.getLongUrl();
             hasPassword = entity.getPassword() != null;
             title       = entity.getTitle();
+            urlId       = entity.getId();
 
             // Cache the redirect-critical fields as a Redis Hash
-            cacheEntityForRedirect(cacheKey, entity);
+            try {
+                cacheEntityForRedirect(cacheKey, entity);
+            } catch (org.springframework.dao.DataAccessException unavailable) {
+                // A cache write is optional; the resolved database snapshot remains authoritative.
+            }
         }
 
         // Social Bot Detection for Rich Previews (WhatsApp, Twitter, FB, etc.)
@@ -110,13 +121,15 @@ public class RedirectController {
         }
 
         if (socialBot) {
+            analyticsService.recordPreview(urlId, shortId, clientIpResolver.resolve(request),
+                    request.getHeader("User-Agent"), request.getHeader("Referer"));
             String displayTitle = (title != null && !title.isBlank()) ? title : DEFAULT_TITLE;
             return socialPreview(displayTitle, DEFAULT_DESCRIPTION, longUrl, shortId, request);
         }
 
         // Record Analytics with IP (Only for non-password links here)
         // Password links are recorded in UrlController.resolvePassword instead
-        analyticsService.recordClick(shortId, clientIpResolver.resolve(request), request.getHeader("User-Agent"), request.getHeader("Referer"));
+        analyticsService.recordClick(urlId, shortId, clientIpResolver.resolve(request), request.getHeader("User-Agent"), request.getHeader("Referer"));
 
         // No password -> Proceed with normal redirect (Fix #3: use longUrl directly, no redundant getLongUrl call)
         return ResponseEntity.status(HttpStatus.FOUND)
@@ -130,6 +143,7 @@ public class RedirectController {
      */
     private void cacheEntityForRedirect(String cacheKey, UrlEntity entity) {
         Map<String, String> fields = new HashMap<>();
+        fields.put("urlId", entity.getId().toString());
         fields.put("longUrl", entity.getLongUrl());
         fields.put("hasPassword", String.valueOf(entity.getPassword() != null));
         fields.put("title", entity.getTitle() != null ? entity.getTitle() : "");
@@ -138,6 +152,20 @@ public class RedirectController {
 
         redisTemplate.opsForHash().putAll(cacheKey, fields);
         redisTemplate.expire(cacheKey, 24, TimeUnit.HOURS);
+    }
+
+    /** Old/incomplete hashes must reload the whole snapshot, never attach a new ID to an old URL. */
+    private Long cachedUrlId(Map<Object, Object> cached) {
+        if (cached == null || !(cached.get("longUrl") instanceof String destination) || destination.isBlank()
+                || !("true".equals(cached.get("hasPassword")) || "false".equals(cached.get("hasPassword")))) return null;
+        try {
+            long id = Long.parseLong((String) cached.get("urlId"));
+            Object expiry = cached.get("expiryTime");
+            if (expiry != null && !"".equals(expiry)) LocalDateTime.parse((String) expiry);
+            return id > 0 ? id : null;
+        } catch (RuntimeException invalid) {
+            return null;
+        }
     }
 
     private boolean isSocialBot(String ua) {

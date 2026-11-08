@@ -1,6 +1,6 @@
 package com.shunyalink.url;
 
-import com.shunyalink.analytics.AnalyticsService;
+import com.shunyalink.analytics.AnalyticsClickRecorder;
 import com.shunyalink.security.CustomUserDetailsService;
 import com.shunyalink.security.JwtBlacklistService;
 import com.shunyalink.security.JwtService;
@@ -43,7 +43,7 @@ class RedirectControllerTest {
     private UrlRepository urlRepository;
 
     @MockBean
-    private AnalyticsService analyticsService;
+    private AnalyticsClickRecorder analyticsService;
 
     @MockBean
     private RedisTemplate<String, String> redisTemplate;
@@ -69,6 +69,7 @@ class RedirectControllerTest {
 
     private void cached(String shortId, String longUrl, boolean hasPassword, String title) {
         when(hashOps.entries("url:entity:" + shortId)).thenReturn(Map.of(
+                "urlId", "42",
                 "longUrl", longUrl,
                 "hasPassword", String.valueOf(hasPassword),
                 "title", title,
@@ -76,6 +77,34 @@ class RedirectControllerTest {
     }
 
     // ─── Normal redirects ────────────────────────────────────────────
+
+    @Test
+    void oldCacheWithoutIdReloadsTheEntireRecordIncludingPasswordProtection() throws Exception {
+        when(hashOps.entries("url:entity:reused")).thenReturn(Map.of(
+                "longUrl", "https://old.example", "hasPassword", "false", "expiryTime", ""));
+        UrlEntity replacement = new UrlEntity("reused", "https://new.example/private", true);
+        org.springframework.test.util.ReflectionTestUtils.setField(replacement, "id", 99L);
+        replacement.setPassword("protected");
+        when(urlRepository.findByShortId("reused")).thenReturn(Optional.of(replacement));
+        mockMvc.perform(get("/reused").header("User-Agent", BROWSER_UA))
+                .andExpect(status().isFound()).andExpect(header().string("Location", org.hamcrest.Matchers.endsWith("/p/reused")));
+        verify(hashOps).putAll(eq("url:entity:reused"), argThat(fields -> "99".equals(fields.get("urlId"))
+                && "https://new.example/private".equals(fields.get("longUrl"))));
+        verifyNoInteractions(analyticsService);
+    }
+
+    @Test
+    void cacheReadAndWriteFailuresStillRedirectUsingTheDatabaseSnapshot() throws Exception {
+        when(hashOps.entries(anyString())).thenThrow(new org.springframework.dao.DataAccessResourceFailureException("Redis unavailable"));
+        doThrow(new org.springframework.dao.DataAccessResourceFailureException("Redis unavailable"))
+                .when(hashOps).putAll(anyString(), anyMap());
+        UrlEntity entity = new UrlEntity("available", "https://available.example", false);
+        org.springframework.test.util.ReflectionTestUtils.setField(entity, "id", 87L);
+        when(urlRepository.findByShortId("available")).thenReturn(Optional.of(entity));
+        mockMvc.perform(get("/available").header("User-Agent", BROWSER_UA))
+                .andExpect(status().isFound()).andExpect(header().string("Location", "https://available.example"));
+        verify(analyticsService).recordClick(eq(87L), eq("available"), any(), eq(BROWSER_UA), any());
+    }
 
     @Test
     void redirect_cacheHit_redirectsWithoutTouchingTheDatabase() throws Exception {
@@ -86,12 +115,13 @@ class RedirectControllerTest {
                 .andExpect(header().string("Location", "https://google.com"));
 
         verifyNoInteractions(urlRepository);
-        verify(analyticsService).recordClick(eq("abc123"), any(), eq(BROWSER_UA), any());
+        verify(analyticsService).recordClick(eq(42L), eq("abc123"), any(), eq(BROWSER_UA), any());
     }
 
     @Test
     void redirect_cacheMiss_loadsFromDatabaseAndPopulatesCache() throws Exception {
         UrlEntity entity = new UrlEntity("abc123", "https://google.com", false);
+        org.springframework.test.util.ReflectionTestUtils.setField(entity, "id", 42L);
         when(urlRepository.findByShortId("abc123")).thenReturn(Optional.of(entity));
 
         mockMvc.perform(get("/abc123"))

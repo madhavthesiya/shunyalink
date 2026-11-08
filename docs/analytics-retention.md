@@ -1,5 +1,10 @@
 # Analytics deduplication retention
 
+The owner selected a fresh collection instead of importing legacy analytics. That removes the old
+history reconciliation gate, but does not authorize deleting post-cutover deduplication records.
+The new collection start excludes older observations; it is not an ordered source replay floor.
+The pruning contract below is still required for the new pipeline.
+
 The pipeline is disabled while ingestion and recovery are being implemented. Keep all rows in
 `analytics_applied_events` for now. Do not run a time-based DELETE: `applied_at` is a processing
 timestamp, not proof that an older event cannot be replayed. Deleting a marker while its event is
@@ -25,5 +30,16 @@ Current UUID-only markers cannot enforce that contract yet. Automatic pruning re
 the source metadata, replay-floor checks and recovery tests exist. Storage growth must be measured
 before live cutover; an unbounded table is not an acceptable long-term retention policy.
 
+Payload fingerprints detect conflicting redelivery but do not establish source generation,
+position or a replay floor. Adding a fingerprint does not authorize pruning. Older markers with a
+null fingerprint remain unverifiable and require operator reconciliation if replayed.
+
 Rollup and daily sketch retention is a separate product decision. Existing analytics history must
 be preserved, and no aggregate cleanup is introduced by this change.
+
+The draft consumer's in-memory XAUTOCLAIM scan cursor is not a durable replay floor. It only finds
+pending work, including work abandoned by another consumer. Acknowledged payloads remain in the
+stream for now; no XDEL or XTRIM cleanup is enabled. Stream storage also needs a reviewed retention
+implementation before live cutover. If another actor deletes a pending payload, the consumer counts
+the missing entry reported by Redis; this detects missing source data but does not prove a click was
+lost, since its database transaction may already have committed.

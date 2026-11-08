@@ -1,12 +1,12 @@
 # ADR 0014: Apply analytics events transactionally with stable identities
 
 - **Status:** Accepted for the Phase 3 analytics pipeline (not yet connected to live traffic)
-- **Code:** `AnalyticsBatchApplier`, `AnalyticsClick`, `V14__analytics_rollups.sql`
+- **Code:** `AnalyticsBatchApplier`, `AnalyticsClick`, `DurableAnalyticsReader`, migrations V14–V17
 
 ## Context
 
 The current sync can leave renamed Redis counters behind after a crash. Retrying a batch without
-deduplication can instead count the same event twice. The owner asked to preserve existing history,
+deduplication can instead count the same event twice. The owner initially asked to preserve existing history,
 exclude identified bots and keep redirects working when analytics storage is unavailable.
 
 ## Options
@@ -18,6 +18,42 @@ exclude identified bots and keep redirects working when analytics storage is una
 | **Deduplicate and update rollups in one database transaction** | A committed event has one database effect even if redelivered | More database work and retained deduplication state |
 
 ## Decision
+
+### Current owner decision: start with new data
+
+The owner superseded the historical-import requirement and chose a fresh collection period. The
+release no longer requires a live legacy audit, historical import or orphan-counter reconciliation.
+Do not delete that data or add uncertain counters: leave legacy Redis keys and database counters
+untouched by the fresh writer. The audit remains an optional read-only diagnostic.
+
+When ingestion starts with `app.analytics.fresh-start=true` (default), establish one durable
+`NEW_ONLY` identity and start metadata before constructing the publisher. Lock the collection state exclusively; event
+transactions take a shared lock before URL/bucket locks, so activation cannot race a partial batch.
+Refuse activation if draft pipeline aggregates already exist instead of erasing them or mixing epochs.
+Subsequent starts return the original boundary and collection UUID. Legacy-only aggregates do not block fresh activation.
+Publishers cache the UUID only after its database transaction commits and include it in the immutable
+event before either storage attempt. The same UUID survives fallback and replay. Membership uses this
+identity, not a timestamp comparison: application/database clocks can differ. The displayed start
+time is descriptive metadata; an old record with a future timestamp still cannot enter the collection.
+
+Fresh events update separate per-link and platform human totals in the rollup/deduplication
+transaction. Old URL/platform counters are not incremented in this mode. All read surfaces, including
+public clicks and CSV exports, select the new projection; untouched legacy totals, dimensions, timestamps and pending
+counters are excluded. New platform clicks survive link deletion. Empty new link totals mean zero
+clicks and no new last-access time. Responses expose `analyticsCollectionStartedAt` for this scope.
+
+Events without the active collection identity are deliberately excluded and acknowledged, without persisting new
+markers or copying their payloads. A low-cardinality counter measures exclusion attempts, not unique
+lost clicks. The legacy sync scheduler is disabled when stream ingestion is enabled. The cutoff
+identifies the new collection period; it is **not** the replay floor needed to prune post-cutover event
+markers. Retention, recovery, secrets and final cutover checks remain required before live enablement.
+
+The older preserve-history reader remains compatible with its existing reconciliation guard, but
+it is not the selected release policy. `fresh-start=false` skips automatic activation; it does not
+reset an established collection or provide an automatic rollback.
+Database fallback reports deliberate exclusions as `EXCLUDED`, rather than claiming they were persisted
+or lost. Exclusion metrics count attempts. The optional collection field is fingerprinted with the
+other v1 fields; legacy v1 records remain decodable but are outside a fresh collection.
 
 The future consumer supplies a stable UUID per event and the original immutable URL database ID.
 One transaction inserts previously unseen IDs and applies hourly human/bot counts, daily dimensions,
@@ -38,11 +74,125 @@ with `RETURNING`, aggregate only newly accepted events in memory, then batch wri
 link/day/dimension/value and link/day sketch. Lock parent links in ID order before any bucket rows;
 load each existing sketch once and merge the accepted pseudonyms in memory. This bounds heap use
 and reduces writes for repeated keys, while transactions with many distinct keys still cost more.
-Reject conflicting payloads sharing one UUID rather than selecting one arbitrarily.
+Reject conflicting payloads sharing one UUID rather than selecting one arbitrarily. Persist a
+SHA-256 fingerprint of sorted, length-prefixed v1 fields alongside each UUID. Compare fingerprints
+on redelivery, including across batches and after producer fallback; the marker and rollups commit
+together. A conflicting replay remains pending while independent valid records commit. Existing
+UUID-only markers have unknown payload identity and remain pending for operator reconciliation;
+never infer or overwrite a fingerprint. The digest contains no raw request data.
 
 The [retention plan](../analytics-retention.md) requires a durable source generation/position and
 an enforced replay floor before bounded pruning can be enabled. UUID-only markers are retained
 until that protocol exists; there is no automatic two-day deletion.
+
+### Producer and storage failure policy
+
+The draft producer enriches events before one Redis stream append: only bounded country, referrer
+host and device labels, bot classification and a scoped visitor pseudonym are stored. Raw IPs and
+request headers stay out of the stream. Events identify the immutable database URL ID, never an
+alias that may be reused. Versioned fields are validated before application.
+
+If Redis fails or its reply is lost, the producer attempts the same event UUID through the
+transactional database applier. A later stream replay then has no additional database effect.
+If neither path confirms success, return an unconfirmed outcome and increment a low-cardinality
+metric; do not throw a storage failure into the redirect. An unconfirmed write may have committed,
+so the metric measures uncertainty, not an exact number of lost clicks. Do not trim unprocessed
+stream events with MAXLEN. No live redirect wiring or consumer is enabled by this producer change.
+Before cutover, review the prepared bounded storage timeouts and securely provision the HMAC key; no
+sub-millisecond latency or guaranteed loss-free operation is claimed.
+
+### Consumer processing and recovery
+
+Create the group at `0-0` with MKSTREAM, retaining events queued before the first consumer starts.
+Each explicit poll first uses Redis XAUTOCLAIM with a scan cursor, then reads fresh group entries.
+Each part is capped at 500 records and gets its own transaction; fresh work has a separate budget
+so malformed pending entries cannot monopolize every poll. The current Spring Data Redis version
+does not expose XAUTOCLAIM through StreamOperations, so a small Lua invocation uses the server
+command and its cursor/deleted-ID response directly.
+
+The database transaction must return successfully before acknowledgement. A database error leaves
+records pending; a crash or failed acknowledgement after commit causes replay with no additional
+database effect. Invalid/unsupported records and conflicting payloads for one UUID within a batch
+remain pending for inspection or a newer decoder. Do not log or copy their payloads. The v1 decoder
+rejects timestamps outside years 1–9999 before database application. Malformed-record counters count
+attempts, not distinct records; deleted pending payloads have a separate counter and cannot be
+reconstructed from Redis metadata.
+
+Automatic polling requires both `app.analytics.pipeline.enabled=true` and the separate
+`app.analytics.consumer.enabled=true` switch. Both remain off by default. Each process uses a fresh
+consumer UUID and an idle-claim threshold of at least 60 seconds. One worker polls serially, waits
+one second between successful polls and exponentially backs off storage failures up to 30 seconds.
+Failures expose a counter without logging exception payloads. Shutdown stops scheduling and drains
+the current transaction and acknowledgement before reporting completion. Storage timeouts are
+explicitly bounded as documented in the cutover prerequisites; analytics transactions have a
+five-second deadline. Tests use zero recovery idle time deterministically. Retention cleanup,
+live cutover and migration remain required; the draft consumer neither trims nor deletes stream data.
+
+See the [cutover prerequisites](../analytics-cutover.md) for the prepared settings and remaining gates.
+
+### Resolution identity and gated routing
+
+Security review of CodeQL alert 10 (`java/csrf-unprotected-request-type`): the public redirect GET
+does not depend on an authenticated principal or ambient cookies, and does not change ownership,
+destination, password, account data or permissions. Its writes are redirect caching and anonymous
+click telemetry. These are incidental effects analogous to access logging, permitted by
+[RFC 9110 section 9.2.1](https://www.rfc-editor.org/rfc/rfc9110.html#section-9.2.1). Protected links
+still challenge on GET and require password verification via POST. This endpoint-specific finding
+is a false positive; no query, check, severity threshold or repository setting is disabled. Reopen
+the finding if protected business mutations are ever added to this GET. Analytics totals are
+best-effort observations, not authenticated actions or authorization/billing inputs.
+
+The redirect hash now includes the immutable `urlId`. Older or incomplete hashes reload the full
+database snapshot, including the destination, password and expiry status. Never fetch a current ID
+and attach it to a stale cached destination: an alias may have been deleted and reused. Cache read
+or write failures allow resolution from PostgreSQL when it is available. Warmup writes the same ID.
+Password resolution returns the authorized ID and destination together; publishing occurs after
+the verification/legacy-password-upgrade transaction returns, without another alias lookup.
+
+`AnalyticsClickRecorder` selects one writer. With ingestion disabled it calls the existing async
+legacy service; with ingestion enabled it calls the stream producer directly, without retaining raw
+request data in an async queue. It never falls back to the legacy counters after a producer error,
+because an uncertain write may already have committed. Unexpected enrichment/scheduling failures
+increment a counter without logging payloads. Public social previews are published as bot events
+only in the new pipeline; protected challenges and wrong passwords publish nothing.
+
+Ingestion remains off by default and requires the transactional applier and a separate,
+base64-encoded 32-byte visitor key. Invalid/missing keys fail startup without echoing their value.
+All replicas must share this key. Changing it during a UTC day can increase that day's approximate
+unique counts. The separate read, migration, production configuration and replay-retention requirements still
+block live cutover; passing the routing tests alone does not authorize enabling ingestion.
+
+### Durable reads and historical coverage (older preserve mode)
+
+Daily-only dimensions cannot filter the first partial UTC day of a rolling 24-hour range. Write
+human dimension counts at both hourly and daily resolution in the same event transaction. Parent
+URL locks serialize both sets of bucket writes. This costs one additional batched JDBC call and
+three more aggregate rows for a single link/hour/day workload; the 500-event regression now expects
+nine aggregate rows rather than six. No existing daily totals are split into invented hours.
+
+`app.analytics.reads.enabled` defaults to false. The prepared reader is wired into owned stats,
+link lists and bio-link summaries. It rejects reads until the durable historical-reconciliation
+marker is ready; merely setting the property cannot silently expose empty replacement charts.
+Owned stats use a repeatable-read database snapshot. Pending Redis counters and timestamps are not
+added to committed URL totals in this mode. Historical all-time dimensions and retained hourly
+series have separate tables so older all-time observations do not acquire fabricated dates.
+
+Preserve the existing response fields and add optional bot counts, per-UTC-day visitor estimates
+and range metadata. Bot counts cover identified new-pipeline bots only; legacy observations have
+no recoverable bot classification. Visitor estimates cover UTC calendar-day scopes intersecting
+the requested range, including the part of its first day before the range starts and the current
+partially observed day. They cover only new events with usable IPs. There is no summed cross-day
+distinct-person field. These scopes are explicit response metadata, not inferred historical data.
+
+Time-series and filtered dimensions use UTC hourly buckets intersecting the requested lookback;
+the grouping unit is a bound SQL parameter, and collection modes choose complete fixed query
+statements. Request ranges never become SQL syntax.
+`analyticsRangeStart` and `analyticsRangeEnd` expose their inclusive/exclusive boundaries. The active
+hour is partial. Seven-day, thirty-day and all-time charts group the available hourly observations
+into days. This is aggregate bucket resolution, not raw-event millisecond filtering. All-time
+dimensions combine the preserved legacy hash snapshot with new daily rows, while filtered reads
+combine only timestamped legacy observations and new hourly dimensions. Existing daily-only draft
+data cannot be backfilled into hours without a verified source; the migration must report gaps.
 
 ## Consequences
 
@@ -54,5 +204,5 @@ until that protocol exists; there is no automatic two-day deletion.
   before high-volume use; a JDBC call count is not a production latency benchmark.
 - (−) The transaction protects events only after they reach PostgreSQL; it cannot recover unprocessed
   events removed from Redis.
-- (−) Migration, Redis stream retention, unique counts, read paths and crash recovery still need
-  implementation and end-to-end tests before this component can be enabled.
+- (−) Fresh collection activation, Redis stream retention and complete cutover/recovery checks remain
+  required before the prepared ingestion and read paths can be enabled.
