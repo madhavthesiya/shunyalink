@@ -38,6 +38,10 @@ of PRs immediately after merge. The owner chose to stop these proposals and clos
 configuration was removed. Vulnerability alerts remain enabled, while checking and updating
 dependencies and pinned actions becomes a manual responsibility.
 
+The [monthly maintenance checklist](../monthly-maintenance.md) defines the owner-run review,
+commands, evidence to retain, exception reassessment and GeoIP refresh procedure. This does not
+enable automatic update proposals or change repository settings.
+
 ### Initial scan and exceptions
 
 On 2026-11-07 the original image had 10 fixable critical and 39 fixable high findings. Upgrading
