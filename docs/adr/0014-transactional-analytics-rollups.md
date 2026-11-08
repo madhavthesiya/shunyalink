@@ -132,6 +132,16 @@ See the [cutover prerequisites](../analytics-cutover.md) for the prepared settin
 
 ### Resolution identity and gated routing
 
+Security review of CodeQL alert 10 (`java/csrf-unprotected-request-type`): the public redirect GET
+does not depend on an authenticated principal or ambient cookies, and does not change ownership,
+destination, password, account data or permissions. Its writes are redirect caching and anonymous
+click telemetry. These are incidental effects analogous to access logging, permitted by
+[RFC 9110 section 9.2.1](https://www.rfc-editor.org/rfc/rfc9110.html#section-9.2.1). Protected links
+still challenge on GET and require password verification via POST. This endpoint-specific finding
+is a false positive; no query, check, severity threshold or repository setting is disabled. Reopen
+the finding if protected business mutations are ever added to this GET. Analytics totals are
+best-effort observations, not authenticated actions or authorization/billing inputs.
+
 The redirect hash now includes the immutable `urlId`. Older or incomplete hashes reload the full
 database snapshot, including the destination, password and expiry status. Never fetch a current ID
 and attach it to a stale cached destination: an alias may have been deleted and reused. Cache read
@@ -175,6 +185,8 @@ partially observed day. They cover only new events with usable IPs. There is no 
 distinct-person field. These scopes are explicit response metadata, not inferred historical data.
 
 Time-series and filtered dimensions use UTC hourly buckets intersecting the requested lookback;
+the grouping unit is a bound SQL parameter, and collection modes choose complete fixed query
+statements. Request ranges never become SQL syntax.
 `analyticsRangeStart` and `analyticsRangeEnd` expose their inclusive/exclusive boundaries. The active
 hour is partial. Seven-day, thirty-day and all-time charts group the available hourly observations
 into days. This is aggregate bucket resolution, not raw-event millisecond filtering. All-time

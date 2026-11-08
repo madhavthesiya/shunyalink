@@ -62,17 +62,21 @@ public class DurableAnalyticsReader {
         boolean hourly = lookbackMs > 0 && lookbackMs <= 86_400_000;
         String interval = hourly ? "hour" : "day";
         Map<String, Long> series = new LinkedHashMap<>();
-        String seriesSource = "SELECT bucket_start, human_clicks AS clicks FROM analytics_hourly WHERE url_id=? "
-                + (policy.fresh ? "" : "UNION ALL SELECT bucket_start, clicks FROM analytics_legacy_hourly WHERE url_id=?");
-        jdbc.query("SELECT date_trunc('" + interval + "', bucket_start AT TIME ZONE 'UTC') AS bucket, SUM(clicks) AS clicks "
-                        + "FROM (" + seriesSource + ") AS data "
-                        + "WHERE clicks>0 AND bucket_start>=? AND bucket_start<? GROUP BY bucket ORDER BY bucket",
+        String seriesSql = policy.fresh
+                ? "SELECT date_trunc(?, bucket_start AT TIME ZONE 'UTC') AS bucket, SUM(human_clicks) AS clicks "
+                    + "FROM analytics_hourly WHERE url_id=? AND human_clicks>0 AND bucket_start>=? AND bucket_start<? GROUP BY bucket ORDER BY bucket"
+                : "SELECT date_trunc(?, bucket_start AT TIME ZONE 'UTC') AS bucket, SUM(clicks) AS clicks "
+                    + "FROM (SELECT bucket_start, human_clicks AS clicks FROM analytics_hourly WHERE url_id=? "
+                    + "UNION ALL SELECT bucket_start, clicks FROM analytics_legacy_hourly WHERE url_id=?) AS data "
+                    + "WHERE clicks>0 AND bucket_start>=? AND bucket_start<? GROUP BY bucket ORDER BY bucket";
+        jdbc.query(seriesSql,
                 (RowCallbackHandler) row -> {
                     LocalDateTime bucket = row.getObject("bucket", LocalDateTime.class);
                     String label = hourly ? bucket.format(DateTimeFormatter.ofPattern("MMM d, HH:00", Locale.ENGLISH))
                             : bucket.toLocalDate().toString();
                     series.put(label, row.getLong("clicks"));
-                }, policy.fresh ? new Object[]{link.getId(), start, end} : new Object[]{link.getId(), link.getId(), start, end});
+                }, policy.fresh ? new Object[]{interval, link.getId(), start, end}
+                        : new Object[]{interval, link.getId(), link.getId(), start, end});
 
         Map<String, Map<String, Long>> dimensions = Map.of("country", new TreeMap<>(),
                 "referrer", new TreeMap<>(), "device", new TreeMap<>());
@@ -89,11 +93,14 @@ public class DurableAnalyticsReader {
                             + "GROUP BY dimension, value ORDER BY dimension, value", collect, link.getId(), link.getId());
             }
         } else {
-            String dimensionSource = "SELECT bucket_start, dimension, value, clicks FROM analytics_hourly_dimensions WHERE url_id=? "
-                    + (policy.fresh ? "" : "UNION ALL SELECT bucket_start, dimension, value, clicks FROM analytics_legacy_hourly_dimensions WHERE url_id=?");
-            jdbc.query("SELECT dimension, value, SUM(clicks) AS clicks FROM ("
-                            + dimensionSource + ") AS data "
-                            + "WHERE bucket_start>=? AND bucket_start<? GROUP BY dimension, value ORDER BY dimension, value",
+            String dimensionSql = policy.fresh
+                    ? "SELECT dimension, value, SUM(clicks) AS clicks FROM analytics_hourly_dimensions "
+                        + "WHERE url_id=? AND bucket_start>=? AND bucket_start<? GROUP BY dimension, value ORDER BY dimension, value"
+                    : "SELECT dimension, value, SUM(clicks) AS clicks FROM ("
+                        + "SELECT bucket_start, dimension, value, clicks FROM analytics_hourly_dimensions WHERE url_id=? UNION ALL "
+                        + "SELECT bucket_start, dimension, value, clicks FROM analytics_legacy_hourly_dimensions WHERE url_id=?) AS data "
+                        + "WHERE bucket_start>=? AND bucket_start<? GROUP BY dimension, value ORDER BY dimension, value";
+            jdbc.query(dimensionSql,
                     collect, policy.fresh ? new Object[]{link.getId(), start, end} : new Object[]{link.getId(), link.getId(), start, end});
         }
         var response = response(link, series, dimensions.get("country"), dimensions.get("referrer"), dimensions.get("device"));
