@@ -22,8 +22,8 @@ WORKDIR /app
 
 COPY --from=builder /app/target/url-shortener-0.0.1-SNAPSHOT.jar app.jar
 
-# Pin the monthly DB-IP Lite database and verify it before including it in the image.
-RUN curl -fsSL https://download.db-ip.com/free/dbip-country-lite-2026-10.mmdb.gz -o /tmp/dbip.mmdb.gz \
+# Pin our retained DB-IP Lite copy so upstream monthly cleanup cannot break builds.
+RUN curl -fsSL https://github.com/madhavthesiya/shunyalink/releases/download/geoip-dbip-country-2026-10/dbip-country-lite-2026-10.mmdb.gz -o /tmp/dbip.mmdb.gz \
     && echo '4cd44536ddfd40fec7eca94a233f7d19f38d470e6522e653cb8d27001f5fe177  /tmp/dbip.mmdb.gz' | sha256sum -c - \
     && gunzip -c /tmp/dbip.mmdb.gz > /app/dbip-country.mmdb \
     && rm /tmp/dbip.mmdb.gz
