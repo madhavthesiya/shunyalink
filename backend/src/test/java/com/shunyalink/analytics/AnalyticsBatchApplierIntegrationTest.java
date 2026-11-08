@@ -45,7 +45,8 @@ class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
 
     private long insertLink(String id) {
         return jdbc.queryForObject("INSERT INTO urls (short_id, long_url, is_custom, click_count, created_at) "
-                + "VALUES (?, 'https://example.com', false, 0, CURRENT_TIMESTAMP) RETURNING id", Long.class, id);
+                + "VALUES (?, ?, false, 0, CURRENT_TIMESTAMP) RETURNING id", Long.class, id,
+                "https://example.com/analytics-test/" + id);
     }
 
     private AnalyticsClick event(UUID id, long linkId, boolean bot, String country) {
