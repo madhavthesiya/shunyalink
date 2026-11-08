@@ -228,4 +228,31 @@ class AnalyticsStreamConsumerIntegrationTest extends BaseIntegrationTest {
         assertThat(clicks()).isEqualTo(1);
         assertThat(pending()).isEqualTo(1);
     }
+
+    @Test
+    void lockedDatabaseRowTimesOutWithoutAcknowledgementAndRecoversAfterUnlock() throws Exception {
+        var pool = jdbc.getDataSource().unwrap(com.zaxxer.hikari.HikariDataSource.class);
+        assertThat(pool.getConnectionTimeout()).isEqualTo(2000);
+        assertThat(pool.getDataSourceProperties().getProperty("socketTimeout")).isEqualTo("5");
+        var connections = (org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory) redis.getConnectionFactory();
+        assertThat(connections.getClientConfiguration().getCommandTimeout()).isEqualTo(Duration.ofSeconds(1));
+        enqueue();
+        try (var blocker = jdbc.getDataSource().getConnection()) {
+            blocker.setAutoCommit(false);
+            try (var lock = blocker.prepareStatement("SELECT id FROM urls WHERE id=? FOR UPDATE")) {
+                lock.setLong(1, urlId);
+                lock.executeQuery().close();
+                org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(Duration.ofSeconds(12), () ->
+                        assertThatThrownBy(worker("bounded-lock")::pollOnce)
+                                .isInstanceOf(org.springframework.dao.DataAccessException.class));
+                assertThat(pending()).isEqualTo(1);
+            } finally {
+                blocker.rollback();
+            }
+        }
+        assertThat(clicks()).isZero();
+        assertThat(worker("unlocked").pollOnce()).isEqualTo(1);
+        assertThat(clicks()).isEqualTo(1);
+        assertThat(pending()).isZero();
+    }
 }

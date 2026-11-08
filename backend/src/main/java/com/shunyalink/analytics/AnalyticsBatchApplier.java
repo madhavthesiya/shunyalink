@@ -31,7 +31,7 @@ public class AnalyticsBatchApplier {
         this.jdbc = jdbc;
     }
 
-    @Transactional
+    @Transactional(timeout = 5)
     public void applyBatch(List<AnalyticsClick> events) {
         if (!applyValidatedBatch(events).isEmpty()) {
             throw new IllegalArgumentException("Conflicting or unverifiable event identity");
@@ -39,7 +39,7 @@ public class AnalyticsBatchApplier {
     }
 
     /** Returns identities whose persisted payload differs; independent events still commit. */
-    @Transactional
+    @Transactional(timeout = 5)
     public Set<UUID> applyValidatedBatch(List<AnalyticsClick> events) {
         if (events.isEmpty()) return Set.of();
         if (events.size() > 500) throw new IllegalArgumentException("Analytics batches are limited to 500 events");

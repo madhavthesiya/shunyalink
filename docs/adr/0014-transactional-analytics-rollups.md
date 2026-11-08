@@ -62,7 +62,7 @@ If neither path confirms success, return an unconfirmed outcome and increment a 
 metric; do not throw a storage failure into the redirect. An unconfirmed write may have committed,
 so the metric measures uncertainty, not an exact number of lost clicks. Do not trim unprocessed
 stream events with MAXLEN. No live redirect wiring or consumer is enabled by this producer change.
-Before cutover, configure bounded storage timeouts and securely provision the HMAC key; no
+Before cutover, review the prepared bounded storage timeouts and securely provision the HMAC key; no
 sub-millisecond latency or guaranteed loss-free operation is claimed.
 
 ### Consumer processing and recovery
@@ -87,9 +87,34 @@ Automatic polling requires both `app.analytics.pipeline.enabled=true` and the se
 consumer UUID and an idle-claim threshold of at least 60 seconds. One worker polls serially, waits
 one second between successful polls and exponentially backs off storage failures up to 30 seconds.
 Failures expose a counter without logging exception payloads. Shutdown stops scheduling and drains
-the current transaction and acknowledgement before reporting completion. Storage timeouts must be
-bounded before live cutover. Tests use zero recovery idle time deterministically. Retention cleanup,
-live routing and migration remain required; the draft consumer neither trims nor deletes stream data.
+the current transaction and acknowledgement before reporting completion. Storage timeouts are
+explicitly bounded as documented in the cutover prerequisites; analytics transactions have a
+five-second deadline. Tests use zero recovery idle time deterministically. Retention cleanup,
+live cutover and migration remain required; the draft consumer neither trims nor deletes stream data.
+
+See the [cutover prerequisites](../analytics-cutover.md) for the prepared settings and remaining gates.
+
+### Resolution identity and gated routing
+
+The redirect hash now includes the immutable `urlId`. Older or incomplete hashes reload the full
+database snapshot, including the destination, password and expiry status. Never fetch a current ID
+and attach it to a stale cached destination: an alias may have been deleted and reused. Cache read
+or write failures allow resolution from PostgreSQL when it is available. Warmup writes the same ID.
+Password resolution returns the authorized ID and destination together; publishing occurs after
+the verification/legacy-password-upgrade transaction returns, without another alias lookup.
+
+`AnalyticsClickRecorder` selects one writer. With ingestion disabled it calls the existing async
+legacy service; with ingestion enabled it calls the stream producer directly, without retaining raw
+request data in an async queue. It never falls back to the legacy counters after a producer error,
+because an uncertain write may already have committed. Unexpected enrichment/scheduling failures
+increment a counter without logging payloads. Public social previews are published as bot events
+only in the new pipeline; protected challenges and wrong passwords publish nothing.
+
+Ingestion remains off by default and requires the transactional applier and a separate,
+base64-encoded 32-byte visitor key. Invalid/missing keys fail startup without echoing their value.
+All replicas must share this key. Changing it during a UTC day can increase that day's approximate
+unique counts. The separate read, migration, production configuration and replay-retention requirements still
+block live cutover; passing the routing tests alone does not authorize enabling ingestion.
 
 ## Consequences
 

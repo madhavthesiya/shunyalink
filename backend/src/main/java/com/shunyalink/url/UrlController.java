@@ -40,7 +40,7 @@ public class UrlController {
     private final UserRepository userRepository;
     private final CsvExportService csvExportService;
     private final com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository;
-    private final com.shunyalink.analytics.AnalyticsService analyticsService;
+    private final com.shunyalink.analytics.AnalyticsClickRecorder analyticsService;
     private final CsvImportService csvImportService;
     private final ClientIpResolver clientIpResolver;
 
@@ -51,7 +51,7 @@ public class UrlController {
                          UrlRepository urlRepository, UserRepository userRepository,
                          CsvExportService csvExportService,
                          com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository,
-                         com.shunyalink.analytics.AnalyticsService analyticsService,
+                         com.shunyalink.analytics.AnalyticsClickRecorder analyticsService,
                          CsvImportService csvImportService,
                          ClientIpResolver clientIpResolver) {
         this.urlService = urlService;
@@ -248,9 +248,9 @@ public class UrlController {
         rateLimiterService.checkLimit("rate:resolve:" + shortId, 100, 3600);
 
         // Throws 401 on a wrong password; verification (and legacy upgrade) lives in the service
-        String longUrl = urlService.resolveProtectedLink(shortId, body.password());
-        analyticsService.recordClick(shortId, clientIpResolver.resolve(request), request.getHeader("User-Agent"), request.getHeader("Referer"));
-        return Map.of("longUrl", longUrl);
+        ResolvedLink resolved = urlService.resolveProtectedLinkWithIdentity(shortId, body.password());
+        analyticsService.recordClick(resolved.urlId(), shortId, ip, request.getHeader("User-Agent"), request.getHeader("Referer"));
+        return Map.of("longUrl", resolved.longUrl());
     }
 
     @Operation(summary = "Reveal link password", description = "Owner-only: returns the link's password so it can be shared again. Rate-limited per user.", security = @SecurityRequirement(name = "Bearer Authentication"))
