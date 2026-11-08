@@ -39,6 +39,8 @@ configuration before cutover. A socket/commit timeout remains an uncertain write
 - Stop/drain the legacy writers and scheduler at the documented cutover boundary. Reconcile active
   pending counters and inspect orphaned processing keys. Orphans may be partially applied; ambiguous
   data requires a dry-run report and an explicit owner decision.
+  Use the [isolated read-only audit](analytics-legacy-audit.md) to collect initial findings without
+  starting application jobs or copying visitor payloads. It does not authorize migration by itself.
 - Review the prepared storage timeout defaults against the production network and load before cutover.
 - Implement the [retention and replay-floor protocol](analytics-retention.md), including retired-source
   rejection and recovery tests. Payload fingerprints and XAUTOCLAIM cursors are not replay floors.
