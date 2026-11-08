@@ -43,12 +43,13 @@ final class AnalyticsEventCodec {
         fields.put("referrer", event.referrer());
         fields.put("device", event.device());
         if (event.visitorPseudonym() != null) fields.put("visitor", event.visitorPseudonym());
+        if (event.collectionId() != null) fields.put("collectionId", event.collectionId().toString());
         return Map.copyOf(fields);
     }
 
     static AnalyticsClick decode(Map<String, String> fields) {
-        if (fields == null || !fields.keySet().containsAll(REQUIRED) || fields.size() > 9
-                || fields.keySet().stream().anyMatch(key -> !REQUIRED.contains(key) && !"visitor".equals(key))
+        if (fields == null || !fields.keySet().containsAll(REQUIRED) || fields.size() > 10
+                || fields.keySet().stream().anyMatch(key -> !REQUIRED.contains(key) && !"visitor".equals(key) && !"collectionId".equals(key))
                 || fields.values().stream().anyMatch(value -> value == null || value.length() > 253)
                 || !"1".equals(fields.get("version"))
                 || !("true".equals(fields.get("bot")) || "false".equals(fields.get("bot")))) {
@@ -57,7 +58,7 @@ final class AnalyticsEventCodec {
         AnalyticsClick event = new AnalyticsClick(UUID.fromString(fields.get("eventId")),
                 Long.parseLong(fields.get("urlId")), Instant.parse(fields.get("occurredAt")),
                 Boolean.parseBoolean(fields.get("bot")), fields.get("country"), fields.get("referrer"),
-                fields.get("device"), fields.get("visitor"));
+                fields.get("device"), fields.get("visitor"), fields.containsKey("collectionId") ? UUID.fromString(fields.get("collectionId")) : null);
         validate(event);
         return event;
     }

@@ -6,7 +6,7 @@
 ## Context
 
 The current sync can leave renamed Redis counters behind after a crash. Retrying a batch without
-deduplication can instead count the same event twice. The owner asked to preserve existing history,
+deduplication can instead count the same event twice. The owner initially asked to preserve existing history,
 exclude identified bots and keep redirects working when analytics storage is unavailable.
 
 ## Options
@@ -18,6 +18,42 @@ exclude identified bots and keep redirects working when analytics storage is una
 | **Deduplicate and update rollups in one database transaction** | A committed event has one database effect even if redelivered | More database work and retained deduplication state |
 
 ## Decision
+
+### Current owner decision: start with new data
+
+The owner superseded the historical-import requirement and chose a fresh collection period. The
+release no longer requires a live legacy audit, historical import or orphan-counter reconciliation.
+Do not delete that data or add uncertain counters: leave legacy Redis keys and database counters
+untouched by the fresh writer. The audit remains an optional read-only diagnostic.
+
+When ingestion starts with `app.analytics.fresh-start=true` (default), establish one durable
+`NEW_ONLY` identity and start metadata before constructing the publisher. Lock the collection state exclusively; event
+transactions take a shared lock before URL/bucket locks, so activation cannot race a partial batch.
+Refuse activation if draft pipeline aggregates already exist instead of erasing them or mixing epochs.
+Subsequent starts return the original boundary and collection UUID. Legacy-only aggregates do not block fresh activation.
+Publishers cache the UUID only after its database transaction commits and include it in the immutable
+event before either storage attempt. The same UUID survives fallback and replay. Membership uses this
+identity, not a timestamp comparison: application/database clocks can differ. The displayed start
+time is descriptive metadata; an old record with a future timestamp still cannot enter the collection.
+
+Fresh events update separate per-link and platform human totals in the rollup/deduplication
+transaction. Old URL/platform counters are not incremented in this mode. All read surfaces, including
+public clicks and CSV exports, select the new projection; untouched legacy totals, dimensions, timestamps and pending
+counters are excluded. New platform clicks survive link deletion. Empty new link totals mean zero
+clicks and no new last-access time. Responses expose `analyticsCollectionStartedAt` for this scope.
+
+Events without the active collection identity are deliberately excluded and acknowledged, without persisting new
+markers or copying their payloads. A low-cardinality counter measures exclusion attempts, not unique
+lost clicks. The legacy sync scheduler is disabled when stream ingestion is enabled. The cutoff
+identifies the new collection period; it is **not** the replay floor needed to prune post-cutover event
+markers. Retention, recovery, secrets and final cutover checks remain required before live enablement.
+
+The older preserve-history reader remains compatible with its existing reconciliation guard, but
+it is not the selected release policy. `fresh-start=false` skips automatic activation; it does not
+reset an established collection or provide an automatic rollback.
+Database fallback reports deliberate exclusions as `EXCLUDED`, rather than claiming they were persisted
+or lost. Exclusion metrics count attempts. The optional collection field is fingerprinted with the
+other v1 fields; legacy v1 records remain decodable but are outside a fresh collection.
 
 The future consumer supplies a stable UUID per event and the original immutable URL database ID.
 One transaction inserts previously unseen IDs and applies hourly human/bot counts, daily dimensions,
@@ -116,7 +152,7 @@ All replicas must share this key. Changing it during a UTC day can increase that
 unique counts. The separate read, migration, production configuration and replay-retention requirements still
 block live cutover; passing the routing tests alone does not authorize enabling ingestion.
 
-### Durable reads and historical coverage
+### Durable reads and historical coverage (older preserve mode)
 
 Daily-only dimensions cannot filter the first partial UTC day of a rolling 24-hour range. Write
 human dimension counts at both hourly and daily resolution in the same event transaction. Parent
@@ -156,5 +192,5 @@ data cannot be backfilled into hours without a verified source; the migration mu
   before high-volume use; a JDBC call count is not a production latency benchmark.
 - (−) The transaction protects events only after they reach PostgreSQL; it cannot recover unprocessed
   events removed from Redis.
-- (−) Historical migration, Redis stream retention and complete cutover/recovery checks remain
+- (−) Fresh collection activation, Redis stream retention and complete cutover/recovery checks remain
   required before the prepared ingestion and read paths can be enabled.

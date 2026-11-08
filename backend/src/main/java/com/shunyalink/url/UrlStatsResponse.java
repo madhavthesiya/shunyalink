@@ -24,6 +24,10 @@ public class UrlStatsResponse {
     private Map<String, Long> dailyUniqueVisitorEstimates = Map.of();
     private String analyticsRangeStart;
     private String analyticsRangeEnd;
+    private String analyticsCollectionStartedAt;
+    public String getAnalyticsCollectionStartedAt() { return analyticsCollectionStartedAt; }
+    public void setAnalyticsCollectionStartedAt(String start) { analyticsCollectionStartedAt = start; }
+    public void setCollectedTotals(long clicks, LocalDateTime last) { clickCount = clicks; lastAccessedTime = last; }
 
     public Long getBotClicks() { return botClicks; }
     public void setBotClicks(long clicks) { botClicks = clicks; }

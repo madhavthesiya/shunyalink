@@ -18,7 +18,7 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.*;
 
 @Import(DurableAnalyticsReaderIntegrationTest.FixedClock.class)
-@TestPropertySource(properties = {"app.analytics.pipeline.enabled=true", "app.analytics.reads.enabled=true"})
+@TestPropertySource(properties = {"app.analytics.pipeline.enabled=true", "app.analytics.reads.enabled=true", "app.analytics.fresh-start=false"})
 class DurableAnalyticsReaderIntegrationTest extends BaseIntegrationTest {
     @TestConfiguration
     static class FixedClock {

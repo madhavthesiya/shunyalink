@@ -405,8 +405,8 @@ public class DbUrlService implements UrlService {
             entities = urlRepository.findByUserId(userId, pageable);
         }
         if (durableAnalyticsReader != null) {
-            durableAnalyticsReader.assertHistoryReady();
-            return entities.map(com.shunyalink.analytics.DurableAnalyticsReader::summary);
+            var summaries = durableAnalyticsReader.summaries(entities.getContent());
+            return entities.map(entity -> summaries.get(entity.getId()));
         }
         return entities.map(entity -> {
             long dbClicks = entity.getClickCount();
@@ -452,8 +452,7 @@ public class DbUrlService implements UrlService {
     public List<UrlStatsResponse> getBioLinks(Long userId) {
         List<UrlEntity> entities = urlRepository.findByUserIdAndShowOnBioTrueOrderByOrderIndexAscCreatedAtDesc(userId);
         if (durableAnalyticsReader != null) {
-            durableAnalyticsReader.assertHistoryReady();
-            return entities.stream().map(com.shunyalink.analytics.DurableAnalyticsReader::summary).toList();
+            return List.copyOf(durableAnalyticsReader.summaries(entities).values());
         }
         return entities.stream().map(entity -> {
             long dbClicks = entity.getClickCount();

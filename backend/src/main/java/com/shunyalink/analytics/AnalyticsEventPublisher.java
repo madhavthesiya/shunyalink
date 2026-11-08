@@ -23,15 +23,24 @@ public final class AnalyticsEventPublisher {
     private final BotClassifier bots = new BotClassifier();
     private final Map<Outcome, Counter> outcomes = new EnumMap<>(Outcome.class);
     private final Counter redisFailures;
+    private final java.util.function.Supplier<UUID> collection;
 
     public AnalyticsEventPublisher(StreamOperations<String, String, String> streams,
                                    AnalyticsBatchApplier fallback, LocalCountryResolver countries,
                                    VisitorHasher visitors, Clock clock, MeterRegistry metrics) {
+        this(streams, fallback, countries, visitors, clock, metrics, () -> null);
+    }
+
+    public AnalyticsEventPublisher(StreamOperations<String, String, String> streams,
+                                   AnalyticsBatchApplier fallback, LocalCountryResolver countries,
+                                   VisitorHasher visitors, Clock clock, MeterRegistry metrics,
+                                   java.util.function.Supplier<UUID> collection) {
         this.streams = streams;
         this.fallback = fallback;
         this.countries = countries;
         this.visitors = visitors;
         this.clock = clock;
+        this.collection = collection;
         for (Outcome outcome : Outcome.values()) {
             outcomes.put(outcome, metrics.counter("shunyalink.analytics.publish", "outcome", outcome.name().toLowerCase(Locale.ROOT)));
         }
@@ -44,7 +53,7 @@ public final class AnalyticsEventPublisher {
         AnalyticsClick event = new AnalyticsClick(UUID.randomUUID(), urlId, occurredAt, bot,
                 AnalyticsLabels.country(countries.resolve(ip)), AnalyticsLabels.referrer(referrer),
                 AnalyticsLabels.device(userAgent), bot ? null : visitors.hash(urlId,
-                occurredAt.atOffset(ZoneOffset.UTC).toLocalDate(), ip).orElse(null));
+                occurredAt.atOffset(ZoneOffset.UTC).toLocalDate(), ip).orElse(null), collection.get());
         // No MAXLEN trim: unprocessed or pending events must not be silently removed.
         try {
             if (streams.add(STREAM, AnalyticsEventCodec.encode(event)) != null) return result(event, Outcome.QUEUED);
@@ -55,6 +64,8 @@ public final class AnalyticsEventPublisher {
         try {
             fallback.applyBatch(List.of(event));
             return result(event, Outcome.PERSISTED);
+        } catch (AnalyticsBatchApplier.BeforeCollectionException excluded) {
+            return result(event, Outcome.EXCLUDED);
         } catch (RuntimeException unavailable) {
             // A timeout cannot prove whether either write committed. Do not claim exact loss counts.
             return result(event, Outcome.UNCONFIRMED);
@@ -66,6 +77,6 @@ public final class AnalyticsEventPublisher {
         return new Publication(event.eventId(), outcome);
     }
 
-    public enum Outcome { QUEUED, PERSISTED, UNCONFIRMED }
+    public enum Outcome { QUEUED, PERSISTED, UNCONFIRMED, EXCLUDED }
     public record Publication(UUID eventId, Outcome outcome) { }
 }

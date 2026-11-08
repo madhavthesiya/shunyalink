@@ -5,10 +5,14 @@ import java.util.List;
 
 @Service
 public class CsvExportService {
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.shunyalink.analytics.DurableAnalyticsReader durableAnalyticsReader;
 
     private static final String HEADER = "Short ID,Original URL,Click Count,Created At,Title,Category,Tags\n";
 
     public String exportToCsv(List<UrlEntity> urls) {
+        var collected = durableAnalyticsReader == null ? java.util.Map.<Long, UrlStatsResponse>of()
+                : durableAnalyticsReader.summaries(urls);
         StringBuilder csv = new StringBuilder(HEADER);
         for (UrlEntity url : urls) {
             String category = url.getCategory() != null ? url.getCategory() : "GENERAL";
@@ -16,7 +20,8 @@ public class CsvExportService {
             csv.append(String.join(",",
                     cell(url.getShortId()),
                     cell(url.getLongUrl()),
-                    cell(String.valueOf(url.getClickCount())),
+                    cell(String.valueOf(durableAnalyticsReader == null ? url.getClickCount()
+                            : collected.get(url.getId()).getClickCount())),
                     cell(url.getCreatedAt() != null ? url.getCreatedAt().toString() : ""),
                     cell(url.getTitle()),
                     cell(category),

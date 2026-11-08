@@ -3,6 +3,29 @@
 The new pipeline is prepared in the draft analytics PR. Its switches remain **off**. Do not enable
 live ingestion until the remaining requirements below are implemented and verified.
 
+## Selected policy: new data only
+
+The owner chose to start fresh. A legacy audit/import and reconciliation are no longer release gates.
+Leave old keys and counters in place; do not add orphaned counters or delete historical records.
+The optional [legacy audit](analytics-legacy-audit.md) is diagnostic only.
+
+Enabled ingestion defaults to `app.analytics.fresh-start=true`. It atomically records one collection
+start and collection UUID before publishing. Restarting or scaling out reuses both, without resetting anything.
+If draft pipeline aggregates already exist, activation fails without modifying them: they cannot
+safely be split at a new timestamp at hourly/day resolution. Normal legacy data does not block it.
+
+New per-link and platform projections provide clicks and last-access timestamps. The stats, list,
+bio, CSV exports and public-click responses exclude legacy totals and pending counters. Public new clicks remain
+after a link is deleted. `analyticsCollectionStartedAt` identifies the start in link responses. Old
+events without the active collection UUID are excluded even if their clock claims a future time.
+New tagged events remain eligible if the application/database clocks differ. The UUID is fixed before
+the Redis attempt and survives fallback. Deliberate fallback exclusions have an `EXCLUDED` outcome,
+not a false persistence/loss claim; exclusion counters count attempts. This collection identity
+does not replace the deduplication retention/replay-floor protocol for new events.
+
+The legacy sync job is disabled when stream ingestion is enabled. Enable reads and ingestion together
+only after final cutover checks. `fresh-start=false` does not revert or reset an established boundary.
+
 ## Configuration prepared
 
 | Setting | Default | Purpose |
@@ -10,7 +33,8 @@ live ingestion until the remaining requirements below are implemented and verifi
 | `app.analytics.pipeline.enabled` | `false` | Transactional database applier |
 | `app.analytics.ingestion.enabled` | `false` | Select the stream producer instead of the legacy writer |
 | `app.analytics.consumer.enabled` | `false` | Automatically poll/recover stream records |
-| `app.analytics.reads.enabled` | `false` | Select committed database stats, lists and bio summaries after historical reconciliation |
+| `app.analytics.reads.enabled` | `false` | Select committed stats, lists, bio summaries and public clicks for the established collection |
+| `app.analytics.fresh-start` | `true` | Establish/reuse the fresh period when ingestion starts |
 | `ANALYTICS_VISITOR_KEY` | unset | Base64 of exactly 32 cryptographically random bytes, dedicated to analytics |
 
 Ingestion refuses to start without the applier and a valid visitor key. Store the key as an Azure
@@ -31,27 +55,22 @@ configuration before cutover. A socket/commit timeout remains an uncertain write
 
 ## Remaining gates before enablement
 
-- The prepared durable reader preserves the existing API fields and adds bot counts, daily visitor
-  estimates, explicit scope labels and UTC bucket boundaries. Historical readiness is enforced by a
-  database marker, which must not be set manually as a shortcut around migration verification.
-- Preserve available historical all-time distributions and rolling time-series separately. Do not
-  invent dates, bot classifications or visitor identities for legacy counts.
-- Stop/drain the legacy writers and scheduler at the documented cutover boundary. Reconcile active
-  pending counters and inspect orphaned processing keys. Orphans may be partially applied; ambiguous
-  data requires a dry-run report and an explicit owner decision.
-  Use the [isolated read-only audit](analytics-legacy-audit.md) to collect initial findings without
-  starting application jobs or copying visitor payloads. It does not authorize migration by itself.
+- Verify the fresh period consistently scopes all existing API fields and additive metrics. Leave
+  the old reconciliation marker false in fresh mode; it is not a shortcut or prerequisite.
+- Verify old counters/distributions remain excluded across restart, replay and link deletion.
+- Switch all replicas away from legacy writers/schedulers during the controlled cutover. Legacy
+  traffic during a rolling transition is not retroactively imported into the new collection.
 - Review the prepared storage timeout defaults against the production network and load before cutover.
 - Implement the [retention and replay-floor protocol](analytics-retention.md), including retired-source
   rejection and recovery tests. Payload fingerprints and XAUTOCLAIM cursors are not replay floors.
-- Exercise migration, replay, uncertain writes, failure recovery and the final read path together.
+- Exercise fresh activation, replay, uncertain writes, failure recovery and the final read path together.
 
 ## Read resolution and preserved coverage
 
-24h, 7d and 30d queries use UTC hourly buckets intersecting the lookback. Their actual start-inclusive
+24h, 7d and 30d queries use UTC hourly buckets intersecting the lookback and new collection. Their actual start-inclusive
 and end-exclusive boundaries are returned; the current hour is partially observed. Charts use hourly
-labels for 24h and daily labels for longer ranges. All-time click totals retain committed URL history,
-while chart/distribution data includes only observations actually retained in the source stores.
+labels for 24h and daily labels for longer ranges. In the selected fresh mode, all-time click totals
+mean this new collection only. No old URL count, hash or retained series is added.
 
 Legacy all-time dimension hashes do not establish dates, bot status or unique visitors. Preserve them
 separately from the rolling timestamped observations; never distribute their totals over invented days.

@@ -1,5 +1,9 @@
 # Read-only legacy analytics audit
 
+The owner has since selected a fresh collection period. This audit is optional and is no longer a
+release prerequisite. Old counters/history stay excluded and untouched; do not run an import or
+reconcile ambiguous orphan counters merely to enable the fresh collection.
+
 Run this audit before deciding how to migrate active counters, orphaned processing keys and
 historical distributions. A processing key may already be partly applied to URL/platform totals.
 The report never applies, deletes, renames or acknowledges source data and never marks history ready.

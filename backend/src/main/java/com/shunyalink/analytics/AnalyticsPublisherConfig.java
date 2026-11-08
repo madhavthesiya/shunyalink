@@ -16,7 +16,9 @@ class AnalyticsPublisherConfig {
     @Bean
     AnalyticsEventPublisher analyticsEventPublisher(StringRedisTemplate redis, AnalyticsBatchApplier applier,
             LocalCountryResolver countries, MeterRegistry metrics,
-            @Value("${app.analytics.visitor-key:}") String encodedKey) {
+            @Value("${app.analytics.visitor-key:}") String encodedKey,
+            @Value("${app.analytics.fresh-start:true}") boolean freshStart,
+            org.springframework.beans.factory.ObjectProvider<FreshAnalyticsCutover> cutover) {
         byte[] key;
         try {
             key = Base64.getDecoder().decode(encodedKey);
@@ -24,7 +26,10 @@ class AnalyticsPublisherConfig {
         } catch (IllegalArgumentException invalid) {
             throw new IllegalArgumentException("Analytics ingestion requires a base64-encoded 32-byte visitor key");
         }
+        var collection = cutover.getIfAvailable();
+        if (freshStart) cutover.getObject().activate();
+        else if (collection != null) collection.resumeIfEstablished();
         return new AnalyticsEventPublisher(redis.opsForStream(), applier, countries,
-                new VisitorHasher(key), Clock.systemUTC(), metrics);
+                new VisitorHasher(key), Clock.systemUTC(), metrics, collection == null ? () -> null : collection::collectionId);
     }
 }

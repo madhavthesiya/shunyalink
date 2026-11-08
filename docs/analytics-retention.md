@@ -1,5 +1,10 @@
 # Analytics deduplication retention
 
+The owner selected a fresh collection instead of importing legacy analytics. That removes the old
+history reconciliation gate, but does not authorize deleting post-cutover deduplication records.
+The new collection start excludes older observations; it is not an ordered source replay floor.
+The pruning contract below is still required for the new pipeline.
+
 The pipeline is disabled while ingestion and recovery are being implemented. Keep all rows in
 `analytics_applied_events` for now. Do not run a time-based DELETE: `applied_at` is a processing
 timestamp, not proof that an older event cannot be replayed. Deleting a marker while its event is

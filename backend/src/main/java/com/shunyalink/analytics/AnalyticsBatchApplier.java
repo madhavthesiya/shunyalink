@@ -26,13 +26,28 @@ import java.util.Set;
 @ConditionalOnProperty(name = "app.analytics.pipeline.enabled", havingValue = "true")
 public class AnalyticsBatchApplier {
     private final JdbcTemplate jdbc;
+    private final io.micrometer.core.instrument.Counter beforeCutover;
 
     public AnalyticsBatchApplier(JdbcTemplate jdbc) {
+        this(jdbc, io.micrometer.core.instrument.Metrics.globalRegistry);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AnalyticsBatchApplier(JdbcTemplate jdbc, io.micrometer.core.instrument.MeterRegistry metrics) {
         this.jdbc = jdbc;
+        beforeCutover = metrics.counter("shunyalink.analytics.outside_collection");
     }
 
     @Transactional(timeout = 5)
     public void applyBatch(List<AnalyticsClick> events) {
+        if (events.size() == 1) {
+            var policy = collectionPolicy();
+            if ("NEW_ONLY".equals(policy.mode) && policy.id != null
+                    && !policy.id.equals(events.getFirst().collectionId())) {
+                beforeCutover.increment();
+                throw new BeforeCollectionException();
+            }
+        }
         if (!applyValidatedBatch(events).isEmpty()) {
             throw new IllegalArgumentException("Conflicting or unverifiable event identity");
         }
@@ -43,6 +58,16 @@ public class AnalyticsBatchApplier {
     public Set<UUID> applyValidatedBatch(List<AnalyticsClick> events) {
         if (events.isEmpty()) return Set.of();
         if (events.size() > 500) throw new IllegalArgumentException("Analytics batches are limited to 500 events");
+        var collection = collectionPolicy();
+        boolean fresh = "NEW_ONLY".equals(collection.mode);
+        if (fresh) {
+            var start = collection.start;
+            if (start == null || collection.id == null) throw new IllegalStateException("Fresh collection has no start boundary or identity");
+            var acceptedPeriod = events.stream().filter(event -> collection.id.equals(event.collectionId())).toList();
+            beforeCutover.increment(events.size() - acceptedPeriod.size());
+            events = acceptedPeriod;
+            if (events.isEmpty()) return Set.of(); // Explicitly excluded by the owner's fresh-data policy.
+        }
         Map<UUID, AnalyticsClick> distinct = new LinkedHashMap<>();
         events.stream().sorted(Comparator.comparingLong(AnalyticsClick::urlId)
                 .thenComparing(AnalyticsClick::eventId)).forEach(event -> {
@@ -130,12 +155,22 @@ public class AnalyticsBatchApplier {
             jdbc.batchUpdate("INSERT INTO analytics_unique_daily (url_id, day, sketch) VALUES (?, ?, ?) "
                     + "ON CONFLICT (url_id, day) DO UPDATE SET sketch = EXCLUDED.sketch", sketches);
         }
-        jdbc.batchUpdate("UPDATE urls SET click_count = click_count + ?, "
+        if (!fresh) jdbc.batchUpdate("UPDATE urls SET click_count = click_count + ?, "
                         + "last_accessed_time = GREATEST(last_accessed_time, ?) WHERE id = ?",
                 totals.entrySet().stream().map(e -> new Object[]{e.getValue().clicks,
                         LocalDateTime.ofInstant(e.getValue().last, ZoneOffset.UTC), e.getKey()}).toList());
+        if (fresh) {
+            jdbc.batchUpdate("INSERT INTO analytics_link_totals (url_id, human_clicks, last_accessed_at) VALUES (?, ?, ?) "
+                            + "ON CONFLICT (url_id) DO UPDATE SET human_clicks=analytics_link_totals.human_clicks+EXCLUDED.human_clicks, "
+                            + "last_accessed_at=GREATEST(analytics_link_totals.last_accessed_at, EXCLUDED.last_accessed_at)",
+                    totals.entrySet().stream().map(e -> new Object[]{e.getKey(), e.getValue().clicks,
+                            e.getValue().last.atOffset(ZoneOffset.UTC)}).toList());
+            if (jdbc.update("UPDATE analytics_platform_totals SET human_clicks=human_clicks+? WHERE id=1", humanTotal) != 1) {
+                throw new IllegalStateException("Fresh platform projection is missing");
+            }
+        }
         // Shared platform row is always last, after parent and bucket rows.
-        if (jdbc.update("UPDATE platform_stats SET total_clicks = total_clicks + ? WHERE id = 1", humanTotal) != 1) {
+        if (!fresh && jdbc.update("UPDATE platform_stats SET total_clicks = total_clicks + ? WHERE id = 1", humanTotal) != 1) {
             throw new IllegalStateException("Platform statistics row is missing");
         }
         return conflicts;
@@ -145,7 +180,17 @@ public class AnalyticsBatchApplier {
         return String.join(",", Collections.nCopies(count, "?"));
     }
 
+    private CollectionPolicy collectionPolicy() {
+        return jdbc.query("SELECT data_policy, collection_started_at, collection_id FROM analytics_pipeline_state WHERE id=1 FOR SHARE",
+                (row, index) -> new CollectionPolicy(row.getString(1), row.getObject(2, OffsetDateTime.class), row.getObject(3, UUID.class))).getFirst();
+    }
+
+    static final class BeforeCollectionException extends RuntimeException {
+        BeforeCollectionException() { super("Event is outside the fresh collection period"); }
+    }
+
     private record Hour(long urlId, OffsetDateTime hour) { }
+    private record CollectionPolicy(String mode, OffsetDateTime start, UUID id) { }
     private record Day(long urlId, LocalDate day) { }
     private record Dimension(long urlId, LocalDate day, String name, String value) { }
     private record HourDimension(Hour hour, String name, String value) { }

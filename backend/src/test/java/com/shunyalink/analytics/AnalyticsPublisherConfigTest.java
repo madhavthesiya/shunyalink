@@ -16,6 +16,17 @@ class AnalyticsPublisherConfigTest {
             .withBean(MeterRegistry.class, SimpleMeterRegistry::new);
 
     @Test
+    void enabledIngestionEstablishesTheFreshBoundaryByDefault() {
+        var cutover = mock(FreshAnalyticsCutover.class);
+        context.withBean(AnalyticsBatchApplier.class, () -> mock(AnalyticsBatchApplier.class))
+                .withBean(FreshAnalyticsCutover.class, () -> cutover)
+                .withPropertyValues("app.analytics.pipeline.enabled=true", "app.analytics.ingestion.enabled=true",
+                        "app.analytics.visitor-key=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
+                .run(app -> { assertThat(app).hasNotFailed().hasSingleBean(AnalyticsEventPublisher.class);
+                    org.mockito.Mockito.verify(cutover).activate(); });
+    }
+
+    @Test
     void defaultsDoNotRequireAVisitorSecretOrCreateAPublisher() {
         context.run(app -> assertThat(app).hasNotFailed().doesNotHaveBean(AnalyticsEventPublisher.class));
     }

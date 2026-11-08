@@ -25,6 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {"app.analytics.pipeline.enabled=true", "app.analytics.ingestion.enabled=true",
+        "app.analytics.fresh-start=false",
         "app.analytics.visitor-key=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="})
 class AnalyticsRoutingIntegrationTest extends BaseIntegrationTest {
     @Autowired MockMvc http;

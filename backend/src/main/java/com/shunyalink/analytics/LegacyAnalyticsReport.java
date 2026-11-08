@@ -32,9 +32,11 @@ public final class LegacyAnalyticsReport {
                 throw new IllegalStateException("Analytics reporting requires a read-only database transaction");
             }
             Map<String, Boolean> schema = new LinkedHashMap<>();
-            for (String table : List.of("analytics_hourly", "analytics_daily_dimensions", "analytics_hourly_dimensions")) {
+            for (String table : List.of("analytics_hourly", "analytics_daily_dimensions", "analytics_hourly_dimensions", "analytics_link_totals")) {
                 schema.put(table, jdbc.queryForObject("SELECT to_regclass(?) IS NOT NULL", Boolean.class, "public." + table));
             }
+            boolean fresh = schema.get("analytics_link_totals") && "NEW_ONLY".equals(jdbc.queryForObject(
+                    "SELECT data_policy FROM analytics_pipeline_state WHERE id=1", String.class));
             String pipelineHumans = schema.get("analytics_hourly")
                     ? "COALESCE((SELECT SUM(human_clicks) FROM analytics_hourly a WHERE a.url_id=u.id),0)" : "0";
             var links = jdbc.query("SELECT u.id, u.short_id, u.created_at, u.click_count, "
@@ -49,7 +51,7 @@ public final class LegacyAnalyticsReport {
             Set<String> known = new HashSet<>();
             for (Link link : links) {
                 known.add(safeAlias(link.alias));
-                long legacyCommitted = Math.subtractExact(link.clicks, link.pipelineHumans);
+                long legacyCommitted = fresh ? link.clicks : Math.subtractExact(link.clicks, link.pipelineHumans);
                 if (legacyCommitted < 0) issues.add("negative_legacy_baseline:url_id=" + link.id);
                 Map<String, HashCoverage> hashes = new LinkedHashMap<>();
                 Map<String, Long> series = new LinkedHashMap<>();

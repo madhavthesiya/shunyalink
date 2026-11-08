@@ -33,6 +33,8 @@ import java.util.Map;
 @RequestMapping("/api/v1/url")
 @Tag(name = "URL Management", description = "Endpoints for creating, managing, and tracking shortened links")
 public class UrlController {
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.shunyalink.analytics.DurableAnalyticsReader durableAnalyticsReader;
 
     private final UrlService urlService;
     private final RateLimiterService rateLimiterService;
@@ -236,7 +238,7 @@ public class UrlController {
         return ResponseEntity.ok(new PublicStatsResponse(
                 stats.getTotalLinks(),
                 stats.getTotalUsers(),
-                stats.getTotalClicks()));
+                durableAnalyticsReader == null ? stats.getTotalClicks() : durableAnalyticsReader.platformClicks()));
     }
 
     @Operation(summary = "Resolve password-protected link", description = "Verifies password and returns the original long URL.")
