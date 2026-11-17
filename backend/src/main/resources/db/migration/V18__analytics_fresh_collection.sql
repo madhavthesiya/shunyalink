@@ -1,9 +1,10 @@
+-- Analytics start fresh at a recorded boundary; legacy counters and Redis data are never imported or changed.
+-- Both columns are set together when the collection is established, and never reset by the application.
 ALTER TABLE analytics_pipeline_state
-    ADD COLUMN data_policy VARCHAR(16) NOT NULL DEFAULT 'PRESERVE' CHECK (data_policy IN ('PRESERVE', 'NEW_ONLY')),
     ADD COLUMN collection_started_at TIMESTAMPTZ,
     ADD COLUMN collection_id UUID;
-ALTER TABLE analytics_pipeline_state ADD CONSTRAINT analytics_collection_identity_required
-    CHECK (data_policy <> 'NEW_ONLY' OR (collection_id IS NOT NULL AND collection_started_at IS NOT NULL));
+ALTER TABLE analytics_pipeline_state ADD CONSTRAINT analytics_collection_identity_complete
+    CHECK ((collection_id IS NULL) = (collection_started_at IS NULL));
 
 -- Separate projections leave legacy counters intact and retain platform clicks after link deletion.
 CREATE TABLE analytics_link_totals (

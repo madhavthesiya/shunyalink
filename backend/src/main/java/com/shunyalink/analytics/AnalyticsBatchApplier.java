@@ -42,8 +42,7 @@ public class AnalyticsBatchApplier {
     public void applyBatch(List<AnalyticsClick> events) {
         if (events.size() == 1) {
             var policy = collectionPolicy();
-            if ("NEW_ONLY".equals(policy.mode) && policy.id != null
-                    && !policy.id.equals(events.getFirst().collectionId())) {
+            if (policy.established() && !policy.id.equals(events.getFirst().collectionId())) {
                 beforeCutover.increment();
                 throw new BeforeCollectionException();
             }
@@ -59,10 +58,10 @@ public class AnalyticsBatchApplier {
         if (events.isEmpty()) return Set.of();
         if (events.size() > 500) throw new IllegalArgumentException("Analytics batches are limited to 500 events");
         var collection = collectionPolicy();
-        boolean fresh = "NEW_ONLY".equals(collection.mode);
+        // Before a collection is established (tests and draft runs only; ingestion establishes it at startup)
+        // the pre-cutover write path below still applies. N3b removes it so legacy counters are never written.
+        boolean fresh = collection.established();
         if (fresh) {
-            var start = collection.start;
-            if (start == null || collection.id == null) throw new IllegalStateException("Fresh collection has no start boundary or identity");
             var acceptedPeriod = events.stream().filter(event -> collection.id.equals(event.collectionId())).toList();
             beforeCutover.increment(events.size() - acceptedPeriod.size());
             events = acceptedPeriod;
@@ -181,8 +180,8 @@ public class AnalyticsBatchApplier {
     }
 
     private CollectionPolicy collectionPolicy() {
-        return jdbc.query("SELECT data_policy, collection_started_at, collection_id FROM analytics_pipeline_state WHERE id=1 FOR SHARE",
-                (row, index) -> new CollectionPolicy(row.getString(1), row.getObject(2, OffsetDateTime.class), row.getObject(3, UUID.class))).getFirst();
+        return jdbc.query("SELECT collection_id FROM analytics_pipeline_state WHERE id=1 FOR SHARE",
+                (row, index) -> new CollectionPolicy(row.getObject(1, UUID.class))).getFirst();
     }
 
     static final class BeforeCollectionException extends RuntimeException {
@@ -190,7 +189,10 @@ public class AnalyticsBatchApplier {
     }
 
     private record Hour(long urlId, OffsetDateTime hour) { }
-    private record CollectionPolicy(String mode, OffsetDateTime start, UUID id) { }
+    /** The collection ID; a database constraint keeps it and its start time set together. */
+    private record CollectionPolicy(UUID id) {
+        boolean established() { return id != null; }
+    }
     private record Day(long urlId, LocalDate day) { }
     private record Dimension(long urlId, LocalDate day, String name, String value) { }
     private record HourDimension(Hour hour, String name, String value) { }

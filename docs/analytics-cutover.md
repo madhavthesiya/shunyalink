@@ -5,9 +5,9 @@ live ingestion until the remaining requirements below are implemented and verifi
 
 ## Selected policy: new data only
 
-The owner chose to start fresh. A legacy audit/import and reconciliation are no longer release gates.
-Leave old keys and counters in place; do not add orphaned counters or delete historical records.
-The optional [legacy audit](analytics-legacy-audit.md) is diagnostic only.
+The owner chose to start fresh. There is no legacy audit, import or reconciliation: the preserve-history
+reader, its legacy tables and the audit tool were removed before release. Leave old keys and counters in
+place; do not add orphaned counters or delete historical records.
 
 Enabled ingestion defaults to `app.analytics.fresh-start=true`. It atomically records one collection
 start and collection UUID before publishing. Restarting or scaling out reuses both, without resetting anything.
@@ -55,8 +55,7 @@ configuration before cutover. A socket/commit timeout remains an uncertain write
 
 ## Remaining gates before enablement
 
-- Verify the fresh period consistently scopes all existing API fields and additive metrics. Leave
-  the old reconciliation marker false in fresh mode; it is not a shortcut or prerequisite.
+- Verify the fresh period consistently scopes all existing API fields and additive metrics.
 - Verify old counters/distributions remain excluded across restart, replay and link deletion.
 - Switch all replicas away from legacy writers/schedulers during the controlled cutover. Legacy
   traffic during a rolling transition is not retroactively imported into the new collection.

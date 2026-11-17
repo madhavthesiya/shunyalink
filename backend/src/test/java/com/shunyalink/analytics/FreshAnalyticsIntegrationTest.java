@@ -53,7 +53,6 @@ class FreshAnalyticsIntegrationTest extends BaseIntegrationTest {
         oldPlatform = jdbc.queryForObject("SELECT total_clicks FROM platform_stats WHERE id=1", Long.class);
         redis.opsForHash().put("analytics:click_counts", alias, "99");
         redis.opsForHash().put("click_counts_processing:" + UUID.randomUUID(), alias, "25");
-        jdbc.update("INSERT INTO analytics_legacy_dimensions VALUES (?, 'country', 'Germany', 7)", urlId);
         start = cutover.activate();
     }
 
@@ -62,7 +61,7 @@ class FreshAnalyticsIntegrationTest extends BaseIntegrationTest {
         jdbc.update("DELETE FROM urls WHERE id=?", urlId);
         jdbc.update("DELETE FROM users WHERE id=?", owner);
         jdbc.batchUpdate("DELETE FROM analytics_applied_events WHERE event_id=?", ids.stream().map(id -> new Object[]{id}).toList());
-        jdbc.update("UPDATE analytics_pipeline_state SET data_policy='PRESERVE', collection_started_at=NULL, collection_id=NULL, history_ready=false WHERE id=1");
+        jdbc.update("UPDATE analytics_pipeline_state SET collection_started_at=NULL, collection_id=NULL WHERE id=1");
         jdbc.update("UPDATE analytics_platform_totals SET human_clicks=0 WHERE id=1");
         jdbc.update("UPDATE platform_stats SET total_clicks=? WHERE id=1", oldPlatform);
     }
@@ -88,7 +87,6 @@ class FreshAnalyticsIntegrationTest extends BaseIntegrationTest {
         assertThat(cutover.activate()).isEqualTo(start);
         assertThat(jdbc.queryForObject("SELECT click_count FROM urls WHERE id=?", Long.class, urlId)).isEqualTo(7);
         assertThat(redis.opsForHash().get("analytics:click_counts", alias)).isEqualTo("99");
-        assertThat(jdbc.queryForObject("SELECT clicks FROM analytics_legacy_dimensions WHERE url_id=?", Long.class, urlId)).isEqualTo(7);
     }
 
     @Test
@@ -127,15 +125,14 @@ class FreshAnalyticsIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void existingDraftAggregatesAreRefusedRatherThanResetOrMixedIntoFreshCounts() {
-        jdbc.update("UPDATE analytics_pipeline_state SET data_policy='PRESERVE', collection_started_at=NULL, collection_id=NULL WHERE id=1");
+        jdbc.update("UPDATE analytics_pipeline_state SET collection_started_at=NULL, collection_id=NULL WHERE id=1");
         UUID id = UUID.randomUUID(); ids.add(id);
         applier.applyBatch(List.of(new AnalyticsClick(id, urlId, start.toInstant(), false, "India", "Direct", "Chrome / Linux")));
         assertThatThrownBy(cutover::activate).isInstanceOf(IllegalStateException.class).hasMessageContaining("left untouched");
         assertThat(jdbc.queryForObject("SELECT SUM(human_clicks) FROM analytics_hourly WHERE url_id=?", Long.class, urlId)).isEqualTo(1);
-        assertThat(jdbc.queryForObject("SELECT data_policy FROM analytics_pipeline_state WHERE id=1", String.class)).isEqualTo("PRESERVE");
+        assertThat(jdbc.queryForObject("SELECT collection_id FROM analytics_pipeline_state WHERE id=1", UUID.class)).isNull();
         assertThat(jdbc.queryForObject("SELECT human_clicks FROM analytics_platform_totals WHERE id=1", Long.class)).isZero();
-        jdbc.update("UPDATE analytics_pipeline_state SET history_ready=true WHERE id=1");
-        assertThatThrownBy(new DurableAnalyticsReader(jdbc)::assertHistoryReady)
+        assertThatThrownBy(new DurableAnalyticsReader(jdbc)::assertCollectionEstablished)
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("Fresh analytics collection");
     }
 
@@ -154,7 +151,7 @@ class FreshAnalyticsIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void concurrentStartupEstablishesExactlyOneBoundary() throws Exception {
-        jdbc.update("UPDATE analytics_pipeline_state SET data_policy='PRESERVE', collection_started_at=NULL, collection_id=NULL WHERE id=1");
+        jdbc.update("UPDATE analytics_pipeline_state SET collection_started_at=NULL, collection_id=NULL WHERE id=1");
         var ready = new java.util.concurrent.CountDownLatch(1);
         try (var executor = java.util.concurrent.Executors.newFixedThreadPool(2)) {
             var first = executor.submit(() -> { ready.await(); return cutover.activate(); });

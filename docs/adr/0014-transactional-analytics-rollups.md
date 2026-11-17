@@ -24,10 +24,11 @@ exclude identified bots and keep redirects working when analytics storage is una
 The owner superseded the historical-import requirement and chose a fresh collection period. The
 release no longer requires a live legacy audit, historical import or orphan-counter reconciliation.
 Do not delete that data or add uncertain counters: leave legacy Redis keys and database counters
-untouched by the fresh writer. The audit remains an optional read-only diagnostic.
+untouched by the fresh writer. The preserve-history reader, the `analytics_legacy_*` tables and the
+read-only audit tool were removed before release, since nothing would ever populate them.
 
 When ingestion starts with `app.analytics.fresh-start=true` (default), establish one durable
-`NEW_ONLY` identity and start metadata before constructing the publisher. Lock the collection state exclusively; event
+collection identity (`collection_id` + `collection_started_at`, set together) before constructing the publisher. Lock the collection state exclusively; event
 transactions take a shared lock before URL/bucket locks, so activation cannot race a partial batch.
 Refuse activation if draft pipeline aggregates already exist instead of erasing them or mixing epochs.
 Subsequent starts return the original boundary and collection UUID. Legacy-only aggregates do not block fresh activation.
@@ -48,9 +49,8 @@ lost clicks. The legacy sync scheduler is disabled when stream ingestion is enab
 identifies the new collection period; it is **not** the replay floor needed to prune post-cutover event
 markers. Retention, recovery, secrets and final cutover checks remain required before live enablement.
 
-The older preserve-history reader remains compatible with its existing reconciliation guard, but
-it is not the selected release policy. `fresh-start=false` skips automatic activation; it does not
-reset an established collection or provide an automatic rollback.
+`fresh-start=false` skips automatic activation; it does not reset an established collection or provide
+an automatic rollback. Reads are refused until a collection is established.
 Database fallback reports deliberate exclusions as `EXCLUDED`, rather than claiming they were persisted
 or lost. Exclusion metrics count attempts. The optional collection field is fingerprinted with the
 other v1 fields; legacy v1 records remain decodable but are outside a fresh collection.
