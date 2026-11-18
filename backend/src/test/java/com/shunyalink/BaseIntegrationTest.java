@@ -45,9 +45,13 @@ public abstract class BaseIntegrationTest {
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
 
-    /** Rate-limit buckets and caches must not leak between tests, or results depend on test order. */
+    @Autowired
+    private com.shunyalink.cache.RedisGuard redisGuard;
+
+    /** Rate-limit buckets, caches and breaker state must not leak between tests, or results depend on order. */
     @BeforeEach
     void flushRedis() {
+        redisGuard.reset();
         stringRedisTemplate.execute((RedisCallback<Void>) connection -> {
             connection.serverCommands().flushAll();
             return null;

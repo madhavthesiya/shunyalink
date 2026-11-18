@@ -27,7 +27,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(RedirectController.class)
-@Import({SecurityConfig.class, ClientIpResolver.class})
+@Import({SecurityConfig.class, ClientIpResolver.class, com.shunyalink.cache.RedisGuard.class})
 class RedirectControllerTest {
 
     private static final String WHATSAPP_UA = "WhatsApp/2.23.20.0 A";

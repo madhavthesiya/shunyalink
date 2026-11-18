@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import com.shunyalink.analytics.AnalyticsClickRecorder;
+import com.shunyalink.cache.RedisGuard;
 import com.shunyalink.security.ClientIpResolver;
 
 @RestController
@@ -38,6 +39,7 @@ public class RedirectController {
     private final AnalyticsClickRecorder analyticsService;
     private final RedisTemplate<String, String> redisTemplate;
     private final ClientIpResolver clientIpResolver;
+    private final RedisGuard redisGuard;
 
     @Value("${app.frontend-url:http://localhost:3000}")
     private String frontendUrl;
@@ -45,12 +47,14 @@ public class RedirectController {
     public RedirectController(UrlService urlService, UrlRepository urlRepository,
                               AnalyticsClickRecorder analyticsService,
                               RedisTemplate<String, String> redisTemplate,
-                              ClientIpResolver clientIpResolver) {
+                              ClientIpResolver clientIpResolver,
+                              RedisGuard redisGuard) {
         this.urlService = urlService;
         this.urlRepository = urlRepository;
         this.analyticsService = analyticsService;
         this.redisTemplate = redisTemplate;
         this.clientIpResolver = clientIpResolver;
+        this.redisGuard = redisGuard;
     }
 
     @Operation(summary = "Redirect or Social Preview", description = "Handles the core redirection logic. Detects social media bots (WhatsApp, Twitter, FB) and returns OG tags for rich previews. Otherwise, redirects to the target URL (or password challenge).")
@@ -58,12 +62,8 @@ public class RedirectController {
     public ResponseEntity<?> redirect(@PathVariable String shortId, HttpServletRequest request) {
 
         String cacheKey = "url:entity:" + shortId;
-        Map<Object, Object> cached;
-        try {
-            cached = redisTemplate.opsForHash().entries(cacheKey);
-        } catch (org.springframework.dao.DataAccessException unavailable) {
-            cached = Map.of();
-        }
+        // Redis down or tripped breaker = cache miss; PostgreSQL stays authoritative
+        Map<Object, Object> cached = redisGuard.call(() -> redisTemplate.opsForHash().entries(cacheKey), Map::of);
 
         String longUrl;
         boolean hasPassword;
@@ -96,12 +96,8 @@ public class RedirectController {
             title       = entity.getTitle();
             urlId       = entity.getId();
 
-            // Cache the redirect-critical fields as a Redis Hash
-            try {
-                cacheEntityForRedirect(cacheKey, entity);
-            } catch (org.springframework.dao.DataAccessException unavailable) {
-                // A cache write is optional; the resolved database snapshot remains authoritative.
-            }
+            // Cache the redirect-critical fields as a Redis Hash. Optional: skipped while Redis is failing.
+            redisGuard.run(() -> cacheEntityForRedirect(cacheKey, entity));
         }
 
         // Social Bot Detection for Rich Previews (WhatsApp, Twitter, FB, etc.)
