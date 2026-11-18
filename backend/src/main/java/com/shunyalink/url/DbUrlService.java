@@ -5,6 +5,7 @@ import com.shunyalink.exception.ConflictException;
 import com.shunyalink.exception.GoneException;
 import com.shunyalink.exception.NotFoundException;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.stereotype.Service;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.domain.Page;
@@ -44,6 +45,7 @@ public class DbUrlService implements UrlService {
     private final com.shunyalink.cp.LlmIntegrationService llmIntegrationService;
     private final PasswordEncoder passwordEncoder;
     private final LinkPasswordCipher linkPasswordCipher;
+    private final TransactionOperations transactions;
 
     public DbUrlService(UrlRepository urlRepository,
                         IdEncoder idEncoder,
@@ -54,7 +56,9 @@ public class DbUrlService implements UrlService {
                         AnalyticsService analyticsService,
                         com.shunyalink.cp.LlmIntegrationService llmIntegrationService,
                         PasswordEncoder passwordEncoder,
-                        LinkPasswordCipher linkPasswordCipher) {
+                        LinkPasswordCipher linkPasswordCipher,
+                        TransactionOperations transactions) {
+        this.transactions = transactions;
         this.urlRepository = urlRepository;
         this.idEncoder = idEncoder;
         this.redisTemplate = redisTemplate;
@@ -99,12 +103,20 @@ public class DbUrlService implements UrlService {
         }
     }
 
+    /**
+     * The phishing check calls external AI providers and can take seconds. It runs before the transaction,
+     * so a slow provider never holds one of the pool's two connections; only the database work below is
+     * transactional. (An annotation could not express this: the check would sit inside the transaction.)
+     */
     @Override
-    @Transactional
     public UrlEntity shortenUrl(String longUrl, String customAlias, Integer expiryDays, Long userId, String title, String password, boolean useAutoTitle, java.util.Set<String> tags) {
         if (llmIntegrationService.isPhishing(longUrl)) {
-            throw new com.shunyalink.exception.BadRequestException("Security Alert: This URL has been flagged as malicious or phishing by our AI monitors.");
+            throw new BadRequestException("Security Alert: This URL has been flagged as malicious or phishing by our AI monitors.");
         }
+        return transactions.execute(status -> createLink(longUrl, customAlias, expiryDays, userId, title, password, useAutoTitle, tags));
+    }
+
+    private UrlEntity createLink(String longUrl, String customAlias, Integer expiryDays, Long userId, String title, String password, boolean useAutoTitle, java.util.Set<String> tags) {
         
         if (customAlias != null && !customAlias.isBlank()) {
             String normalized = customAlias.toLowerCase().trim();
