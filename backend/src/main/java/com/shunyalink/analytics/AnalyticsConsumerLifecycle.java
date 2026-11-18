@@ -9,6 +9,7 @@ import java.util.concurrent.TimeUnit;
 
 /** One bounded poll at a time. Shutdown drains an in-flight transaction and acknowledgement. */
 final class AnalyticsConsumerLifecycle implements SmartLifecycle {
+    private final String name;
     private final Runnable poll;
     private final Runnable failed;
     private final long idleMillis;
@@ -18,13 +19,19 @@ final class AnalyticsConsumerLifecycle implements SmartLifecycle {
     private long retryMillis;
 
     AnalyticsConsumerLifecycle(Runnable poll, Duration idle, Duration maximumBackoff, MeterRegistry metrics) {
+        this("consumer", poll, idle, maximumBackoff, metrics);
+    }
+
+    /** {@code name} labels the worker thread ({@code analytics-<name>}) and its failure counter. */
+    AnalyticsConsumerLifecycle(String name, Runnable poll, Duration idle, Duration maximumBackoff, MeterRegistry metrics) {
         if (idle.toMillis() < 1 || maximumBackoff.compareTo(idle) < 0) {
             throw new IllegalArgumentException("Invalid analytics polling intervals");
         }
+        this.name = name;
         this.poll = poll;
         this.idleMillis = idle.toMillis();
         this.maximumBackoffMillis = maximumBackoff.toMillis();
-        var counter = metrics.counter("shunyalink.analytics.consumer.failures");
+        var counter = metrics.counter("shunyalink.analytics." + name + ".failures");
         this.failed = counter::increment;
     }
 
@@ -35,7 +42,7 @@ final class AnalyticsConsumerLifecycle implements SmartLifecycle {
             throw new IllegalStateException("Previous analytics consumer is still draining");
         }
         executor = new ScheduledThreadPoolExecutor(1, task -> {
-            Thread thread = new Thread(task, "analytics-consumer");
+            Thread thread = new Thread(task, "analytics-" + name);
             thread.setDaemon(true);
             return thread;
         });
@@ -74,7 +81,7 @@ final class AnalyticsConsumerLifecycle implements SmartLifecycle {
         }
         var draining = executor;
         draining.shutdown(); // Never interrupt a database transaction or its subsequent acknowledgement.
-        Thread.ofVirtual().name("analytics-consumer-drain").start(() -> {
+        Thread.ofVirtual().name("analytics-" + name + "-drain").start(() -> {
             try {
                 while (!draining.awaitTermination(1, TimeUnit.SECONDS)) { /* await bounded storage operations */ }
                 callback.run();

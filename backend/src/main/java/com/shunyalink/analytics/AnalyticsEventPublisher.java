@@ -1,5 +1,6 @@
 package com.shunyalink.analytics;
 
+import com.shunyalink.cache.RedisGuard;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.data.redis.core.StreamOperations;
@@ -7,36 +8,41 @@ import org.springframework.data.redis.core.StreamOperations;
 import java.time.Clock;
 import java.time.ZoneOffset;
 import java.util.EnumMap;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Supplier;
 
-/** Producer for the draft pipeline; live redirects are connected only during verified cutover. */
+/**
+ * Producer, called on the redirect thread. Its cost is bounded: enrichment, then one guarded {@code XADD}.
+ * If Redis is failing (or its circuit breaker is open), the event goes to a bounded in-memory buffer that a
+ * background writer stores in PostgreSQL. The request thread never touches the database (ADR 0005).
+ */
 public final class AnalyticsEventPublisher {
     static final String STREAM = "analytics:events:v1";
     private final StreamOperations<String, String, String> streams;
-    private final AnalyticsBatchApplier fallback;
+    private final AnalyticsFallbackBuffer fallback;
+    private final RedisGuard redis;
     private final LocalCountryResolver countries;
     private final VisitorHasher visitors;
     private final Clock clock;
     private final BotClassifier bots = new BotClassifier();
     private final Map<Outcome, Counter> outcomes = new EnumMap<>(Outcome.class);
     private final Counter redisFailures;
-    private final java.util.function.Supplier<UUID> collection;
+    private final Supplier<UUID> collection;
 
-    public AnalyticsEventPublisher(StreamOperations<String, String, String> streams,
-                                   AnalyticsBatchApplier fallback, LocalCountryResolver countries,
-                                   VisitorHasher visitors, Clock clock, MeterRegistry metrics) {
-        this(streams, fallback, countries, visitors, clock, metrics, () -> null);
+    AnalyticsEventPublisher(StreamOperations<String, String, String> streams, AnalyticsFallbackBuffer fallback,
+                            RedisGuard redis, LocalCountryResolver countries, VisitorHasher visitors, Clock clock,
+                            MeterRegistry metrics) {
+        this(streams, fallback, redis, countries, visitors, clock, metrics, () -> null);
     }
 
-    public AnalyticsEventPublisher(StreamOperations<String, String, String> streams,
-                                   AnalyticsBatchApplier fallback, LocalCountryResolver countries,
-                                   VisitorHasher visitors, Clock clock, MeterRegistry metrics,
-                                   java.util.function.Supplier<UUID> collection) {
+    AnalyticsEventPublisher(StreamOperations<String, String, String> streams, AnalyticsFallbackBuffer fallback,
+                            RedisGuard redis, LocalCountryResolver countries, VisitorHasher visitors, Clock clock,
+                            MeterRegistry metrics, Supplier<UUID> collection) {
         this.streams = streams;
         this.fallback = fallback;
+        this.redis = redis;
         this.countries = countries;
         this.visitors = visitors;
         this.clock = clock;
@@ -55,20 +61,17 @@ public final class AnalyticsEventPublisher {
                 AnalyticsLabels.device(userAgent), bot ? null : visitors.hash(urlId,
                 occurredAt.atOffset(ZoneOffset.UTC).toLocalDate(), ip).orElse(null), collection.get());
         // No MAXLEN trim: unprocessed or pending events must not be silently removed.
-        try {
-            if (streams.add(STREAM, AnalyticsEventCodec.encode(event)) != null) return result(event, Outcome.QUEUED);
-        } catch (RuntimeException unavailable) {
-            // A lost reply can mean XADD succeeded. Preserve the UUID for transactional deduplication.
-        }
+        if (queued(event)) return result(event, Outcome.QUEUED);
+        // A lost reply can mean XADD succeeded; buffering the same UUID is safe because writes deduplicate.
         redisFailures.increment();
+        return result(event, fallback.offer(event) ? Outcome.BUFFERED : Outcome.DROPPED);
+    }
+
+    private boolean queued(AnalyticsClick event) {
         try {
-            fallback.applyBatch(List.of(event));
-            return result(event, Outcome.PERSISTED);
-        } catch (AnalyticsBatchApplier.BeforeCollectionException excluded) {
-            return result(event, Outcome.EXCLUDED);
-        } catch (RuntimeException unavailable) {
-            // A timeout cannot prove whether either write committed. Do not claim exact loss counts.
-            return result(event, Outcome.UNCONFIRMED);
+            return redis.call(() -> streams.add(STREAM, AnalyticsEventCodec.encode(event)) != null, () -> false);
+        } catch (RuntimeException unexpected) {
+            return false;
         }
     }
 
@@ -77,6 +80,7 @@ public final class AnalyticsEventPublisher {
         return new Publication(event.eventId(), outcome);
     }
 
-    public enum Outcome { QUEUED, PERSISTED, UNCONFIRMED, EXCLUDED }
+    /** QUEUED: in the Redis stream. BUFFERED: in memory, awaiting the background writer. DROPPED: buffer full. */
+    public enum Outcome { QUEUED, BUFFERED, DROPPED }
     public record Publication(UUID eventId, Outcome outcome) { }
 }

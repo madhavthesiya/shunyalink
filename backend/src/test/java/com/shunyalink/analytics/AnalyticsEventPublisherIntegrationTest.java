@@ -56,8 +56,16 @@ class AnalyticsEventPublisherIntegrationTest extends BaseIntegrationTest {
         metrics.close();
     }
 
-    private AnalyticsEventPublisher publisher(StreamOperations<String, String, String> streams, AnalyticsBatchApplier fallback) {
-        return new AnalyticsEventPublisher(streams, fallback, countries, new VisitorHasher(new byte[32]), clock, metrics);
+    private AnalyticsFallbackBuffer buffer;
+
+    private AnalyticsEventPublisher publisher(StreamOperations<String, String, String> streams, AnalyticsBatchApplier writer) {
+        buffer = new AnalyticsFallbackBuffer(100, writer, metrics);
+        return new AnalyticsEventPublisher(streams, buffer, new com.shunyalink.cache.RedisGuard(metrics), countries,
+                new VisitorHasher(new byte[32]), clock, metrics);
+    }
+
+    private long appliedMarkers(UUID eventId) {
+        return jdbc.queryForObject("SELECT COUNT(*) FROM analytics_applied_events WHERE event_id=?", Long.class, eventId);
     }
 
     private AnalyticsEventPublisher.Publication publish(AnalyticsEventPublisher publisher) {
@@ -86,12 +94,14 @@ class AnalyticsEventPublisherIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    void redisFailurePersistsTheSameEventDirectly() {
+    void redisFailureBuffersTheEvent_andOnlyTheBackgroundWriterPersistsIt() {
         redis.opsForValue().set(AnalyticsEventPublisher.STREAM, "wrong-type");
         var result = publish(publisher(redis.opsForStream(), applier));
-        assertThat(result.outcome()).isEqualTo(AnalyticsEventPublisher.Outcome.PERSISTED);
+        assertThat(result.outcome()).isEqualTo(AnalyticsEventPublisher.Outcome.BUFFERED);
+        assertThat(appliedMarkers(result.eventId())).isZero(); // nothing written on the calling thread
+        assertThat(buffer.drain()).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT click_count FROM urls WHERE id=?", Long.class, urlId)).isEqualTo(1);
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM analytics_applied_events WHERE event_id=?", Long.class, result.eventId())).isEqualTo(1);
+        assertThat(appliedMarkers(result.eventId())).isEqualTo(1);
     }
 
     @Test
@@ -103,7 +113,8 @@ class AnalyticsEventPublisherIntegrationTest extends BaseIntegrationTest {
             throw new DataAccessResourceFailureException("Simulated lost Redis reply");
         }).when(uncertain).add(anyString(), anyMap());
         var result = publish(publisher(uncertain, applier));
-        assertThat(result.outcome()).isEqualTo(AnalyticsEventPublisher.Outcome.PERSISTED);
+        assertThat(result.outcome()).isEqualTo(AnalyticsEventPublisher.Outcome.BUFFERED);
+        buffer.drain();
         var records = real.range(AnalyticsEventPublisher.STREAM, org.springframework.data.domain.Range.unbounded());
         assertThat(records).hasSize(1);
         applier.applyBatch(List.of(AnalyticsEventCodec.decode(records.getFirst().getValue())));
@@ -112,13 +123,33 @@ class AnalyticsEventPublisherIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    void totalStorageFailureReturnsUnconfirmedAndRecordsFailure() {
+    void databaseOutageKeepsTheEventBufferedAndTheRetryWritesItOnce() {
         redis.opsForValue().set(AnalyticsEventPublisher.STREAM, "wrong-type");
-        AnalyticsBatchApplier unavailable = mock(AnalyticsBatchApplier.class);
-        doThrow(new DataAccessResourceFailureException("Simulated database outage")).when(unavailable).applyBatch(anyList());
-        var result = publish(publisher(redis.opsForStream(), unavailable));
-        assertThat(result.outcome()).isEqualTo(AnalyticsEventPublisher.Outcome.UNCONFIRMED);
-        assertThat(metrics.get("shunyalink.analytics.publish").tag("outcome", "unconfirmed").counter().count()).isEqualTo(1);
+        AnalyticsBatchApplier flaky = mock(AnalyticsBatchApplier.class);
+        when(flaky.applyValidatedBatch(anyList()))
+                .thenThrow(new DataAccessResourceFailureException("Simulated database outage"))
+                .thenAnswer(call -> applier.applyValidatedBatch(call.getArgument(0)));
+        var result = publish(publisher(redis.opsForStream(), flaky));
+        assertThat(result.outcome()).isEqualTo(AnalyticsEventPublisher.Outcome.BUFFERED);
+
+        assertThatThrownBy(buffer::drain).isInstanceOf(DataAccessResourceFailureException.class);
+        assertThat(buffer.pending()).isEqualTo(1); // kept, not lost
+        assertThat(buffer.drain()).isEqualTo(1);   // the retry succeeds
+        assertThat(buffer.pending()).isZero();
+        assertThat(appliedMarkers(result.eventId())).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT click_count FROM urls WHERE id=?", Long.class, urlId)).isEqualTo(1);
+    }
+
+    @Test
+    void fullBufferDropsAndCountsInsteadOfBlockingTheCaller() {
+        redis.opsForValue().set(AnalyticsEventPublisher.STREAM, "wrong-type");
+        buffer = new AnalyticsFallbackBuffer(1, applier, metrics);
+        var publisher = new AnalyticsEventPublisher(redis.opsForStream(), buffer, new com.shunyalink.cache.RedisGuard(metrics),
+                countries, new VisitorHasher(new byte[32]), clock, metrics);
+        assertThat(publish(publisher).outcome()).isEqualTo(AnalyticsEventPublisher.Outcome.BUFFERED);
+        assertThat(publish(publisher).outcome()).isEqualTo(AnalyticsEventPublisher.Outcome.DROPPED);
+        assertThat(metrics.get("shunyalink.analytics.fallback").tag("outcome", "dropped").counter().count()).isEqualTo(1);
+        buffer.drain();
     }
 
     @Test

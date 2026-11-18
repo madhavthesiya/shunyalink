@@ -83,8 +83,8 @@ class AnalyticsStreamConsumerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void consumesProducerBacklogCreatedBeforeTheGroupAndAcknowledgesAfterCommit() {
-        var publisher = new AnalyticsEventPublisher(redis.opsForStream(), applier, countries,
-                new VisitorHasher(new byte[32]), Clock.fixed(Instant.parse("2026-11-08T01:23:45Z"), ZoneOffset.UTC), metrics);
+        var publisher = new AnalyticsEventPublisher(redis.opsForStream(), new AnalyticsFallbackBuffer(10, applier, metrics),
+                new com.shunyalink.cache.RedisGuard(metrics), countries, new VisitorHasher(new byte[32]), Clock.fixed(Instant.parse("2026-11-08T01:23:45Z"), ZoneOffset.UTC), metrics);
         for (String agent : List.of("Chrome Linux", "Chrome Linux", "Googlebot/2.1")) {
             eventIds.add(publisher.publish(urlId, "8.8.8.8", agent, null).eventId());
         }

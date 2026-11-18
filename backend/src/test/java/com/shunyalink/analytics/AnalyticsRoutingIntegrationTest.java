@@ -19,7 +19,6 @@ import java.util.List;
 import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.Mockito.doThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -33,6 +32,7 @@ class AnalyticsRoutingIntegrationTest extends BaseIntegrationTest {
     @Autowired StringRedisTemplate redis;
     @Autowired MeterRegistry metrics;
     @SpyBean AnalyticsBatchApplier applier;
+    @Autowired AnalyticsFallbackBuffer fallback;
     private final List<UUID> eventIds = new ArrayList<>();
     private String alias;
     private long urlId;
@@ -99,21 +99,28 @@ class AnalyticsRoutingIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    void unavailableStreamFallsBackAndTotalAnalyticsFailureStillReturnsTheRedirect() throws Exception {
+    void unavailableStreamBuffers_andADatabaseOutageStillReturnsTheRedirectAndKeepsTheClick() throws Exception {
+        var databaseDown = new java.util.concurrent.atomic.AtomicBoolean();
         org.mockito.Mockito.doAnswer(call -> {
             List<AnalyticsClick> events = call.getArgument(0);
             events.forEach(event -> eventIds.add(event.eventId()));
+            if (databaseDown.get()) throw new org.springframework.dao.DataAccessResourceFailureException("database unavailable");
             return call.callRealMethod();
-        }).when(applier).applyBatch(anyList());
+        }).when(applier).applyValidatedBatch(anyList());
         redis.opsForValue().set(AnalyticsEventPublisher.STREAM, "wrong-type");
+
         http.perform(get("/" + alias)).andExpect(status().isFound());
+        fallback.drain(); // the background writer may already have written it; writes are idempotent
         assertThat(clicks()).isEqualTo(1);
-        double before = metrics.get("shunyalink.analytics.publish").tag("outcome", "unconfirmed").counter().count();
-        doThrow(new org.springframework.dao.DataAccessResourceFailureException("database unavailable"))
-                .when(applier).applyBatch(anyList());
+
+        databaseDown.set(true);
         http.perform(get("/" + alias)).andExpect(status().isFound())
                 .andExpect(header().string("Location", "https://routing.example/private"));
-        assertThat(metrics.get("shunyalink.analytics.publish").tag("outcome", "unconfirmed").counter().count()).isEqualTo(before + 1);
         assertThat(clicks()).isEqualTo(1);
+        assertThat(fallback.pending()).isEqualTo(1); // kept for retry, not lost
+
+        databaseDown.set(false);
+        fallback.drain();
+        assertThat(clicks()).isEqualTo(2);
     }
 }

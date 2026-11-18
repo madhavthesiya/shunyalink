@@ -137,14 +137,18 @@ class FreshAnalyticsIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    void fallbackReportsAnOldEventAsExcludedRatherThanPersistedOrLost() {
+    void fallbackExcludesAnEventFromOutsideTheCollectionWhenItIsWritten() {
         redis.opsForValue().set(AnalyticsEventPublisher.STREAM, "wrong-type");
-        var publisher = new AnalyticsEventPublisher(redis.opsForStream(), applier,
+        var buffer = new AnalyticsFallbackBuffer(10, applier, metrics);
+        var publisher = new AnalyticsEventPublisher(redis.opsForStream(), buffer, new com.shunyalink.cache.RedisGuard(metrics),
                 countries, new VisitorHasher(new byte[32]),
-                Clock.fixed(start.minusSeconds(1).toInstant(), ZoneOffset.UTC), metrics);
+                Clock.fixed(start.minusSeconds(1).toInstant(), ZoneOffset.UTC), metrics); // no collection identity
         var result = publisher.publish(urlId, null, "Chrome Linux", null);
         ids.add(result.eventId());
-        assertThat(result.outcome()).isEqualTo(AnalyticsEventPublisher.Outcome.EXCLUDED);
+        assertThat(result.outcome()).isEqualTo(AnalyticsEventPublisher.Outcome.BUFFERED);
+        double excluded = metrics.get("shunyalink.analytics.outside_collection").counter().count();
+        buffer.drain();
+        assertThat(metrics.get("shunyalink.analytics.outside_collection").counter().count()).isEqualTo(excluded + 1);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM analytics_applied_events WHERE event_id=?", Long.class, result.eventId())).isZero();
         assertAllCounts(0);
     }

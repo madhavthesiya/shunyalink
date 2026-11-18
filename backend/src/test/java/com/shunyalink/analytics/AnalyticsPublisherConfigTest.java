@@ -13,7 +13,8 @@ class AnalyticsPublisherConfigTest {
             .withUserConfiguration(AnalyticsPublisherConfig.class)
             .withBean(StringRedisTemplate.class, () -> mock(StringRedisTemplate.class))
             .withBean(LocalCountryResolver.class, () -> mock(LocalCountryResolver.class))
-            .withBean(MeterRegistry.class, SimpleMeterRegistry::new);
+            .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+            .withBean(com.shunyalink.cache.RedisGuard.class, () -> new com.shunyalink.cache.RedisGuard(new SimpleMeterRegistry()));
 
     @Test
     void enabledIngestionEstablishesTheFreshBoundaryByDefault() {
