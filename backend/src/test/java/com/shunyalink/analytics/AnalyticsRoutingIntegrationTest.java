@@ -33,6 +33,7 @@ class AnalyticsRoutingIntegrationTest extends BaseIntegrationTest {
     @Autowired MeterRegistry metrics;
     @SpyBean AnalyticsBatchApplier applier;
     @Autowired AnalyticsFallbackBuffer fallback;
+    @Autowired FreshAnalyticsCutover cutover;
     private final List<UUID> eventIds = new ArrayList<>();
     private String alias;
     private long urlId;
@@ -44,6 +45,7 @@ class AnalyticsRoutingIntegrationTest extends BaseIntegrationTest {
         urlId = jdbc.queryForObject("INSERT INTO urls (short_id, long_url, is_custom, click_count, created_at) "
                 + "VALUES (?, 'https://routing.example/private', false, 0, CURRENT_TIMESTAMP) RETURNING id", Long.class, alias);
         globalBefore = jdbc.queryForObject("SELECT total_clicks FROM platform_stats WHERE id=1", Long.class);
+        cutover.activate(); // as ingestion does at startup; the publisher stamps this collection
     }
 
     @AfterEach
@@ -51,9 +53,10 @@ class AnalyticsRoutingIntegrationTest extends BaseIntegrationTest {
         jdbc.update("DELETE FROM urls WHERE id=?", urlId);
         jdbc.batchUpdate("DELETE FROM analytics_applied_events WHERE event_id=?", eventIds.stream().map(id -> new Object[]{id}).toList());
         jdbc.update("UPDATE platform_stats SET total_clicks=? WHERE id=1", globalBefore);
+        TestCollection.reset(jdbc);
     }
 
-    private long clicks() { return jdbc.queryForObject("SELECT click_count FROM urls WHERE id=?", Long.class, urlId); }
+    private long clicks() { return TestCollection.linkClicks(jdbc, urlId); }
 
     private AnalyticsStreamConsumer worker() {
         return new AnalyticsStreamConsumer(redis, applier, "routing-test", Duration.ZERO, metrics);

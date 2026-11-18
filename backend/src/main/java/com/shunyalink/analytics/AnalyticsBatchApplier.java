@@ -7,7 +7,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
@@ -41,8 +40,8 @@ public class AnalyticsBatchApplier {
     @Transactional(timeout = 5)
     public void applyBatch(List<AnalyticsClick> events) {
         if (events.size() == 1) {
-            var policy = collectionPolicy();
-            if (policy.established() && !policy.id.equals(events.getFirst().collectionId())) {
+            var policy = establishedCollection();
+            if (!policy.id.equals(events.getFirst().collectionId())) {
                 beforeCutover.increment();
                 throw new BeforeCollectionException();
             }
@@ -57,16 +56,11 @@ public class AnalyticsBatchApplier {
     public Set<UUID> applyValidatedBatch(List<AnalyticsClick> events) {
         if (events.isEmpty()) return Set.of();
         if (events.size() > 500) throw new IllegalArgumentException("Analytics batches are limited to 500 events");
-        var collection = collectionPolicy();
-        // Before a collection is established (tests and draft runs only; ingestion establishes it at startup)
-        // the pre-cutover write path below still applies. N3b removes it so legacy counters are never written.
-        boolean fresh = collection.established();
-        if (fresh) {
-            var acceptedPeriod = events.stream().filter(event -> collection.id.equals(event.collectionId())).toList();
-            beforeCutover.increment(events.size() - acceptedPeriod.size());
-            events = acceptedPeriod;
-            if (events.isEmpty()) return Set.of(); // Explicitly excluded by the owner's fresh-data policy.
-        }
+        var collection = establishedCollection();
+        var acceptedPeriod = events.stream().filter(event -> collection.id.equals(event.collectionId())).toList();
+        beforeCutover.increment(events.size() - acceptedPeriod.size());
+        events = acceptedPeriod;
+        if (events.isEmpty()) return Set.of(); // Explicitly excluded by the owner's fresh-data policy.
         Map<UUID, AnalyticsClick> distinct = new LinkedHashMap<>();
         events.stream().sorted(Comparator.comparingLong(AnalyticsClick::urlId)
                 .thenComparing(AnalyticsClick::eventId)).forEach(event -> {
@@ -154,23 +148,15 @@ public class AnalyticsBatchApplier {
             jdbc.batchUpdate("INSERT INTO analytics_unique_daily (url_id, day, sketch) VALUES (?, ?, ?) "
                     + "ON CONFLICT (url_id, day) DO UPDATE SET sketch = EXCLUDED.sketch", sketches);
         }
-        if (!fresh) jdbc.batchUpdate("UPDATE urls SET click_count = click_count + ?, "
-                        + "last_accessed_time = GREATEST(last_accessed_time, ?) WHERE id = ?",
-                totals.entrySet().stream().map(e -> new Object[]{e.getValue().clicks,
-                        LocalDateTime.ofInstant(e.getValue().last, ZoneOffset.UTC), e.getKey()}).toList());
-        if (fresh) {
-            jdbc.batchUpdate("INSERT INTO analytics_link_totals (url_id, human_clicks, last_accessed_at) VALUES (?, ?, ?) "
-                            + "ON CONFLICT (url_id) DO UPDATE SET human_clicks=analytics_link_totals.human_clicks+EXCLUDED.human_clicks, "
-                            + "last_accessed_at=GREATEST(analytics_link_totals.last_accessed_at, EXCLUDED.last_accessed_at)",
-                    totals.entrySet().stream().map(e -> new Object[]{e.getKey(), e.getValue().clicks,
-                            e.getValue().last.atOffset(ZoneOffset.UTC)}).toList());
-            if (jdbc.update("UPDATE analytics_platform_totals SET human_clicks=human_clicks+? WHERE id=1", humanTotal) != 1) {
-                throw new IllegalStateException("Fresh platform projection is missing");
-            }
-        }
+        // New projections only: urls.click_count and platform_stats (legacy counters) are never written here.
+        jdbc.batchUpdate("INSERT INTO analytics_link_totals (url_id, human_clicks, last_accessed_at) VALUES (?, ?, ?) "
+                        + "ON CONFLICT (url_id) DO UPDATE SET human_clicks=analytics_link_totals.human_clicks+EXCLUDED.human_clicks, "
+                        + "last_accessed_at=GREATEST(analytics_link_totals.last_accessed_at, EXCLUDED.last_accessed_at)",
+                totals.entrySet().stream().map(e -> new Object[]{e.getKey(), e.getValue().clicks,
+                        e.getValue().last.atOffset(ZoneOffset.UTC)}).toList());
         // Shared platform row is always last, after parent and bucket rows.
-        if (!fresh && jdbc.update("UPDATE platform_stats SET total_clicks = total_clicks + ? WHERE id = 1", humanTotal) != 1) {
-            throw new IllegalStateException("Platform statistics row is missing");
+        if (jdbc.update("UPDATE analytics_platform_totals SET human_clicks=human_clicks+? WHERE id=1", humanTotal) != 1) {
+            throw new IllegalStateException("Fresh platform projection is missing");
         }
         return conflicts;
     }
@@ -179,9 +165,18 @@ public class AnalyticsBatchApplier {
         return String.join(",", Collections.nCopies(count, "?"));
     }
 
-    private CollectionPolicy collectionPolicy() {
-        return jdbc.query("SELECT collection_id FROM analytics_pipeline_state WHERE id=1 FOR SHARE",
+    /**
+     * Refuses to write anything until ingestion has established the fresh collection. There is no
+     * "before cutover" mode any more: the stream consumer leaves events pending and the fallback writer
+     * retries, rather than writing them somewhere else.
+     */
+    private CollectionPolicy establishedCollection() {
+        var policy = jdbc.query("SELECT collection_id FROM analytics_pipeline_state WHERE id=1 FOR SHARE",
                 (row, index) -> new CollectionPolicy(row.getObject(1, UUID.class))).getFirst();
+        if (policy.id == null) {
+            throw new IllegalStateException("No analytics collection is established; refusing to write");
+        }
+        return policy;
     }
 
     static final class BeforeCollectionException extends RuntimeException {
@@ -190,9 +185,7 @@ public class AnalyticsBatchApplier {
 
     private record Hour(long urlId, OffsetDateTime hour) { }
     /** The collection ID; a database constraint keeps it and its start time set together. */
-    private record CollectionPolicy(UUID id) {
-        boolean established() { return id != null; }
-    }
+    private record CollectionPolicy(UUID id) { }
     private record Day(long urlId, LocalDate day) { }
     private record Dimension(long urlId, LocalDate day, String name, String value) { }
     private record HourDimension(Hour hour, String name, String value) { }

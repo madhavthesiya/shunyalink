@@ -40,6 +40,8 @@ class AnalyticsStreamConsumerIntegrationTest extends BaseIntegrationTest {
     private final List<UUID> eventIds = new ArrayList<>();
     private long urlId;
     private long globalBefore;
+    private long platformBefore;
+    private UUID collection;
 
     @BeforeEach
     void createLink() {
@@ -48,6 +50,8 @@ class AnalyticsStreamConsumerIntegrationTest extends BaseIntegrationTest {
                         + "VALUES (?, ?, false, 0, CURRENT_TIMESTAMP) RETURNING id", Long.class,
                 "con" + suffix.substring(0, 10), "https://example.com/consumer-test/" + suffix);
         globalBefore = jdbc.queryForObject("SELECT total_clicks FROM platform_stats WHERE id=1", Long.class);
+        collection = TestCollection.establish(jdbc);
+        platformBefore = TestCollection.platformClicks(jdbc);
     }
 
     @AfterEach
@@ -55,6 +59,7 @@ class AnalyticsStreamConsumerIntegrationTest extends BaseIntegrationTest {
         jdbc.update("DELETE FROM urls WHERE id=?", urlId);
         jdbc.batchUpdate("DELETE FROM analytics_applied_events WHERE event_id=?", eventIds.stream().map(id -> new Object[]{id}).toList());
         jdbc.update("UPDATE platform_stats SET total_clicks=? WHERE id=1", globalBefore);
+        TestCollection.reset(jdbc);
         metrics.close();
     }
 
@@ -66,7 +71,7 @@ class AnalyticsStreamConsumerIntegrationTest extends BaseIntegrationTest {
         UUID id = UUID.randomUUID();
         eventIds.add(id);
         return new AnalyticsClick(id, urlId, Instant.parse("2026-11-08T01:23:45Z"), false,
-                "India", "Direct", "Chrome / Linux", "a".repeat(64));
+                "India", "Direct", "Chrome / Linux", "a".repeat(64)).withCollection(collection);
     }
 
     private RecordId enqueue() {
@@ -78,13 +83,13 @@ class AnalyticsStreamConsumerIntegrationTest extends BaseIntegrationTest {
     }
 
     private long clicks() {
-        return jdbc.queryForObject("SELECT click_count FROM urls WHERE id=?", Long.class, urlId);
+        return TestCollection.linkClicks(jdbc, urlId);
     }
 
     @Test
     void consumesProducerBacklogCreatedBeforeTheGroupAndAcknowledgesAfterCommit() {
         var publisher = new AnalyticsEventPublisher(redis.opsForStream(), new AnalyticsFallbackBuffer(10, applier, metrics),
-                new com.shunyalink.cache.RedisGuard(metrics), countries, new VisitorHasher(new byte[32]), Clock.fixed(Instant.parse("2026-11-08T01:23:45Z"), ZoneOffset.UTC), metrics);
+                new com.shunyalink.cache.RedisGuard(metrics), countries, new VisitorHasher(new byte[32]), Clock.fixed(Instant.parse("2026-11-08T01:23:45Z"), ZoneOffset.UTC), metrics, () -> collection);
         for (String agent : List.of("Chrome Linux", "Chrome Linux", "Googlebot/2.1")) {
             eventIds.add(publisher.publish(urlId, "8.8.8.8", agent, null).eventId());
         }
@@ -120,7 +125,7 @@ class AnalyticsStreamConsumerIntegrationTest extends BaseIntegrationTest {
         assertThat(pending()).isEqualTo(1);
         assertThat(worker("restarted").pollOnce()).isEqualTo(1);
         assertThat(clicks()).isEqualTo(1);
-        assertThat(jdbc.queryForObject("SELECT total_clicks FROM platform_stats WHERE id=1", Long.class)).isEqualTo(globalBefore + 1);
+        assertThat(TestCollection.platformClicks(jdbc)).isEqualTo(platformBefore + 1);
         assertThat(pending()).isZero();
     }
 

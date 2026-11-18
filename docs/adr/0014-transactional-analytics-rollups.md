@@ -38,7 +38,9 @@ identity, not a timestamp comparison: application/database clocks can differ. Th
 time is descriptive metadata; an old record with a future timestamp still cannot enter the collection.
 
 Fresh events update separate per-link and platform human totals in the rollup/deduplication
-transaction. Old URL/platform counters are not incremented in this mode. All read surfaces, including
+transaction. Old URL/platform counters (`urls.click_count`, `platform_stats`) are never written by the
+applier, and it refuses to write anything until a collection is established: there is no pre-cutover
+write mode. The consumer leaves such events pending and the fallback writer retries. All read surfaces, including
 public clicks and CSV exports, select the new projection; untouched legacy totals, dimensions, timestamps and pending
 counters are excluded. New platform clicks survive link deletion. Empty new link totals mean zero
 clicks and no new last-access time. Responses expose `analyticsCollectionStartedAt` for this scope.

@@ -126,8 +126,11 @@ class FreshAnalyticsIntegrationTest extends BaseIntegrationTest {
     @Test
     void existingDraftAggregatesAreRefusedRatherThanResetOrMixedIntoFreshCounts() {
         jdbc.update("UPDATE analytics_pipeline_state SET collection_started_at=NULL, collection_id=NULL WHERE id=1");
-        UUID id = UUID.randomUUID(); ids.add(id);
-        applier.applyBatch(List.of(new AnalyticsClick(id, urlId, start.toInstant(), false, "India", "Direct", "Chrome / Linux")));
+        // Draft data left by an earlier run. The applier can't create it any more (it refuses to write without a
+        // collection), so it is seeded directly.
+        jdbc.update("INSERT INTO analytics_hourly (url_id, bucket_start, human_clicks, bot_clicks) VALUES (?, ?, 1, 0)", urlId, start);
+        assertThatThrownBy(() -> applier.applyBatch(List.of(new AnalyticsClick(UUID.randomUUID(), urlId, start.toInstant(), false,
+                "India", "Direct", "Chrome / Linux")))).isInstanceOf(IllegalStateException.class); // no collection: refused
         assertThatThrownBy(cutover::activate).isInstanceOf(IllegalStateException.class).hasMessageContaining("left untouched");
         assertThat(jdbc.queryForObject("SELECT SUM(human_clicks) FROM analytics_hourly WHERE url_id=?", Long.class, urlId)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT collection_id FROM analytics_pipeline_state WHERE id=1", UUID.class)).isNull();

@@ -11,7 +11,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.test.context.TestPropertySource;
 
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.UUID;
@@ -34,12 +33,16 @@ class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
     private final Instant time = Instant.parse("2026-11-08T01:23:45Z");
     private long urlId;
     private long globalBefore;
+    private long platformBefore;
+    private UUID collection;
     private final List<UUID> extraIds = new ArrayList<>();
 
     @BeforeEach
     void createLink() {
         globalBefore = jdbc.queryForObject("SELECT total_clicks FROM platform_stats WHERE id=1", Long.class);
         urlId = insertLink(shortId);
+        collection = TestCollection.establish(jdbc);
+        platformBefore = TestCollection.platformClicks(jdbc);
     }
 
     @AfterEach
@@ -49,12 +52,18 @@ class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
         jdbc.batchUpdate("DELETE FROM analytics_applied_events WHERE event_id = ?",
                 extraIds.stream().map(id -> new Object[]{id}).toList());
         jdbc.update("UPDATE platform_stats SET total_clicks = ? WHERE id = 1", globalBefore);
+        TestCollection.reset(jdbc);
     }
 
     private long insertLink(String id) {
         return jdbc.queryForObject("INSERT INTO urls (short_id, long_url, is_custom, click_count, created_at) "
                 + "VALUES (?, ?, false, 0, CURRENT_TIMESTAMP) RETURNING id", Long.class, id,
                 "https://example.com/analytics-test/" + id);
+    }
+
+    /** Every event carries the established collection, as the publisher stamps it. */
+    private void apply(List<AnalyticsClick> events) {
+        applier.applyBatch(events.stream().map(event -> event.withCollection(collection)).toList());
     }
 
     private AnalyticsClick event(UUID id, long linkId, boolean bot, String country) {
@@ -64,33 +73,46 @@ class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
     @Test
     void replayAppliesEachEventOnlyOnce() {
         AnalyticsClick click = event(first, urlId, false, "India");
-        applier.applyBatch(List.of(click));
-        applier.applyBatch(List.of(click));
+        apply(List.of(click));
+        apply(List.of(click));
 
-        assertThat(jdbc.queryForObject("SELECT click_count FROM urls WHERE id = ?", Long.class, urlId)).isEqualTo(1);
-        assertThat(jdbc.queryForObject("SELECT total_clicks FROM platform_stats WHERE id=1", Long.class)).isEqualTo(globalBefore + 1);
+        assertThat(TestCollection.linkClicks(jdbc, urlId)).isEqualTo(1);
+        assertThat(TestCollection.legacyLinkClicks(jdbc, urlId)).isZero();               // legacy counters untouched
+        assertThat(TestCollection.legacyPlatformClicks(jdbc)).isEqualTo(globalBefore);
+        assertThat(TestCollection.platformClicks(jdbc)).isEqualTo(platformBefore + 1);
         assertThat(jdbc.queryForObject("SELECT human_clicks FROM analytics_hourly WHERE url_id = ?", Long.class, urlId)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT clicks FROM analytics_daily_dimensions WHERE url_id = ? AND dimension = 'country' AND value = 'India'", Long.class, urlId)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM analytics_hourly WHERE url_id = ? AND bucket_start = '2026-11-08 01:00:00+00'::timestamptz", Long.class, urlId)).isEqualTo(1);
     }
 
     @Test
+    void refusesToWriteBeforeACollectionIsEstablished_andNeverTouchesLegacyCounters() {
+        TestCollection.reset(jdbc);
+        assertThatThrownBy(() -> applier.applyBatch(List.of(event(first, urlId, false, "India"))))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("refusing to write");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM analytics_applied_events WHERE event_id = ?", Long.class, first)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM analytics_hourly WHERE url_id = ?", Long.class, urlId)).isZero();
+        assertThat(TestCollection.legacyLinkClicks(jdbc, urlId)).isZero();
+        assertThat(TestCollection.legacyPlatformClicks(jdbc)).isEqualTo(globalBefore);
+    }
+
+    @Test
     void failedBatchRollsBackDeduplicationAndAggregates() {
-        assertThatThrownBy(() -> applier.applyBatch(List.of(event(first, urlId, false, "India"),
+        assertThatThrownBy(() -> apply(List.of(event(first, urlId, false, "India"),
                 event(second, urlId, false, "x".repeat(256))))).isInstanceOf(RuntimeException.class);
 
-        assertThat(jdbc.queryForObject("SELECT click_count FROM urls WHERE id = ?", Long.class, urlId)).isZero();
+        assertThat(TestCollection.linkClicks(jdbc, urlId)).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM analytics_applied_events WHERE event_id IN (?, ?)", Long.class, first, second)).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM analytics_hourly WHERE url_id = ?", Long.class, urlId)).isZero();
-        assertThat(jdbc.queryForObject("SELECT total_clicks FROM platform_stats WHERE id=1", Long.class)).isEqualTo(globalBefore);
+        assertThat(TestCollection.platformClicks(jdbc)).isEqualTo(platformBefore);
     }
 
     @Test
     void botTrafficDoesNotIncreaseHumanClickTotals() {
-        applier.applyBatch(List.of(event(first, urlId, true, "Unknown")));
+        apply(List.of(event(first, urlId, true, "Unknown")));
 
-        assertThat(jdbc.queryForObject("SELECT click_count FROM urls WHERE id = ?", Long.class, urlId)).isZero();
-        assertThat(jdbc.queryForObject("SELECT total_clicks FROM platform_stats WHERE id=1", Long.class)).isEqualTo(globalBefore);
+        assertThat(TestCollection.linkClicks(jdbc, urlId)).isZero();
+        assertThat(TestCollection.platformClicks(jdbc)).isEqualTo(platformBefore);
         assertThat(jdbc.queryForObject("SELECT bot_clicks FROM analytics_hourly WHERE url_id = ?", Long.class, urlId)).isEqualTo(1);
     }
 
@@ -98,10 +120,10 @@ class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
     void delayedEventCannotCreditAReusedAlias() {
         jdbc.update("DELETE FROM urls WHERE id = ?", urlId);
         long replacementId = insertLink(shortId);
-        applier.applyBatch(List.of(event(first, urlId, false, "India")));
+        apply(List.of(event(first, urlId, false, "India")));
 
-        assertThat(jdbc.queryForObject("SELECT click_count FROM urls WHERE id = ?", Long.class, replacementId)).isZero();
-        assertThat(jdbc.queryForObject("SELECT total_clicks FROM platform_stats WHERE id=1", Long.class)).isEqualTo(globalBefore);
+        assertThat(TestCollection.linkClicks(jdbc, replacementId)).isZero();
+        assertThat(TestCollection.platformClicks(jdbc)).isEqualTo(platformBefore);
     }
 
     @Test
@@ -109,14 +131,14 @@ class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
         AnalyticsClick click = event(first, urlId, false, "India");
         CountDownLatch start = new CountDownLatch(1);
         try (var executor = Executors.newFixedThreadPool(2)) {
-            var a = executor.submit(() -> { start.await(); applier.applyBatch(List.of(click)); return null; });
-            var b = executor.submit(() -> { start.await(); applier.applyBatch(List.of(click)); return null; });
+            var a = executor.submit(() -> { start.await(); apply(List.of(click)); return null; });
+            var b = executor.submit(() -> { start.await(); apply(List.of(click)); return null; });
             start.countDown();
             a.get(30, TimeUnit.SECONDS);
             b.get(30, TimeUnit.SECONDS);
         }
-        assertThat(jdbc.queryForObject("SELECT click_count FROM urls WHERE id = ?", Long.class, urlId)).isEqualTo(1);
-        assertThat(jdbc.queryForObject("SELECT total_clicks FROM platform_stats WHERE id=1", Long.class)).isEqualTo(globalBefore + 1);
+        assertThat(TestCollection.linkClicks(jdbc, urlId)).isEqualTo(1);
+        assertThat(TestCollection.platformClicks(jdbc)).isEqualTo(platformBefore + 1);
     }
 
     @Test
@@ -124,12 +146,12 @@ class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
         AnalyticsClick newer = event(first, urlId, false, "India");
         AnalyticsClick older = new AnalyticsClick(second, urlId, time.minusSeconds(3600), false,
                 "India", "Direct", "Chrome / Linux");
-        applier.applyBatch(List.of(newer));
-        applier.applyBatch(List.of(older));
+        apply(List.of(newer));
+        apply(List.of(older));
 
-        assertThat(jdbc.queryForObject("SELECT click_count FROM urls WHERE id = ?", Long.class, urlId)).isEqualTo(2);
-        assertThat(jdbc.queryForObject("SELECT last_accessed_time FROM urls WHERE id = ?", java.sql.Timestamp.class, urlId)
-                .toLocalDateTime()).isEqualTo(LocalDateTime.parse("2026-11-08T01:23:45"));
+        assertThat(TestCollection.linkClicks(jdbc, urlId)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT last_accessed_at FROM analytics_link_totals WHERE url_id = ?", java.time.OffsetDateTime.class, urlId))
+                .isAtSameInstantAs(java.time.OffsetDateTime.parse("2026-11-08T01:23:45Z"));
     }
 
     @Test
@@ -138,8 +160,8 @@ class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
                 "India", "Direct", "Chrome / Linux", "a".repeat(64));
         AnalyticsClick bot = new AnalyticsClick(second, urlId, time, true,
                 "India", "Direct", "Chrome / Linux", "b".repeat(64));
-        applier.applyBatch(List.of(human, bot));
-        applier.applyBatch(List.of(human));
+        apply(List.of(human, bot));
+        apply(List.of(human));
         byte[] bytes = jdbc.queryForObject("SELECT sketch FROM analytics_unique_daily WHERE url_id = ?", byte[].class, urlId);
         assertThat(UniqueVisitorSketch.fromBytes(bytes).estimate()).isEqualTo(1);
     }
@@ -150,7 +172,7 @@ class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
         UUID after = before.equals(first) ? second : first;
         AnalyticsClick human = new AnalyticsClick(before, urlId, time, false,
                 "India", "Direct", "Chrome / Linux", "a".repeat(64));
-        assertThatThrownBy(() -> applier.applyBatch(List.of(human, event(after, urlId, false, "x".repeat(256)))))
+        assertThatThrownBy(() -> apply(List.of(human, event(after, urlId, false, "x".repeat(256)))))
                 .isInstanceOf(RuntimeException.class);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM analytics_unique_daily WHERE url_id = ?", Long.class, urlId)).isZero();
     }
@@ -161,8 +183,8 @@ class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
         AnalyticsClick two = new AnalyticsClick(second, urlId, time, false, "India", "Direct", "Chrome / Linux", "b".repeat(64));
         CountDownLatch start = new CountDownLatch(1);
         try (var executor = Executors.newFixedThreadPool(2)) {
-            var a = executor.submit(() -> { start.await(); applier.applyBatch(List.of(one)); return null; });
-            var b = executor.submit(() -> { start.await(); applier.applyBatch(List.of(two)); return null; });
+            var a = executor.submit(() -> { start.await(); apply(List.of(one)); return null; });
+            var b = executor.submit(() -> { start.await(); apply(List.of(two)); return null; });
             start.countDown();
             a.get(30, TimeUnit.SECONDS);
             b.get(30, TimeUnit.SECONDS);
@@ -180,6 +202,7 @@ class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
             events.add(new AnalyticsClick(id, urlId, time, i < 50, "India", "Direct", "Chrome / Linux",
                     String.format("%064x", i % 25)));
         }
+        events.replaceAll(event -> event.withCollection(collection));
         JdbcTemplate measured = spy(jdbc);
         var transaction = new TransactionTemplate(new DataSourceTransactionManager(jdbc.getDataSource()));
         transaction.executeWithoutResult(status -> new AnalyticsBatchApplier(measured).applyBatch(events));
@@ -203,24 +226,24 @@ class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
         // Hourly dimensions add three required rows to the existing six aggregate rows.
         assertThat(writtenRows).as("aggregate rows written for one link/hour/day").isEqualTo(9);
         System.out.printf("500-event workload: %d application JDBC operations, %d aggregate rows%n", operations, writtenRows);
-        assertThat(jdbc.queryForObject("SELECT click_count FROM urls WHERE id=?", Long.class, urlId)).isEqualTo(450);
-        assertThat(jdbc.queryForObject("SELECT total_clicks FROM platform_stats WHERE id=1", Long.class)).isEqualTo(globalBefore + 450);
+        assertThat(TestCollection.linkClicks(jdbc, urlId)).isEqualTo(450);
+        assertThat(TestCollection.platformClicks(jdbc)).isEqualTo(platformBefore + 450);
         assertThat(jdbc.queryForObject("SELECT human_clicks FROM analytics_hourly WHERE url_id=?", Long.class, urlId)).isEqualTo(450);
         assertThat(jdbc.queryForObject("SELECT bot_clicks FROM analytics_hourly WHERE url_id=?", Long.class, urlId)).isEqualTo(50);
         assertThat(jdbc.queryForObject("SELECT SUM(clicks) FROM analytics_daily_dimensions WHERE url_id=?", Long.class, urlId)).isEqualTo(1350);
         byte[] bytes = jdbc.queryForObject("SELECT sketch FROM analytics_unique_daily WHERE url_id=?", byte[].class, urlId);
         assertThat(UniqueVisitorSketch.fromBytes(bytes).estimate()).isEqualTo(25);
-        applier.applyBatch(events);
-        assertThat(jdbc.queryForObject("SELECT click_count FROM urls WHERE id=?", Long.class, urlId)).isEqualTo(450);
+        apply(events);
+        assertThat(TestCollection.linkClicks(jdbc, urlId)).isEqualTo(450);
     }
 
     @Test
     void mixedReplayAndDuplicateIdsOnlyApplyNewEvents() {
         AnalyticsClick one = event(first, urlId, false, "India");
         AnalyticsClick two = event(second, urlId, false, "Japan");
-        applier.applyBatch(List.of(one));
-        applier.applyBatch(List.of(one, two, two));
-        assertThat(jdbc.queryForObject("SELECT click_count FROM urls WHERE id=?", Long.class, urlId)).isEqualTo(2);
+        apply(List.of(one));
+        apply(List.of(one, two, two));
+        assertThat(TestCollection.linkClicks(jdbc, urlId)).isEqualTo(2);
         assertThat(jdbc.queryForObject("SELECT clicks FROM analytics_daily_dimensions WHERE url_id=? AND dimension='country' AND value='Japan'", Long.class, urlId)).isEqualTo(1);
     }
 
@@ -228,7 +251,7 @@ class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
     void groupsHoursDaysAndDimensionsIndependently() {
         UUID third = UUID.randomUUID();
         extraIds.add(third);
-        applier.applyBatch(List.of(
+        apply(List.of(
                 new AnalyticsClick(first, urlId, time, false, "India", "Direct", "Chrome / Linux", "a".repeat(64)),
                 new AnalyticsClick(second, urlId, time.plusSeconds(86400), false, "Japan", "Direct", "Chrome / Linux", "a".repeat(64)),
                 new AnalyticsClick(third, urlId, time.plusSeconds(90000), false, "Japan", "Direct", "Chrome / Linux", "a".repeat(64))));
@@ -242,7 +265,7 @@ class AnalyticsBatchApplierIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void conflictingPayloadsForTheSameIdRollBackBeforeWriting() {
-        assertThatThrownBy(() -> applier.applyBatch(List.of(event(first, urlId, false, "India"),
+        assertThatThrownBy(() -> apply(List.of(event(first, urlId, false, "India"),
                 event(first, urlId, false, "Japan")))).isInstanceOf(IllegalArgumentException.class);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM analytics_applied_events WHERE event_id=?", Long.class, first)).isZero();
     }

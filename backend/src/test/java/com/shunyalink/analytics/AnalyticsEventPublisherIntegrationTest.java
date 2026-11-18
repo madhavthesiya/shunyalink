@@ -36,6 +36,8 @@ class AnalyticsEventPublisherIntegrationTest extends BaseIntegrationTest {
     private final List<UUID> eventIds = new ArrayList<>();
     private long urlId;
     private long globalBefore;
+    private long platformBefore;
+    private UUID collection;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -44,6 +46,8 @@ class AnalyticsEventPublisherIntegrationTest extends BaseIntegrationTest {
                         + "VALUES (?, ?, false, 0, CURRENT_TIMESTAMP) RETURNING id", Long.class,
                 "pub" + suffix.substring(0, 10), "https://example.com/publisher-test/" + suffix);
         globalBefore = jdbc.queryForObject("SELECT total_clicks FROM platform_stats WHERE id=1", Long.class);
+        collection = TestCollection.establish(jdbc);
+        platformBefore = TestCollection.platformClicks(jdbc);
         countries = new LocalCountryResolver(Path.of(getClass().getResource("/geoip/GeoIP2-Country-Test.mmdb").toURI()));
     }
 
@@ -52,6 +56,7 @@ class AnalyticsEventPublisherIntegrationTest extends BaseIntegrationTest {
         jdbc.update("DELETE FROM urls WHERE id=?", urlId);
         jdbc.batchUpdate("DELETE FROM analytics_applied_events WHERE event_id=?", eventIds.stream().map(id -> new Object[]{id}).toList());
         jdbc.update("UPDATE platform_stats SET total_clicks=? WHERE id=1", globalBefore);
+        TestCollection.reset(jdbc);
         if (countries != null) countries.close();
         metrics.close();
     }
@@ -61,7 +66,7 @@ class AnalyticsEventPublisherIntegrationTest extends BaseIntegrationTest {
     private AnalyticsEventPublisher publisher(StreamOperations<String, String, String> streams, AnalyticsBatchApplier writer) {
         buffer = new AnalyticsFallbackBuffer(100, writer, metrics);
         return new AnalyticsEventPublisher(streams, buffer, new com.shunyalink.cache.RedisGuard(metrics), countries,
-                new VisitorHasher(new byte[32]), clock, metrics);
+                new VisitorHasher(new byte[32]), clock, metrics, () -> collection);
     }
 
     private long appliedMarkers(UUID eventId) {
@@ -100,7 +105,7 @@ class AnalyticsEventPublisherIntegrationTest extends BaseIntegrationTest {
         assertThat(result.outcome()).isEqualTo(AnalyticsEventPublisher.Outcome.BUFFERED);
         assertThat(appliedMarkers(result.eventId())).isZero(); // nothing written on the calling thread
         assertThat(buffer.drain()).isEqualTo(1);
-        assertThat(jdbc.queryForObject("SELECT click_count FROM urls WHERE id=?", Long.class, urlId)).isEqualTo(1);
+        assertThat(TestCollection.linkClicks(jdbc, urlId)).isEqualTo(1);
         assertThat(appliedMarkers(result.eventId())).isEqualTo(1);
     }
 
@@ -118,8 +123,8 @@ class AnalyticsEventPublisherIntegrationTest extends BaseIntegrationTest {
         var records = real.range(AnalyticsEventPublisher.STREAM, org.springframework.data.domain.Range.unbounded());
         assertThat(records).hasSize(1);
         applier.applyBatch(List.of(AnalyticsEventCodec.decode(records.getFirst().getValue())));
-        assertThat(jdbc.queryForObject("SELECT click_count FROM urls WHERE id=?", Long.class, urlId)).isEqualTo(1);
-        assertThat(jdbc.queryForObject("SELECT total_clicks FROM platform_stats WHERE id=1", Long.class)).isEqualTo(globalBefore + 1);
+        assertThat(TestCollection.linkClicks(jdbc, urlId)).isEqualTo(1);
+        assertThat(TestCollection.platformClicks(jdbc)).isEqualTo(platformBefore + 1);
     }
 
     @Test
@@ -137,7 +142,7 @@ class AnalyticsEventPublisherIntegrationTest extends BaseIntegrationTest {
         assertThat(buffer.drain()).isEqualTo(1);   // the retry succeeds
         assertThat(buffer.pending()).isZero();
         assertThat(appliedMarkers(result.eventId())).isEqualTo(1);
-        assertThat(jdbc.queryForObject("SELECT click_count FROM urls WHERE id=?", Long.class, urlId)).isEqualTo(1);
+        assertThat(TestCollection.linkClicks(jdbc, urlId)).isEqualTo(1);
     }
 
     @Test
@@ -145,7 +150,7 @@ class AnalyticsEventPublisherIntegrationTest extends BaseIntegrationTest {
         redis.opsForValue().set(AnalyticsEventPublisher.STREAM, "wrong-type");
         buffer = new AnalyticsFallbackBuffer(1, applier, metrics);
         var publisher = new AnalyticsEventPublisher(redis.opsForStream(), buffer, new com.shunyalink.cache.RedisGuard(metrics),
-                countries, new VisitorHasher(new byte[32]), clock, metrics);
+                countries, new VisitorHasher(new byte[32]), clock, metrics, () -> collection);
         assertThat(publish(publisher).outcome()).isEqualTo(AnalyticsEventPublisher.Outcome.BUFFERED);
         assertThat(publish(publisher).outcome()).isEqualTo(AnalyticsEventPublisher.Outcome.DROPPED);
         assertThat(metrics.get("shunyalink.analytics.fallback").tag("outcome", "dropped").counter().count()).isEqualTo(1);
@@ -175,7 +180,7 @@ class AnalyticsEventPublisherIntegrationTest extends BaseIntegrationTest {
         assertThat(event.visitorPseudonym()).isNull();
         assertThat(event.referrer()).isEqualTo("Direct");
         applier.applyBatch(List.of(event));
-        assertThat(jdbc.queryForObject("SELECT click_count FROM urls WHERE id=?", Long.class, urlId)).isZero();
+        assertThat(TestCollection.linkClicks(jdbc, urlId)).isZero();
         assertThat(jdbc.queryForObject("SELECT bot_clicks FROM analytics_hourly WHERE url_id=?", Long.class, urlId)).isEqualTo(1);
     }
 
