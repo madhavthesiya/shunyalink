@@ -35,6 +35,8 @@ only after final cutover checks. `fresh-start=false` does not revert or reset an
 | `app.analytics.consumer.enabled` | `false` | Automatically poll/recover stream records |
 | `app.analytics.reads.enabled` | `false` | Select committed stats, lists, bio summaries and public clicks for the established collection |
 | `app.analytics.fresh-start` | `true` | Establish/reuse the fresh period when ingestion starts |
+| `app.analytics.consumer.max-deliveries` | `5` | Deliveries before an invalid record is dead-lettered (min 2) |
+| `app.analytics.fallback.capacity` | `10000` | Clicks held in memory while Redis is failing; beyond this they are dropped and counted |
 | `ANALYTICS_VISITOR_KEY` | unset | Base64 of exactly 32 cryptographically random bytes, dedicated to analytics |
 
 Ingestion refuses to start without the applier and a valid visitor key. Store the key as an Azure
@@ -52,6 +54,24 @@ Event-application database transactions use a five-second timeout, including sta
 are individual operation bounds, not an end-to-end redirect latency guarantee. PostgreSQL network
 bounds apply to other database users and migrations as well; slower environments must review their
 configuration before cutover. A socket/commit timeout remains an uncertain write outcome.
+
+## Runbook: dead-lettered events
+
+A stream record that can't be decoded, or whose event ID arrives with conflicting contents, is
+never applied. It stays pending, so a newer app version mid-deploy can still process it. After
+`max-deliveries` deliveries (at least 60 s apart, so at least about 5 minutes), it is copied to
+**`analytics:events:v1:dead`** and acknowledged, both in one Lua script. Database outages never
+dead-letter anything: valid events wait.
+
+- **Alert on:** `shunyalink.analytics.consumer.dead_lettered{reason=malformed|conflict}` > 0. Every dead
+  letter is either a producer bug or tampering.
+- **Inspect:** `XRANGE analytics:events:v1:dead - + COUNT 20`. Each entry has `dead_letter_source_id`,
+  `dead_letter_reason` and the original fields. Entries never contain raw IPs or headers: events are
+  enriched and pseudonymous before they are published.
+- **Replay after a fix:** `XADD analytics:events:v1 * <original field/value pairs>` (without the two
+  `dead_letter_*` fields), then `XDEL` the dead-letter entry. Replays are safe because the event UUID
+  deduplicates. A conflicting copy will be rejected again by design.
+- **Retention:** approximately the newest 10,000 dead letters are kept (`MAXLEN ~`).
 
 ## Remaining gates before enablement
 
