@@ -13,7 +13,7 @@ class AnalyticsClickRecorderTest {
         var publisher = mock(AnalyticsEventPublisher.class);
         var metrics = new SimpleMeterRegistry();
         try {
-            var recorder = new AnalyticsClickRecorder(legacy, Optional.of(publisher), metrics);
+            var recorder = new AnalyticsClickRecorder(legacy, Optional.of(publisher), mock(com.shunyalink.cache.RedisGuard.class), metrics);
             recorder.recordClick(42L, "reused-alias", "8.8.8.8", "Chrome", null);
             recorder.recordPreview(42L, "reused-alias", "8.8.8.8", "WhatsApp", null);
             verify(publisher).publish(42L, "8.8.8.8", "Chrome", null);
@@ -27,7 +27,7 @@ class AnalyticsClickRecorderTest {
         var legacy = mock(AnalyticsService.class);
         var metrics = new SimpleMeterRegistry();
         try {
-            var recorder = new AnalyticsClickRecorder(legacy, Optional.empty(), metrics);
+            var recorder = new AnalyticsClickRecorder(legacy, Optional.empty(), mock(com.shunyalink.cache.RedisGuard.class), metrics);
             recorder.recordClick(42L, "alias", null, null, null);
             recorder.recordPreview(42L, "alias", null, "WhatsApp", null);
             verify(legacy).recordClick("alias", null, null, null);
@@ -42,10 +42,36 @@ class AnalyticsClickRecorderTest {
         when(publisher.publish(42L, null, null, null)).thenThrow(new IllegalStateException("enrichment failed"));
         var metrics = new SimpleMeterRegistry();
         try {
-            new AnalyticsClickRecorder(legacy, Optional.of(publisher), metrics)
+            new AnalyticsClickRecorder(legacy, Optional.of(publisher), mock(com.shunyalink.cache.RedisGuard.class), metrics)
                     .recordClick(42L, "alias", null, null, null);
             assertThat(metrics.get("shunyalink.analytics.recording.unconfirmed").counter().count()).isEqualTo(1);
             verifyNoInteractions(legacy);
+        } finally { metrics.close(); }
+    }
+
+    @Test
+    void whileRedisIsDown_legacyWorkIsSkippedAndCountedInsteadOfQueued() {
+        var legacy = mock(AnalyticsService.class);
+        var redis = mock(com.shunyalink.cache.RedisGuard.class);
+        when(redis.isOpen()).thenReturn(true);
+        var metrics = new SimpleMeterRegistry();
+        try {
+            new AnalyticsClickRecorder(legacy, Optional.empty(), redis, metrics).recordClick(42L, "alias", null, null, null);
+            verifyNoInteractions(legacy);
+            assertThat(metrics.get("shunyalink.analytics.recording.skipped").counter().count()).isEqualTo(1);
+        } finally { metrics.close(); }
+    }
+
+    @Test
+    void fullExecutorRejectsTheTaskAndTheRedirectThreadDoesNotRunIt() {
+        var legacy = mock(AnalyticsService.class);
+        doThrow(new org.springframework.core.task.TaskRejectedException("executor full"))
+                .when(legacy).recordClick("alias", null, null, null);
+        var metrics = new SimpleMeterRegistry();
+        try {
+            new AnalyticsClickRecorder(legacy, Optional.empty(), mock(com.shunyalink.cache.RedisGuard.class), metrics)
+                    .recordClick(42L, "alias", null, null, null);
+            assertThat(metrics.get("shunyalink.analytics.recording.unconfirmed").counter().count()).isEqualTo(1);
         } finally { metrics.close(); }
     }
 }
