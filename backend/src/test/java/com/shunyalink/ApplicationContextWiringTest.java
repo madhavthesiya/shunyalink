@@ -53,6 +53,9 @@ class ApplicationContextWiringTest {
     private RedisConnectionFactory redisConnectionFactory;
     @MockBean
     private StringRedisTemplate stringRedisTemplate;
+    /** JPA is excluded above, so Boot defines no transaction manager or template to inject. */
+    @MockBean
+    private org.springframework.transaction.support.TransactionOperations transactionOperations;
 
     @Autowired
     private ApplicationContext context;

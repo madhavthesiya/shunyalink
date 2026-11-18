@@ -42,6 +42,10 @@ public abstract class BaseIntegrationTest {
     @MockBean
     protected MetadataService metadataService;
 
+    /** The phishing check calls third-party AI providers; by default the mock answers "not phishing". */
+    @MockBean
+    protected com.shunyalink.cp.LlmIntegrationService llmIntegrationService;
+
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
 

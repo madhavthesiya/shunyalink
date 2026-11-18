@@ -84,6 +84,33 @@ class UrlIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    void phishingCheck_runsBeforeAnyTransactionOrConnectionIsOpened() throws Exception {
+        // The pool has 2 connections. A slow AI call holding one would starve redirects that miss the cache.
+        var transactionActive = new java.util.concurrent.atomic.AtomicReference<Boolean>();
+        var boundResources = new java.util.concurrent.atomic.AtomicReference<java.util.Map<Object, Object>>();
+        org.mockito.Mockito.when(llmIntegrationService.isPhishing(org.mockito.ArgumentMatchers.anyString())).thenAnswer(call -> {
+            transactionActive.set(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive());
+            boundResources.set(org.springframework.transaction.support.TransactionSynchronizationManager.getResourceMap());
+            return false;
+        });
+
+        shorten("https://example.com/checked-first", "it-checked", null, null).andExpect(status().isOk());
+
+        assertThat(transactionActive.get()).as("transaction open during the AI call").isFalse();
+        assertThat(boundResources.get()).as("connection or EntityManager bound during the AI call").isEmpty();
+        assertThat(urlRepository.findByShortId("it-checked")).isPresent();
+    }
+
+    @Test
+    void flaggedUrl_isRejectedAndNothingIsStored() throws Exception {
+        org.mockito.Mockito.when(llmIntegrationService.isPhishing("https://paypa1-login.example/verify")).thenReturn(true);
+
+        shorten("https://paypa1-login.example/verify", "it-flagged", null, null).andExpect(status().isBadRequest());
+
+        assertThat(urlRepository.findByShortId("it-flagged")).isEmpty();
+    }
+
+    @Test
     void unknownShortLink_returns404() throws Exception {
         mockMvc.perform(get("/it-missing")).andExpect(status().isNotFound());
     }

@@ -67,6 +67,11 @@ class DbUrlServiceTest {
     private com.shunyalink.security.LinkPasswordCipher linkPasswordCipher =
             new com.shunyalink.security.LinkPasswordCipher("MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=");
 
+    /** Runs the callback directly (spied so Mockito injects it); UrlIntegrationTest proves the real boundary. */
+    @Spy
+    private org.springframework.transaction.support.TransactionOperations transactions =
+            org.springframework.transaction.support.TransactionOperations.withoutTransaction();
+
     @InjectMocks
     private DbUrlService dbUrlService;
 
