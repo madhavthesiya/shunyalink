@@ -193,6 +193,12 @@
 			<artifactId>maxmind-db</artifactId>
 			<version>4.2.0</version>
 		</dependency>
+		<!-- Circuit breaker core only (no Spring starter/AOP): Redis on the redirect path, ADR 0005. -->
+		<dependency>
+			<groupId>io.github.resilience4j</groupId>
+			<artifactId>resilience4j-circuitbreaker</artifactId>
+			<version>2.4.0</version>
+		</dependency>
 
 		<!-- Cloudinary — Cloud Image Uploads & Compression -->
 		<dependency>

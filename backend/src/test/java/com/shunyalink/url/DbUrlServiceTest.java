@@ -186,6 +186,7 @@ class DbUrlServiceTest {
 
     private UrlEntity protectedLink(String shortId, String storedPassword) {
         UrlEntity entity = new UrlEntity(shortId, "https://example.com/private", false);
+        org.springframework.test.util.ReflectionTestUtils.setField(entity, "id", 42L);
         entity.setPassword(storedPassword);
         entity.setUserId(1L);
         when(urlRepository.findByShortId(shortId)).thenReturn(Optional.of(entity));

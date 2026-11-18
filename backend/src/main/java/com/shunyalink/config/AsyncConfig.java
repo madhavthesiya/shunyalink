@@ -11,10 +11,12 @@ import java.util.concurrent.ThreadPoolExecutor;
 public class AsyncConfig {
 
     /**
-     * Bounded thread pool for analytics processing.
-     * Prevents unlimited thread creation under high concurrent load.
-     * CallerRunsPolicy ensures no analytics events are silently dropped —
-     * if the pool is full, the calling thread processes the task itself.
+     * Bounded thread pool for analytics processing; prevents unlimited thread creation under load.
+     *
+     * <p>When the pool and its queue are full, the task is rejected (AbortPolicy) and the caller counts
+     * the lost click. It used to be CallerRunsPolicy, which ran the task on the redirect's own thread: with
+     * Redis hanging, that was about 15 Redis commands at a 1 s timeout each, inside a user's redirect.
+     * Analytics may lose clicks under overload; redirects must not slow down (ADR 0005).
      */
     @Bean("analyticsExecutor")
     public TaskExecutor analyticsExecutor() {
@@ -23,7 +25,7 @@ public class AsyncConfig {
         executor.setMaxPoolSize(50);
         executor.setQueueCapacity(500);
         executor.setThreadNamePrefix("analytics-");
-        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
         executor.initialize();
         return executor;
     }

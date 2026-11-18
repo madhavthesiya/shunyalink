@@ -12,6 +12,8 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 @Component
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+        name = "app.analytics.ingestion.enabled", havingValue = "false", matchIfMissing = true)
 public class AnalyticsScheduler {
 
     private final RedisTemplate<String,String> redisTemplate;

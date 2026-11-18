@@ -25,12 +25,12 @@ import org.testcontainers.utility.DockerImageName;
 public abstract class BaseIntegrationTest {
 
     @ServiceConnection
-    static final PostgreSQLContainer<?> POSTGRES =
+    protected static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>(DockerImageName.parse("postgres:16-alpine"));
 
     @ServiceConnection(name = "redis")
     @SuppressWarnings("resource") // closed by Ryuk at JVM exit (singleton pattern)
-    static final GenericContainer<?> REDIS =
+    protected static final GenericContainer<?> REDIS =
             new GenericContainer<>(DockerImageName.parse("redis:7.2-alpine")).withExposedPorts(6379);
 
     static {
@@ -45,9 +45,13 @@ public abstract class BaseIntegrationTest {
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
 
-    /** Rate-limit buckets and caches must not leak between tests, or results depend on test order. */
+    @Autowired
+    private com.shunyalink.cache.RedisGuard redisGuard;
+
+    /** Rate-limit buckets, caches and breaker state must not leak between tests, or results depend on order. */
     @BeforeEach
     void flushRedis() {
+        redisGuard.reset();
         stringRedisTemplate.execute((RedisCallback<Void>) connection -> {
             connection.serverCommands().flushAll();
             return null;

@@ -40,6 +40,7 @@ public class CacheWarmup {
             // New: Redis Hash cache for redirect hot path (zero-DB redirects)
             String hashKey = "url:entity:" + url.getShortId();
             Map<String, String> fields = new HashMap<>();
+            fields.put("urlId", url.getId().toString());
             fields.put("longUrl", url.getLongUrl());
             fields.put("hasPassword", String.valueOf(url.getPassword() != null));
             fields.put("title", url.getTitle() != null ? url.getTitle() : "");

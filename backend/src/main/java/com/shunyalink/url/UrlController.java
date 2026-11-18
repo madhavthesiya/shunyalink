@@ -33,6 +33,8 @@ import java.util.Map;
 @RequestMapping("/api/v1/url")
 @Tag(name = "URL Management", description = "Endpoints for creating, managing, and tracking shortened links")
 public class UrlController {
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.shunyalink.analytics.DurableAnalyticsReader durableAnalyticsReader;
 
     private final UrlService urlService;
     private final RateLimiterService rateLimiterService;
@@ -40,7 +42,7 @@ public class UrlController {
     private final UserRepository userRepository;
     private final CsvExportService csvExportService;
     private final com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository;
-    private final com.shunyalink.analytics.AnalyticsService analyticsService;
+    private final com.shunyalink.analytics.AnalyticsClickRecorder analyticsService;
     private final CsvImportService csvImportService;
     private final ClientIpResolver clientIpResolver;
 
@@ -51,7 +53,7 @@ public class UrlController {
                          UrlRepository urlRepository, UserRepository userRepository,
                          CsvExportService csvExportService,
                          com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository,
-                         com.shunyalink.analytics.AnalyticsService analyticsService,
+                         com.shunyalink.analytics.AnalyticsClickRecorder analyticsService,
                          CsvImportService csvImportService,
                          ClientIpResolver clientIpResolver) {
         this.urlService = urlService;
@@ -137,7 +139,7 @@ public class UrlController {
         return ResponseEntity.ok().build();
     }
 
-    @Operation(summary = "Get link stats", description = "Returns click analytics and metadata for a specific short ID. Supports time ranges: '24h', '7d', and 'all'.")
+    @Operation(summary = "Get link stats", description = "Returns click analytics and metadata for a specific short ID. Supports time ranges: '24h', '7d', '30d', and 'all'.")
     @GetMapping("/stats/{shortId}")
     public UrlStatsResponse getStats(
             @PathVariable String shortId,
@@ -146,6 +148,7 @@ public class UrlController {
         long lookbackMs = switch (range) {
             case "24h" -> 86400000L;
             case "7d" -> 604800000L;
+            case "30d" -> 2592000000L;
             default -> 0L; // All time
         };
         
@@ -235,7 +238,7 @@ public class UrlController {
         return ResponseEntity.ok(new PublicStatsResponse(
                 stats.getTotalLinks(),
                 stats.getTotalUsers(),
-                stats.getTotalClicks()));
+                durableAnalyticsReader == null ? stats.getTotalClicks() : durableAnalyticsReader.platformClicks()));
     }
 
     @Operation(summary = "Resolve password-protected link", description = "Verifies password and returns the original long URL.")
@@ -248,9 +251,9 @@ public class UrlController {
         rateLimiterService.checkLimit("rate:resolve:" + shortId, 100, 3600);
 
         // Throws 401 on a wrong password; verification (and legacy upgrade) lives in the service
-        String longUrl = urlService.resolveProtectedLink(shortId, body.password());
-        analyticsService.recordClick(shortId, clientIpResolver.resolve(request), request.getHeader("User-Agent"), request.getHeader("Referer"));
-        return Map.of("longUrl", longUrl);
+        ResolvedLink resolved = urlService.resolveProtectedLinkWithIdentity(shortId, body.password());
+        analyticsService.recordClick(resolved.urlId(), shortId, ip, request.getHeader("User-Agent"), request.getHeader("Referer"));
+        return Map.of("longUrl", resolved.longUrl());
     }
 
     @Operation(summary = "Reveal link password", description = "Owner-only: returns the link's password so it can be shared again. Rate-limited per user.", security = @SecurityRequirement(name = "Bearer Authentication"))

@@ -45,6 +45,7 @@ interface StatsData {
   countries: Record<string, number>;
   referrers: Record<string, number>;
   devices: Record<string, number>;
+  analyticsCollectionStartedAt?: string | null;
 }
 
 export default function InsightsPage() {
@@ -156,6 +157,14 @@ export default function InsightsPage() {
             <Globe className="w-4 h-4" />
             sl.madhavv.me/{shortId}
           </p>
+          {!loading && data?.analyticsCollectionStartedAt && (
+            <p className="text-sm text-muted-foreground">
+              Analytics collected since{" "}
+              <time dateTime={data.analyticsCollectionStartedAt}>
+                {new Date(data.analyticsCollectionStartedAt).toLocaleString()}
+              </time>.
+            </p>
+          )}
         </div>
 
         {/* Stats Grid */}

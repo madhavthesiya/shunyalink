@@ -1,6 +1,6 @@
 package com.shunyalink.url;
 
-import com.shunyalink.analytics.AnalyticsService;
+import com.shunyalink.analytics.AnalyticsClickRecorder;
 import com.shunyalink.analytics.GlobalStatsEntity;
 import com.shunyalink.analytics.GlobalStatsRepository;
 import com.shunyalink.exception.ConflictException;
@@ -79,7 +79,7 @@ class UrlControllerTest {
     private GlobalStatsRepository globalStatsRepository;
 
     @MockBean
-    private AnalyticsService analyticsService;
+    private AnalyticsClickRecorder analyticsService;
 
     /** Same principal shape JwtAuthenticationFilter produces in production: the user id. */
     private static RequestPostProcessor asUser(long userId) {
@@ -215,7 +215,7 @@ class UrlControllerTest {
 
     @Test
     void resolve_correctPassword_returnsDestinationAndRecordsClick() throws Exception {
-        when(urlService.resolveProtectedLink("locked", "s3cret")).thenReturn("https://example.com/private");
+        when(urlService.resolveProtectedLinkWithIdentity("locked", "s3cret")).thenReturn(new ResolvedLink(42L, "https://example.com/private"));
 
         mockMvc.perform(post("/api/v1/url/resolve/locked")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -223,12 +223,12 @@ class UrlControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.longUrl").value("https://example.com/private"));
 
-        verify(analyticsService).recordClick(eq("locked"), any(), any(), any());
+        verify(analyticsService).recordClick(eq(42L), eq("locked"), any(), any(), any());
     }
 
     @Test
     void resolve_wrongPassword_returns401JsonAndRecordsNoClick() throws Exception {
-        when(urlService.resolveProtectedLink("locked", "guess"))
+        when(urlService.resolveProtectedLinkWithIdentity("locked", "guess"))
                 .thenThrow(new com.shunyalink.exception.UnauthorizedException("Incorrect password"));
 
         mockMvc.perform(post("/api/v1/url/resolve/locked")
@@ -242,7 +242,7 @@ class UrlControllerTest {
 
     @Test
     void resolve_isRateLimitedPerClientAndPerLink() throws Exception {
-        when(urlService.resolveProtectedLink("locked", "guess")).thenReturn("https://example.com/private");
+        when(urlService.resolveProtectedLinkWithIdentity("locked", "guess")).thenReturn(new ResolvedLink(42L, "https://example.com/private"));
 
         mockMvc.perform(post("/api/v1/url/resolve/locked")
                         .header("X-Forwarded-For", "203.0.113.7")
@@ -264,7 +264,7 @@ class UrlControllerTest {
                         .content("{\"password\":\"guess\"}"))
                 .andExpect(status().isTooManyRequests());
 
-        verify(urlService, never()).resolveProtectedLink(any(), any());
+        verify(urlService, never()).resolveProtectedLinkWithIdentity(any(), any());
     }
 
     @Test
@@ -336,6 +336,14 @@ class UrlControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.shortId").value("abc123"))
                 .andExpect(jsonPath("$.clickCount").value(42));
+    }
+
+    @Test
+    void getStats_thirtyDayRangeIsNotTreatedAsAllTime() throws Exception {
+        when(urlService.getStats("abc123", OWNER_ID, 2592000000L)).thenReturn(sampleStats("abc123"));
+        mockMvc.perform(get("/api/v1/url/stats/abc123?range=30d").with(asUser(OWNER_ID)))
+                .andExpect(status().isOk());
+        verify(urlService).getStats("abc123", OWNER_ID, 2592000000L);
     }
 
     @Test
