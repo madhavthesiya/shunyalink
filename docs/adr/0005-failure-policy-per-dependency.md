@@ -49,6 +49,22 @@ Considered and rejected:
 - *Unbounded buffering*: this turns a Redis outage into an out-of-memory crash.
 - *Writing to the database synchronously but faster*: the pool has 2 connections shared with every request.
 
+### Redis at startup (2026-11-19, after an incident)
+
+The 1 s timeout above was tuned for requests, but it applied to startup too. `CacheWarmup` ran inside
+startup (`@PostConstruct`), making up to 3,000 sequential Redis calls with no error handling. The first call
+also opens the TLS connection, and Lettuce bounds that handshake by the same 1 s. On Nov 18 the deploy of
+`4b5f9ce` exited with code 1 about 200 s into every start. The automatic rollback restored the previous
+version, but the site was down for about 22 minutes. A test that starts the application while Redis accepts
+connections but never answers reproduced it exactly: `Connection initialization timed out after 1 second(s)`.
+
+Decision: **Redis is optional at startup as well as on requests.** The warmup is only an optimization, since
+a cache miss reads PostgreSQL. It now runs after the application is ready, on its own thread, and stops at the
+first failure with a WARN log. `StartupWithoutRedisIntegrationTest` keeps this true.
+
+Rejected: *raising the timeout again*, because that brings back 60 s hangs on every redirect during an
+outage. *Retrying the warmup*, because redirects fill the cache on demand anyway.
+
 Deploy safety follows from this: because missing secrets now stop the app, every merge to `main`
 (which auto-deploys) is preceded by confirming the production settings, and
 `ApplicationContextWiringTest` boots the full application with only infrastructure mocked, so
@@ -63,6 +79,10 @@ test gate is added). The test was verified by deliberately breaking a bean and w
 - (−) Clicks can be lost: the buffer is in memory (lost on a crash) and bounded (dropped when full).
   Both are counted (`shunyalink.analytics.fallback{outcome=dropped|lost_on_shutdown}`), so the loss is
   visible, not silent.
+- (+) The application starts without Redis. Readiness no longer waits for the warmup, which also shortens
+  the downtime of each deploy (Azure stops the old container before the new one is ready).
+- (−) Right after a deploy, the first click on each popular link reads PostgreSQL until the background
+  warmup reaches it.
 - (−) While the breaker is open, every redirect is a database lookup. That is fine at this traffic level;
   at much higher traffic, an in-process cache of hot links would carry the load during a Redis outage.
 - (−) Adding a required secret is a deployment step that must happen *before* the code ships;
