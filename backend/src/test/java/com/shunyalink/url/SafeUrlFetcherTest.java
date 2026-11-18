@@ -91,6 +91,14 @@ class SafeUrlFetcherTest {
             exchange.getResponseBody().write(body);
             exchange.close();
         });
+        // A page that declares itself XML: the remote server, not us, would choose jsoup's parser
+        server.createContext("/xml", exchange -> {
+            byte[] body = "<?xml version=\"1.0\"?><feed><title>Feed</title></feed>".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/xml");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
         redirect("/to-page", "/page");
         redirect("/to-metadata", "http://169.254.169.254/latest/meta-data/");
         redirect("/to-private", "http://10.0.0.5/admin");
@@ -118,6 +126,16 @@ class SafeUrlFetcherTest {
     @Test
     void fetch_followsSafeRedirects() throws Exception {
         assertThat(fetcher.fetch(base + "/to-page", 5000).title()).isEqualTo("Hello");
+    }
+
+    @Test
+    void fetch_alwaysUsesTheHtmlParser_evenWhenTheServerClaimsXml() throws Exception {
+        // jsoup's XML tree builder has a memory-exhaustion flaw (CVE-2026-75140), and link previews never
+        // need XML, so an attacker-controlled Content-Type must not be able to select that parser.
+        var document = fetcher.fetch(base + "/xml", 5000);
+        // The HTML parser always builds an <html> root; the XML parser would keep <feed> as the root.
+        assertThat(document.child(0).tagName()).isEqualTo("html");
+        assertThat(document.selectFirst("title").text()).isEqualTo("Feed"); // content still parsed, as HTML
     }
 
     @Test
