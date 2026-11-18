@@ -16,12 +16,13 @@ import java.util.UUID;
 class AnalyticsConsumerConfig {
     @Bean
     AnalyticsStreamConsumer analyticsStreamConsumer(StringRedisTemplate redis, AnalyticsBatchApplier applier,
-            MeterRegistry metrics, @Value("${app.analytics.consumer.claim-idle:60s}") String configuredIdle) {
+            MeterRegistry metrics, @Value("${app.analytics.consumer.claim-idle:60s}") String configuredIdle,
+            @Value("${app.analytics.consumer.max-deliveries:5}") int maxDeliveries) {
         Duration claimIdle = DurationStyle.detectAndParse(configuredIdle);
         if (claimIdle.compareTo(Duration.ofSeconds(60)) < 0) {
             throw new IllegalArgumentException("Analytics recovery idle must be at least 60 seconds");
         }
-        return new AnalyticsStreamConsumer(redis, applier, UUID.randomUUID().toString(), claimIdle, metrics);
+        return new AnalyticsStreamConsumer(redis, applier, UUID.randomUUID().toString(), claimIdle, maxDeliveries, metrics);
     }
 
     @Bean

@@ -255,4 +255,65 @@ class AnalyticsStreamConsumerIntegrationTest extends BaseIntegrationTest {
         assertThat(clicks()).isEqualTo(1);
         assertThat(pending()).isZero();
     }
+
+    // ─── Poison records: dead-lettered after repeated deliveries (N2) ─────────────────────────
+
+    private static final String DEAD_LETTERS = "analytics:events:v1:dead";
+
+    private List<org.springframework.data.redis.connection.stream.MapRecord<String, String, String>> deadLetters() {
+        return redis.<String, String>opsForStream().range(DEAD_LETTERS, org.springframework.data.domain.Range.unbounded());
+    }
+
+    @Test
+    void malformedRecordIsDeadLetteredAfterRepeatedDeliveries_andValidTrafficStillCommits() {
+        var malformed = new HashMap<>(AnalyticsEventCodec.encode(event()));
+        malformed.put("version", "unsupported");
+        RecordId poison = redis.<String, String>opsForStream().add(AnalyticsEventPublisher.STREAM, malformed);
+        enqueue();
+        var consumer = worker("dead-letter");
+        assertThat(consumer.pollOnce()).isEqualTo(1);       // the valid event commits on the first poll
+        for (int i = 0; i < 10; i++) consumer.pollOnce();   // recovery keeps re-claiming the poison record
+
+        assertThat(pending()).isZero();                     // no longer re-claimed forever
+        assertThat(deadLetters()).singleElement().satisfies(dead -> assertThat(dead.getValue())
+                .containsEntry("dead_letter_source_id", poison.getValue())
+                .containsEntry("dead_letter_reason", "malformed")
+                .containsEntry("version", "unsupported"));  // original fields kept for repair or replay
+        assertThat(clicks()).isEqualTo(1);
+        assertThat(metrics.get("shunyalink.analytics.consumer.dead_lettered").tag("reason", "malformed")
+                .counter().count()).isEqualTo(1);
+    }
+
+    @Test
+    void conflictingCopiesOfOneEventAreDeadLettered_andNeitherIsCounted() {
+        var original = event();
+        redis.<String, String>opsForStream().add(AnalyticsEventPublisher.STREAM, AnalyticsEventCodec.encode(original));
+        var conflict = new HashMap<>(AnalyticsEventCodec.encode(original));
+        conflict.put("country", "Japan");
+        redis.<String, String>opsForStream().add(AnalyticsEventPublisher.STREAM, conflict);
+        enqueue();
+        var consumer = worker("conflict-dead-letter");
+        for (int i = 0; i < 10; i++) consumer.pollOnce();
+
+        assertThat(pending()).isZero();
+        assertThat(deadLetters()).hasSize(2)
+                .allSatisfy(dead -> assertThat(dead.getValue()).containsEntry("dead_letter_reason", "conflict"));
+        assertThat(clicks()).isEqualTo(1); // only the independent event
+    }
+
+    @Test
+    void databaseOutageNeverDeadLettersValidEvents() {
+        enqueue();
+        AnalyticsBatchApplier unavailable = mock(AnalyticsBatchApplier.class);
+        doThrow(new DataAccessResourceFailureException("Simulated database outage"))
+                .when(unavailable).applyValidatedBatch(anyList());
+        var consumer = new AnalyticsStreamConsumer(redis, unavailable, "db-down", Duration.ZERO, metrics);
+        for (int i = 0; i < 10; i++) {
+            assertThatThrownBy(consumer::pollOnce).isInstanceOf(DataAccessResourceFailureException.class);
+        }
+        assertThat(pending()).isEqualTo(1);       // still waiting, many deliveries later
+        assertThat(deadLetters()).isEmpty();      // a transient failure is not poison
+        assertThat(worker("recovered").pollOnce()).isEqualTo(1);
+        assertThat(clicks()).isEqualTo(1);
+    }
 }
