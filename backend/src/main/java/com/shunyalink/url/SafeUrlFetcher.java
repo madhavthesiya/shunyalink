@@ -4,6 +4,7 @@ import com.shunyalink.util.InternalAddresses;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.jsoup.parser.Parser;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -64,6 +65,10 @@ public class SafeUrlFetcher {
                     .maxBodySize(MAX_BODY_BYTES)
                     .followRedirects(false)
                     .ignoreHttpErrors(true)
+                    // Without this, an "application/xml" response makes jsoup switch to its XML parser:
+                    // the remote server would choose the parser. Previews only need HTML metadata, and the
+                    // XML tree builder had a memory-exhaustion flaw (CVE-2026-75140).
+                    .parser(Parser.htmlParser())
                     .execute();
             int status = response.statusCode();
             if (status >= 300 && status < 400 && response.hasHeader("Location")) {
