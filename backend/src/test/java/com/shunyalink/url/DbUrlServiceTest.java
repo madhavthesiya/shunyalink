@@ -72,6 +72,9 @@ class DbUrlServiceTest {
     private org.springframework.transaction.support.TransactionOperations transactions =
             org.springframework.transaction.support.TransactionOperations.withoutTransaction();
 
+    @Mock
+    private com.shunyalink.cache.RedirectCache redirectCache;
+
     @InjectMocks
     private DbUrlService dbUrlService;
 
@@ -92,7 +95,8 @@ class DbUrlServiceTest {
         UrlEntity result = dbUrlService.shortenUrl("https://google.com", null, null, null, null, null, false, null);
         assertEquals("abc123", result.getShortId());
         verify(urlRepository).save(any(UrlEntity.class));
-        verify(valueOperations).set(eq("url:abc123"), eq("https://google.com"), anyLong(), eq(TimeUnit.SECONDS));
+        verify(redirectCache).forgetQuietly("abc123"); // any stale "missing" marker is cleared after the commit
+        verify(valueOperations, never()).set(eq("url:abc123"), any(), anyLong(), any());
     }
 
     @Test
@@ -101,7 +105,7 @@ class DbUrlServiceTest {
 
         UrlEntity result = dbUrlService.shortenUrl("https://google.com", "myalias", null, null, null, null, false, null);
         assertEquals("myalias", result.getShortId());
-        verify(valueOperations).set(eq("url:myalias"), eq("https://google.com"), anyLong(), eq(TimeUnit.SECONDS));
+        verify(redirectCache).forgetQuietly("myalias");
     }
 
     @Test
@@ -349,7 +353,8 @@ class DbUrlServiceTest {
         UrlEntity result = dbUrlService.shortenUrl("https://google.com", null, 7, null, null, null, false, null);
 
         assertEquals("abc123", result.getShortId());
-        verify(valueOperations).set(eq("url:abc123"), eq("https://google.com"), anyLong(), eq(TimeUnit.SECONDS));
+        assertNotNull(result.getExpiryTime());
+        verify(redirectCache).forgetQuietly("abc123");
     }
 
     @Test
@@ -375,55 +380,6 @@ class DbUrlServiceTest {
         assertNotEquals("public123", result.getShortId());
         verify(urlRepository).save(any(UrlEntity.class));
     }
-    // ─── getLongUrl tests ────────────────────────────────────────────
-
-    @Test
-    void getLongUrl_cacheHit_returnsFromRedis() {
-        when(valueOperations.get("url:abc123")).thenReturn("https://google.com");
-
-        String result = dbUrlService.getLongUrl("abc123");
-
-        assertEquals("https://google.com", result);
-        verify(urlRepository, never()).findByShortId(any());
-    }
-
-    @Test
-    void getLongUrl_cacheMiss_loadsFromDb() {
-        when(valueOperations.get("url:abc123")).thenReturn(null);
-
-        UrlEntity entity = new UrlEntity();
-        entity.setShortId("abc123");
-        entity.setLongUrl("https://google.com");
-        entity.setCustom(false);
-        when(urlRepository.findByShortId("abc123")).thenReturn(Optional.of(entity));
-
-        String result = dbUrlService.getLongUrl("abc123");
-
-        assertEquals("https://google.com", result);
-        verify(valueOperations).set(eq("url:abc123"), eq("https://google.com"), anyLong(), eq(TimeUnit.SECONDS));
-    }
-
-    @Test
-    void getLongUrl_notFound_throwsNotFoundException() {
-        when(valueOperations.get("url:xyz")).thenReturn(null);
-        when(urlRepository.findByShortId("xyz")).thenReturn(Optional.empty());
-
-        assertThrows(NotFoundException.class, () -> dbUrlService.getLongUrl("xyz"));
-    }
-
-    @Test
-    void getLongUrl_expiredUrl_throwsGoneException() {
-        when(valueOperations.get("url:abc123")).thenReturn(null);
-
-        UrlEntity entity = new UrlEntity();
-        entity.setShortId("abc123");
-        entity.setLongUrl("https://google.com");
-        entity.setExpiryTime(LocalDateTime.now().minusDays(1)); // expired yesterday
-        when(urlRepository.findByShortId("abc123")).thenReturn(Optional.of(entity));
-
-        assertThrows(GoneException.class, () -> dbUrlService.getLongUrl("abc123"));
-    }
-
     // ─── getStats tests ──────────────────────────────────────────────
 
     @Test

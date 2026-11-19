@@ -24,6 +24,7 @@ Each one states the context, the options considered, what was chosen and what it
 | [0017](0017-bound-analytics-labels.md) | Bound analytics labels before queueing events | Accepted for Phase 3 |
 | [0018](0018-phishing-check-outside-the-transaction.md) | Run the phishing check before the transaction, and fail open visibly | Accepted |
 | [0019](0019-request-ids-and-structured-logs.md) | Request IDs, JSON logs in production, and what is never logged | Accepted |
+| [0020](0020-redirect-cache-ownership-negative-caching-jitter.md) | One owner for the redirect cache, negative caching and jittered expiry | Accepted |
 
 Format: *Context → Options → Decision → Consequences*. A superseded decision stays in place with
 its status changed, so the history of *why* is never lost.

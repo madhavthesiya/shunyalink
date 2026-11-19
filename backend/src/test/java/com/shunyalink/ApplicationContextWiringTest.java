@@ -33,7 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
                 + "org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration,"
                 + "org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration,"
                 + "org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration",
-        "spring.task.scheduling.enabled=false"
+        "app.scheduling.enabled=false"
 })
 @ActiveProfiles("test")
 @AutoConfigureMockMvc
