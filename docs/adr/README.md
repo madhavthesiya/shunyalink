@@ -26,6 +26,7 @@ Each one states the context, the options considered, what was chosen and what it
 | [0019](0019-request-ids-and-structured-logs.md) | Request IDs, JSON logs in production, and what is never logged | Accepted |
 | [0020](0020-redirect-cache-ownership-negative-caching-jitter.md) | One owner for the redirect cache, negative caching and jittered expiry | Accepted |
 | [0021](0021-virtual-threads-bulkheads-and-portfolio-deadlines.md) | Virtual threads for waiting, separate pools for background work, deadlines for the portfolio | Accepted |
+| [0022](0022-platform-failures-are-thrown-not-cached.md) | Platform failures are thrown, never returned, so they are never cached | Accepted |
 
 Format: *Context → Options → Decision → Consequences*. A superseded decision stays in place with
 its status changed, so the history of *why* is never lost.
