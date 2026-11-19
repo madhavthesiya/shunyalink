@@ -15,12 +15,13 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(CpController.class)
+@WebMvcTest(controllers = CpController.class, properties = "app.portfolio.platform-timeout=300ms")
 @Import({SecurityConfig.class, ClientIpResolver.class})
 class CpControllerTest {
 
@@ -90,5 +91,64 @@ class CpControllerTest {
                 .andExpect(status().isTooManyRequests());
 
         verifyNoInteractions(userRepository);
+    }
+
+    private void userWithEveryPlatform() {
+        var user = new com.shunyalink.auth.UserEntity();
+        user.setUsername("madhav");
+        user.setLeetcodeUsername("lc");
+        user.setCodeforcesUsername("cf");
+        user.setCodeChefHandle("cc");
+        user.setAtCoderHandle("ac");
+        user.setGithubUsername("gh");
+        when(userRepository.findByUsername("madhav")).thenReturn(java.util.Optional.of(user));
+        when(leetCodeService.getStats("lc")).thenReturn(java.util.Map.of("totalSolved", 10));
+        when(codeforcesService.getStats("cf")).thenReturn(java.util.Map.of("totalSolved", 20));
+        when(codeChefService.getStats("cc")).thenReturn(java.util.Map.of("totalSolved", 30));
+        when(atCoderService.getStats("ac")).thenReturn(java.util.Map.of("totalSolved", 40));
+        when(githubService.getStats("gh")).thenReturn(java.util.Map.of("repos", 5));
+    }
+
+    @Test
+    void aPlatformThatHangs_isCutOffAtTheTimeout_andTheRestOfThePortfolioIsReturned() throws Exception {
+        // The CodeChef scraper drives a headless browser (10-15 s); it must not hold the whole page hostage.
+        userWithEveryPlatform();
+        when(codeChefService.getStats("cc")).thenAnswer(call -> {
+            Thread.sleep(3_000);
+            return java.util.Map.of("totalSolved", 30);
+        });
+
+        long started = System.nanoTime();
+        mockMvc.perform(get("/api/v1/portfolio/madhav"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.leetcode.totalSolved").value(10))
+                .andExpect(jsonPath("$.codechef").doesNotExist())
+                .andExpect(jsonPath("$.unavailablePlatforms[0]").value("codechef"))
+                .andExpect(jsonPath("$.totalGloballySolved").value(70));
+
+        assertThat(java.time.Duration.ofNanos(System.nanoTime() - started)).isLessThan(java.time.Duration.ofMillis(2_000));
+    }
+
+    @Test
+    void aPlatformThatFails_doesNotFailThePortfolio() throws Exception {
+        userWithEveryPlatform();
+        when(codeforcesService.getStats("cf")).thenThrow(new IllegalStateException("Codeforces is down"));
+
+        mockMvc.perform(get("/api/v1/portfolio/madhav"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.codeforces").doesNotExist())
+                .andExpect(jsonPath("$.unavailablePlatforms[0]").value("codeforces"))
+                .andExpect(jsonPath("$.totalGloballySolved").value(80));
+    }
+
+    @Test
+    void whenEveryPlatformAnswers_nothingIsListedAsUnavailable() throws Exception {
+        userWithEveryPlatform();
+
+        mockMvc.perform(get("/api/v1/portfolio/madhav"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.unavailablePlatforms").isEmpty())
+                .andExpect(jsonPath("$.atcoder.handle").value("ac"))
+                .andExpect(jsonPath("$.totalGloballySolved").value(100));
     }
 }
