@@ -52,7 +52,8 @@ public class RateLimiterService {
             );
 
             if (count != null && count > limit) {
-                log.warn("Rate limit exceeded limit={}", limitName(key));
+                // Keys can contain a user's input (a short link alias), so the name is sanitized too.
+                log.warn("Rate limit exceeded limit={}", com.shunyalink.logging.LogSafe.value(limitName(key)));
                 throw new TooManyRequestsException("Rate limit exceeded. Try again later.");
             }
         } catch (TooManyRequestsException e) {
