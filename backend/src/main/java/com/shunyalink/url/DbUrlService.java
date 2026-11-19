@@ -19,7 +19,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,6 +45,7 @@ public class DbUrlService implements UrlService {
     private final PasswordEncoder passwordEncoder;
     private final LinkPasswordCipher linkPasswordCipher;
     private final TransactionOperations transactions;
+    private final com.shunyalink.cache.RedirectCache redirectCache;
 
     public DbUrlService(UrlRepository urlRepository,
                         IdEncoder idEncoder,
@@ -57,8 +57,10 @@ public class DbUrlService implements UrlService {
                         com.shunyalink.cp.LlmIntegrationService llmIntegrationService,
                         PasswordEncoder passwordEncoder,
                         LinkPasswordCipher linkPasswordCipher,
-                        TransactionOperations transactions) {
+                        TransactionOperations transactions,
+                        com.shunyalink.cache.RedirectCache redirectCache) {
         this.transactions = transactions;
+        this.redirectCache = redirectCache;
         this.urlRepository = urlRepository;
         this.idEncoder = idEncoder;
         this.redisTemplate = redisTemplate;
@@ -87,14 +89,6 @@ public class DbUrlService implements UrlService {
         return stored.startsWith("$2a$") || stored.startsWith("$2b$") || stored.startsWith("$2y$");
     }
 
-    private long getTtlSeconds(LocalDateTime expiryTime) {
-        if (expiryTime == null) {
-            return 24 * 3600;
-        }
-        long seconds = java.time.Duration.between(LocalDateTime.now(), expiryTime).getSeconds();
-        return Math.max(seconds, 1);
-    }
-
     private void validateAlias(String alias) {
         if (!alias.matches("^[a-z0-9]([a-z0-9-]{1,18}[a-z0-9])?$")) {
             throw new BadRequestException(
@@ -113,7 +107,10 @@ public class DbUrlService implements UrlService {
         if (llmIntegrationService.isPhishing(longUrl)) {
             throw new BadRequestException("Security Alert: This URL has been flagged as malicious or phishing by our AI monitors.");
         }
-        return transactions.execute(status -> createLink(longUrl, customAlias, expiryDays, userId, title, password, useAutoTitle, tags));
+        UrlEntity link = transactions.execute(status -> createLink(longUrl, customAlias, expiryDays, userId, title, password, useAutoTitle, tags));
+        // After the commit, so the link exists before a "missing" marker for its ID is cleared.
+        redirectCache.forgetQuietly(link.getShortId());
+        return link;
     }
 
     private UrlEntity createLink(String longUrl, String customAlias, Integer expiryDays, Long userId, String title, String password, boolean useAutoTitle, java.util.Set<String> tags) {
@@ -157,13 +154,6 @@ public class DbUrlService implements UrlService {
                 entity.setPassword(encryptLinkPassword(password, normalized));
             }
             UrlEntity saved = urlRepository.save(entity);
-            redisTemplate.opsForValue().set(
-                    "url:" + normalized,
-                    longUrl,
-                    getTtlSeconds(entity.getExpiryTime()),
-                    TimeUnit.SECONDS);
-            // Invalidate redirect Hash cache so it gets rebuilt on next hit
-            redisTemplate.delete("url:entity:" + normalized);
 
             // Trigger Unified Smart AI Fetching (Async) - Always for categorization
             metadataService.fetchAndProcessMetadataAsync(normalized, longUrl, useAutoTitle);
@@ -202,34 +192,10 @@ public class DbUrlService implements UrlService {
         }
         UrlEntity saved = urlRepository.save(entity);
         globalStatsRepository.incrementLinks();
-        redisTemplate.opsForValue().set(
-                "url:" + shortId, longUrl,
-                getTtlSeconds(entity.getExpiryTime()), TimeUnit.SECONDS);
-        // Invalidate redirect Hash cache so it gets rebuilt on next hit
-        redisTemplate.delete("url:entity:" + shortId);
 
         // Trigger Unified Smart AI Fetching (Async) - Always for categorization
         metadataService.fetchAndProcessMetadataAsync(shortId, longUrl, useAutoTitle);
         return saved;
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public String getLongUrl(String shortId) {
-        String cacheKey = "url:" + shortId;
-        String cachedUrl = redisTemplate.opsForValue().get(cacheKey);
-        if (cachedUrl != null) {
-            return cachedUrl;
-        }
-        UrlEntity entity = urlRepository.findByShortId(shortId)
-                .orElseThrow(() -> new NotFoundException("Short URL not found"));
-        if (entity.getExpiryTime() != null && entity.getExpiryTime().isBefore(LocalDateTime.now())) {
-            throw new GoneException("Short URL has expired");
-        }
-        String longUrl = entity.getLongUrl();
-        long ttl = getTtlSeconds(entity.getExpiryTime());
-        redisTemplate.opsForValue().set(cacheKey, longUrl, ttl, TimeUnit.SECONDS);
-        return longUrl;
     }
 
     @Override
@@ -254,8 +220,8 @@ public class DbUrlService implements UrlService {
         }
 
         urlRepository.save(entity);
-        // Invalidate redirect Hash cache — password or title may have changed
-        redisTemplate.delete("url:entity:" + shortId);
+        // Password or title may have changed
+        redirectCache.forget(shortId);
     }
 
     @Override
@@ -499,8 +465,7 @@ public class DbUrlService implements UrlService {
     public void deleteUrl(String shortId, Long userId) {
         UrlEntity entity = urlRepository.findByShortIdAndUserId(shortId, userId)
                 .orElseThrow(() -> new NotFoundException("URL not found or not owned by you"));
-        redisTemplate.delete("url:" + shortId);
-        redisTemplate.delete("url:entity:" + shortId);
+        redirectCache.forget(shortId);
         urlRepository.delete(entity);
     }
 
@@ -509,8 +474,7 @@ public class DbUrlService implements UrlService {
     public void deleteUrls(List<String> shortIds, Long userId) {
         for (String shortId : shortIds) {
             urlRepository.findByShortIdAndUserId(shortId, userId).ifPresent(entity -> {
-                redisTemplate.delete("url:" + shortId);
-                redisTemplate.delete("url:entity:" + shortId);
+                redirectCache.forget(shortId);
                 urlRepository.delete(entity);
             });
         }

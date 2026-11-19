@@ -10,17 +10,14 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import com.shunyalink.exception.NotFoundException;
 import com.shunyalink.exception.GoneException;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.util.HtmlUtils;
 import java.net.URI;
 import java.time.LocalDateTime;
-import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import com.shunyalink.analytics.AnalyticsClickRecorder;
-import com.shunyalink.cache.RedisGuard;
+import com.shunyalink.cache.RedirectCache;
 import com.shunyalink.security.ClientIpResolver;
 
 @RestController
@@ -37,33 +34,29 @@ public class RedirectController {
     private final UrlService urlService;
     private final UrlRepository urlRepository;
     private final AnalyticsClickRecorder analyticsService;
-    private final RedisTemplate<String, String> redisTemplate;
+    private final RedirectCache redirectCache;
     private final ClientIpResolver clientIpResolver;
-    private final RedisGuard redisGuard;
 
     @Value("${app.frontend-url:http://localhost:3000}")
     private String frontendUrl;
 
     public RedirectController(UrlService urlService, UrlRepository urlRepository,
                               AnalyticsClickRecorder analyticsService,
-                              RedisTemplate<String, String> redisTemplate,
-                              ClientIpResolver clientIpResolver,
-                              RedisGuard redisGuard) {
+                              RedirectCache redirectCache,
+                              ClientIpResolver clientIpResolver) {
         this.urlService = urlService;
         this.urlRepository = urlRepository;
         this.analyticsService = analyticsService;
-        this.redisTemplate = redisTemplate;
+        this.redirectCache = redirectCache;
         this.clientIpResolver = clientIpResolver;
-        this.redisGuard = redisGuard;
     }
 
     @Operation(summary = "Redirect or Social Preview", description = "Handles the core redirection logic. Detects social media bots (WhatsApp, Twitter, FB) and returns OG tags for rich previews. Otherwise, redirects to the target URL (or password challenge).")
     @GetMapping("/{shortId}")
     public ResponseEntity<?> redirect(@PathVariable String shortId, HttpServletRequest request) {
 
-        String cacheKey = "url:entity:" + shortId;
         // Redis down or tripped breaker = cache miss; PostgreSQL stays authoritative
-        Map<Object, Object> cached = redisGuard.call(() -> redisTemplate.opsForHash().entries(cacheKey), Map::of);
+        Map<Object, Object> cached = redirectCache.entries(shortId);
 
         String longUrl;
         boolean hasPassword;
@@ -83,9 +76,14 @@ public class RedirectController {
                 throw new GoneException("Short URL has expired");
             }
         } else {
-            // Cache MISS — hit DB, then populate cache for next time
-            UrlEntity entity = urlRepository.findByShortId(shortId)
-                    .orElseThrow(() -> new NotFoundException("URL not found"));
+            // Cache MISS: unless PostgreSQL just said it doesn't exist, ask it, then cache the answer either way
+            if (redirectCache.isKnownMissing(shortId)) {
+                throw new NotFoundException("URL not found");
+            }
+            UrlEntity entity = urlRepository.findByShortId(shortId).orElseThrow(() -> {
+                redirectCache.rememberMissing(shortId);
+                return new NotFoundException("URL not found");
+            });
 
             if (entity.getExpiryTime() != null && entity.getExpiryTime().isBefore(LocalDateTime.now())) {
                 throw new GoneException("Short URL has expired");
@@ -96,8 +94,8 @@ public class RedirectController {
             title       = entity.getTitle();
             urlId       = entity.getId();
 
-            // Cache the redirect-critical fields as a Redis Hash. Optional: skipped while Redis is failing.
-            redisGuard.run(() -> cacheEntityForRedirect(cacheKey, entity));
+            // Optional: skipped while Redis is failing.
+            redirectCache.storeQuietly(entity);
         }
 
         // Social Bot Detection for Rich Previews (WhatsApp, Twitter, FB, etc.)
@@ -131,23 +129,6 @@ public class RedirectController {
         return ResponseEntity.status(HttpStatus.FOUND)
                 .location(URI.create(longUrl))
                 .build();
-    }
-
-    /**
-     * Caches the redirect-critical fields of a UrlEntity as a Redis Hash.
-     * This allows subsequent redirect requests to skip the database entirely.
-     */
-    private void cacheEntityForRedirect(String cacheKey, UrlEntity entity) {
-        Map<String, String> fields = new HashMap<>();
-        fields.put("urlId", entity.getId().toString());
-        fields.put("longUrl", entity.getLongUrl());
-        fields.put("hasPassword", String.valueOf(entity.getPassword() != null));
-        fields.put("title", entity.getTitle() != null ? entity.getTitle() : "");
-        fields.put("expiryTime", entity.getExpiryTime() != null
-                ? entity.getExpiryTime().toString() : "");
-
-        redisTemplate.opsForHash().putAll(cacheKey, fields);
-        redisTemplate.expire(cacheKey, 24, TimeUnit.HOURS);
     }
 
     /** Old/incomplete hashes must reload the whole snapshot, never attach a new ID to an old URL. */

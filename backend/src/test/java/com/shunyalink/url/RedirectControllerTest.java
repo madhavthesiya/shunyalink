@@ -27,7 +27,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(RedirectController.class)
-@Import({SecurityConfig.class, ClientIpResolver.class, com.shunyalink.cache.RedisGuard.class})
+@Import({SecurityConfig.class, ClientIpResolver.class, com.shunyalink.cache.RedisGuard.class,
+        com.shunyalink.cache.RedirectCache.class})
 class RedirectControllerTest {
 
     private static final String WHATSAPP_UA = "WhatsApp/2.23.20.0 A";
@@ -45,7 +46,7 @@ class RedirectControllerTest {
     @MockBean
     private AnalyticsClickRecorder analyticsService;
 
-    @MockBean
+    @MockBean(name = "redisTemplate") // RedirectCache asks for this bean by name
     private RedisTemplate<String, String> redisTemplate;
 
     @MockBean
@@ -65,6 +66,7 @@ class RedirectControllerTest {
         hashOps = mock(HashOperations.class);
         when(redisTemplate.opsForHash()).thenReturn(hashOps);
         when(hashOps.entries(anyString())).thenReturn(Map.of());
+        when(redisTemplate.opsForValue()).thenReturn(mock(org.springframework.data.redis.core.ValueOperations.class));
     }
 
     private void cached(String shortId, String longUrl, boolean hasPassword, String title) {

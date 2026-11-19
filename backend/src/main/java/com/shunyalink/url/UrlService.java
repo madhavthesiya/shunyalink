@@ -7,7 +7,6 @@ import org.springframework.data.domain.Pageable;
 
 public interface UrlService {
     UrlEntity shortenUrl(String longUrl, String customAlias, Integer expiryDays, Long userId, String title, String password, boolean useAutoTitle, Set<String> tags);
-    String getLongUrl(String shortId);
     /** Stats for a link owned by {@code userId}; NotFound for anyone else (existence is not revealed). */
     UrlStatsResponse getStats(String shortId, Long userId, long lookbackMs);
     Page<UrlStatsResponse> getMyLinks(Long userId, String search, Pageable pageable);
