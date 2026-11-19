@@ -6,12 +6,12 @@ import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientResponseException;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.core.ParameterizedTypeReference;
+import com.shunyalink.upstream.Upstream;
+import com.shunyalink.upstream.Upstreams;
 import java.util.Map;
 import java.util.List;
 import java.util.HashMap;
@@ -28,8 +28,9 @@ public class LlmIntegrationService {
     private static final Logger log = LoggerFactory.getLogger(LlmIntegrationService.class);
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    private static final String GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent";
-    private static final String GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+    private static final String GEMINI_PATH = "/v1beta/models/{model}:generateContent";
+    private static final String GROQ_PATH = "/openai/v1/chat/completions";
+    private static final ParameterizedTypeReference<Map<String, Object>> JSON_OBJECT = new ParameterizedTypeReference<>() {};
 
     private static final String PHISHING_PROMPT = """
             You are a cybersecurity expert specializing in phishing URL detection.
@@ -52,20 +53,22 @@ public class LlmIntegrationService {
 
             """;
 
-    private final RestTemplate restTemplate;
+    private final Upstream gemini;
+    private final Upstream groq;
     private final String geminiApiKey;
     private final String groqApiKey;
     private final String geminiModel;
     private final String groqModel;
     private final MeterRegistry metrics;
 
-    public LlmIntegrationService(RestTemplate restTemplate,
+    public LlmIntegrationService(Upstreams upstreams,
                                  @Value("${app.gemini.api-key}") String geminiApiKey,
                                  @Value("${app.groq.api-key:}") String groqApiKey,
                                  @Value("${app.gemini.model:gemini-3.8-flash}") String geminiModel,
                                  @Value("${app.groq.model:openai/gpt-oss-20b}") String groqModel,
                                  MeterRegistry metrics) {
-        this.restTemplate = restTemplate;
+        this.gemini = upstreams.gemini();
+        this.groq = upstreams.groq();
         this.geminiApiKey = geminiApiKey;
         this.groqApiKey = groqApiKey;
         this.geminiModel = geminiModel;
@@ -251,10 +254,6 @@ public class LlmIntegrationService {
 
     @SuppressWarnings("unchecked")
     private String callGroq(String prompt, boolean jsonOnly) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(groqApiKey);
-
         Map<String, Object> body = new HashMap<>();
         body.put("model", groqModel);
         body.put("messages", List.of(Map.of("role", "user", "content", prompt)));
@@ -262,7 +261,10 @@ public class LlmIntegrationService {
             body.put("response_format", Map.of("type", "json_object"));
         }
 
-        Map<String, Object> response = restTemplate.postForObject(GROQ_API_URL, new HttpEntity<>(body, headers), Map.class);
+        Map<String, Object> response = groq.call(client -> client.post().uri(GROQ_PATH)
+                .contentType(MediaType.APPLICATION_JSON)
+                .headers(headers -> headers.setBearerAuth(groqApiKey))
+                .body(body).retrieve().body(JSON_OBJECT));
         if (response == null || !response.containsKey("choices")) {
             throw new IllegalStateException("Groq returned no choices");
         }
@@ -274,18 +276,17 @@ public class LlmIntegrationService {
 
     @SuppressWarnings("unchecked")
     private String callGemini(String prompt, boolean jsonOnly) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        // A header, not "?key=": URLs end up in proxy logs and exception messages.
-        headers.set("x-goog-api-key", geminiApiKey);
-
         Map<String, Object> body = new HashMap<>();
         body.put("contents", List.of(Map.of("parts", List.of(Map.of("text", prompt)))));
         if (jsonOnly) {
             body.put("generationConfig", Map.of("responseMimeType", "application/json"));
         }
 
-        Map<String, Object> response = restTemplate.postForObject(GEMINI_API_URL, new HttpEntity<>(body, headers), Map.class, geminiModel);
+        Map<String, Object> response = gemini.call(client -> client.post().uri(GEMINI_PATH, geminiModel)
+                .contentType(MediaType.APPLICATION_JSON)
+                // A header, not "?key=": URLs end up in proxy logs and exception messages.
+                .header("x-goog-api-key", geminiApiKey)
+                .body(body).retrieve().body(JSON_OBJECT));
         if (response == null || !response.containsKey("candidates")) {
             throw new IllegalStateException("Gemini returned no candidates");
         }

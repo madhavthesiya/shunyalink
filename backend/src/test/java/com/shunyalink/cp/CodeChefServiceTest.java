@@ -3,7 +3,8 @@ package com.shunyalink.cp;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
-import org.springframework.web.client.RestTemplate;
+import com.shunyalink.upstream.Upstreams;
+import org.springframework.web.client.RestClient;
 
 import java.util.Map;
 
@@ -13,12 +14,12 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 
 class CodeChefServiceTest {
 
-    private final RestTemplate restTemplate = new RestTemplate();
-    private final MockRestServiceServer scraper = MockRestServiceServer.bindTo(restTemplate).build();
+    private final RestClient.Builder http = RestClient.builder();
+    private final MockRestServiceServer scraper = MockRestServiceServer.bindTo(http).build();
 
     @Test
     void sendsTheSharedSecretToTheScraper() {
-        CodeChefService service = new CodeChefService(restTemplate, "http://scraper:3001", "s3cret-key");
+        CodeChefService service = new CodeChefService(Upstreams.using(http), "s3cret-key");
         scraper.expect(requestTo("http://scraper:3001/codechef/tourist"))
                 .andExpect(header("X-Scraper-Key", "s3cret-key"))
                 .andRespond(withSuccess("{\"rating\":2100,\"totalSolved\":500}", MediaType.APPLICATION_JSON));
@@ -31,7 +32,7 @@ class CodeChefServiceTest {
 
     @Test
     void invalidHandle_neverReachesTheScraper() {
-        CodeChefService service = new CodeChefService(restTemplate, "http://scraper:3001", "s3cret-key");
+        CodeChefService service = new CodeChefService(Upstreams.using(http), "s3cret-key");
 
         Map<String, Object> stats = service.getStats("../admin");
 

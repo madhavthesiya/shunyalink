@@ -4,29 +4,26 @@ import com.shunyalink.logging.LogSafe;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
+import com.shunyalink.upstream.Upstream;
+import com.shunyalink.upstream.Upstreams;
 import org.springframework.core.ParameterizedTypeReference;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.List;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
 public class AtCoderService {
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AtCoderService.class);
 
-    private static final String ATCODER_HISTORY_URL = "https://atcoder.jp/users/%s/history/json";
-    private static final String KENKOOOO_URL = "https://kenkoooo.com/atcoder/atcoder-api/v3/user/ac_rank?user=";
+    private static final String BROWSER_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
-    private final RestTemplate restTemplate;
+    private final Upstream atcoder;
+    private final Upstream kenkoooo;
 
-    public AtCoderService(RestTemplate restTemplate) {
-        this.restTemplate = restTemplate;
+    public AtCoderService(Upstreams upstreams) {
+        this.atcoder = upstreams.atcoder();
+        this.kenkoooo = upstreams.kenkoooo();
     }
 
     /**
@@ -36,7 +33,6 @@ public class AtCoderService {
      * is cached.
      */
     @Cacheable(value = "atcoder-stats", key = "#username")
-    @SuppressWarnings("unchecked")
     public Map<String, Object> getStats(String username) {
         log.debug("AtCoder: fetching stats for user={}", LogSafe.value(username));
         Map<String, Object> result = new HashMap<>();
@@ -44,15 +40,10 @@ public class AtCoderService {
 
         // 1. Get rating from AtCoder's own history/json endpoint (no scraping needed)
         try {
-            String url = String.format(ATCODER_HISTORY_URL, username);
-            
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
-            HttpEntity<Void> entity = new HttpEntity<>(headers);
-            
-            ResponseEntity<List<Map<String, Object>>> historyResponse = restTemplate.exchange(
-                    url, HttpMethod.GET, entity, new ParameterizedTypeReference<List<Map<String, Object>>>() {});
-            List<Map<String, Object>> history = historyResponse.getBody();
+            List<Map<String, Object>> history = atcoder.call(client -> client.get()
+                    .uri("/users/{username}/history/json", username)
+                    .header("User-Agent", BROWSER_USER_AGENT)
+                    .retrieve().body(new ParameterizedTypeReference<List<Map<String, Object>>>() {}));
 
             if (history != null && !history.isEmpty()) {
                 // Get the latest rated contest entry
@@ -108,37 +99,32 @@ public class AtCoderService {
             log.debug("AtCoder: no such user");
         } catch (RuntimeException e) {
             failure = e;
-            log.warn("AtCoder: history fetch failed for user={}: {}", LogSafe.value(username), LogSafe.value(e.getMessage()));
+            log.warn("AtCoder: history fetch failed for user={}: {}", LogSafe.value(username), e.getClass().getSimpleName());
         }
 
-        // Fetch from Kenkoooo API using RestTemplate with browser headers
+        // Fetch from Kenkoooo API with browser headers
         try {
             log.debug("AtCoder: fetching solved count from Kenkoooo for user={}", LogSafe.value(username));
-            
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
-            headers.set("Accept", "application/json, text/plain, */*");
-            headers.set("Accept-Language", "en-US,en;q=0.9");
-            headers.set("Origin", "https://kenkoooo.com");
-            headers.set("Referer", "https://kenkoooo.com/atcoder/");
-            headers.set("sec-ch-ua", "\"Chromium\";v=\"122\", \"Not(A:Brand\";v=\"24\", \"Google Chrome\";v=\"122\"");
-            headers.set("sec-ch-ua-mobile", "?0");
-            headers.set("sec-ch-ua-platform", "\"Windows\"");
-            headers.set("Sec-Fetch-Dest", "empty");
-            headers.set("Sec-Fetch-Mode", "cors");
-            headers.set("Sec-Fetch-Site", "same-origin");
-            
-            HttpEntity<Void> entity = new HttpEntity<>(headers);
-            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
-                KENKOOOO_URL + username,
-                HttpMethod.GET,
-                entity,
-                new ParameterizedTypeReference<Map<String, Object>>() {}
-            );
-            
-            Map<String, Object> kenkoooo = response.getBody();
-            if (kenkoooo != null && kenkoooo.containsKey("count")) {
-                Object count = kenkoooo.get("count");
+
+            Map<String, Object> rank = kenkoooo.call(client -> client.get()
+                    .uri("/atcoder/atcoder-api/v3/user/ac_rank?user={username}", username)
+                    .headers(headers -> {
+                        headers.set("User-Agent", BROWSER_USER_AGENT);
+                        headers.set("Accept", "application/json, text/plain, */*");
+                        headers.set("Accept-Language", "en-US,en;q=0.9");
+                        headers.set("Origin", "https://kenkoooo.com");
+                        headers.set("Referer", "https://kenkoooo.com/atcoder/");
+                        headers.set("sec-ch-ua", "\"Chromium\";v=\"122\", \"Not(A:Brand\";v=\"24\", \"Google Chrome\";v=\"122\"");
+                        headers.set("sec-ch-ua-mobile", "?0");
+                        headers.set("sec-ch-ua-platform", "\"Windows\"");
+                        headers.set("Sec-Fetch-Dest", "empty");
+                        headers.set("Sec-Fetch-Mode", "cors");
+                        headers.set("Sec-Fetch-Site", "same-origin");
+                    })
+                    .retrieve().body(new ParameterizedTypeReference<Map<String, Object>>() {}));
+
+            if (rank != null && rank.containsKey("count")) {
+                Object count = rank.get("count");
                 if (count instanceof Number) {
                     int solved = ((Number) count).intValue();
                     result.put("totalSolved", solved);
@@ -151,7 +137,7 @@ public class AtCoderService {
             log.debug("AtCoder: Kenkoooo has no such user");
         } catch (RuntimeException e) {
             failure = e;
-            log.warn("AtCoder: Kenkoooo fetch failed for user={}: {}", LogSafe.value(username), LogSafe.value(e.getMessage()));
+            log.warn("AtCoder: Kenkoooo fetch failed for user={}: {}", LogSafe.value(username), e.getClass().getSimpleName());
         }
 
         if (result.isEmpty()) {

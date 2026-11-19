@@ -1,20 +1,23 @@
 package com.shunyalink.cp;
 
+import com.shunyalink.upstream.Upstream;
+import com.shunyalink.upstream.Upstreams;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.RestTemplate;
 import java.util.Map;
 import java.util.HashMap;
 
 @Service
 public class GithubService {
 
-    private final RestTemplate restTemplate;
-    private static final String GITHUB_API_URL = "https://api.github.com/users/";
+    private static final ParameterizedTypeReference<Map<String, Object>> JSON_OBJECT = new ParameterizedTypeReference<>() {};
 
-    public GithubService(RestTemplate restTemplate) {
-        this.restTemplate = restTemplate;
+    private final Upstream github;
+
+    public GithubService(Upstreams upstreams) {
+        this.github = upstreams.github();
     }
 
     /**
@@ -22,10 +25,10 @@ public class GithubService {
      * user must not cost one per view. Any other failure is thrown, so it is never cached.
      */
     @Cacheable(value = "github-stats", key = "#username")
-    @SuppressWarnings("unchecked")
     public Map<String, Object> getStats(String username) {
         try {
-            Map<String, Object> response = restTemplate.getForObject(GITHUB_API_URL + username, Map.class);
+            Map<String, Object> response = github.call(client -> client.get()
+                    .uri("/users/{username}", username).retrieve().body(JSON_OBJECT));
             if (response == null) {
                 throw new IllegalStateException("empty reply");
             }

@@ -5,7 +5,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
-import org.springframework.web.client.RestTemplate;
+import com.shunyalink.upstream.Upstreams;
+import org.springframework.web.client.RestClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
@@ -15,6 +16,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withResourceNotFound;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 /** The phishing check talks to real providers in production; these tests pin the exact requests and parsing. */
@@ -23,12 +25,12 @@ class LlmIntegrationServiceTest {
     private static final String GEMINI = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent";
     private static final String GROQ = "https://api.groq.com/openai/v1/chat/completions";
 
-    private final RestTemplate http = new RestTemplate();
+    private final RestClient.Builder http = RestClient.builder();
     private final MockRestServiceServer server = MockRestServiceServer.bindTo(http).build();
     private final SimpleMeterRegistry metrics = new SimpleMeterRegistry();
 
     private LlmIntegrationService service(String geminiKey, String groqKey) {
-        return new LlmIntegrationService(http, geminiKey, groqKey, "gemini-3.8-flash", "openai/gpt-oss-20b", metrics);
+        return new LlmIntegrationService(Upstreams.using(http), geminiKey, groqKey, "gemini-3.8-flash", "openai/gpt-oss-20b", metrics);
     }
 
     private static String geminiSays(String text) {
@@ -111,6 +113,25 @@ class LlmIntegrationServiceTest {
         server.verify();
         assertThat(checks("unavailable")).isEqualTo(1);
         assertThat(checks("clear")).isZero();
+    }
+
+    @Test
+    void whileGeminiIsDown_theCheckGoesStraightToGroq_insteadOfWaitingOnGeminiEveryTime() {
+        // The phishing check runs while a user waits for their short link. Once Gemini's breaker is open, a shorten
+        // must not pay Gemini's timeout before Groq is asked.
+        LlmIntegrationService llm = service("g-key", "q-key");
+        for (int i = 0; i < 5; i++) {
+            server.expect(once(), requestTo(GEMINI)).andRespond(withServerError());
+            server.expect(once(), requestTo(GROQ)).andRespond(withSuccess(groqSays("{\"phishing\": false}"), MediaType.APPLICATION_JSON));
+        }
+        server.expect(once(), requestTo(GROQ)).andRespond(withSuccess(groqSays("{\"phishing\": true}"), MediaType.APPLICATION_JSON));
+
+        for (int i = 0; i < 5; i++) {
+            assertThat(llm.isPhishing("https://example.com")).isFalse();
+        }
+        assertThat(llm.isPhishing("https://paypa1.example/login")).isTrue();
+
+        server.verify(); // the sixth check never called Gemini
     }
 
     @Test
