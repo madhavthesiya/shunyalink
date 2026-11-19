@@ -19,8 +19,10 @@ public class AsyncConfig {
      * Analytics may lose clicks under overload; redirects must not slow down (ADR 0005).
      */
     @Bean("analyticsExecutor")
-    public TaskExecutor analyticsExecutor() {
+    public TaskExecutor analyticsExecutor(com.shunyalink.logging.MdcTaskDecorator requestContext) {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setTaskDecorator(requestContext); // background logs keep the request ID
+
         executor.setCorePoolSize(10);
         executor.setMaxPoolSize(50);
         executor.setQueueCapacity(500);

@@ -1,5 +1,6 @@
 package com.shunyalink.cp;
 
+import com.shunyalink.logging.LogSafe;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
@@ -17,6 +18,8 @@ import java.util.HashMap;
 
 @Service
 public class CodeChefService {
+
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(CodeChefService.class);
 
     /** CodeChef handles are letters, digits and underscores; anything else never leaves this service. */
     private static final Pattern VALID_HANDLE = Pattern.compile("^[A-Za-z0-9_]{1,30}$");
@@ -51,13 +54,13 @@ public class CodeChefService {
         Map<String, Object> result = new HashMap<>();
 
         if (handle == null || !VALID_HANDLE.matcher(handle).matches()) {
-            System.err.println("CodeChef: Rejected invalid handle");
+            log.debug("CodeChef: rejected an invalid handle");
             return withFallbacks(result);
         }
 
         try {
             String url = scraperUrl + "/codechef/" + handle;
-            System.out.println("CodeChef: Calling Puppeteer scraper at " + url);
+            log.debug("CodeChef: calling the scraper for handle={}", LogSafe.value(handle));
 
             // The scraper is a public service; the shared secret keeps it for our backend only
             HttpHeaders headers = new HttpHeaders();
@@ -80,13 +83,13 @@ public class CodeChefService {
                     result.put("starCount", starCountForRating(rating));
                 }
 
-                System.out.println("CodeChef: Successfully fetched stats for " + handle + ": " + result);
+                log.debug("CodeChef: fetched stats for handle={}", LogSafe.value(handle));
             } else {
-                System.err.println("CodeChef: Scraper returned error for " + handle);
+                log.warn("CodeChef: the scraper returned an error for handle={}", LogSafe.value(handle));
             }
 
         } catch (Exception e) {
-            System.err.println("CodeChef: Scraper call failed for " + handle + ": " + e.getMessage());
+            log.warn("CodeChef: scraper call failed for handle={}: {}", LogSafe.value(handle), LogSafe.value(e.getMessage()));
         }
 
         return withFallbacks(result);

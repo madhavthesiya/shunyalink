@@ -1,5 +1,6 @@
 package com.shunyalink.cp;
 
+import com.shunyalink.logging.LogSafe;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -16,6 +17,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 @Service
 public class AtCoderService {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AtCoderService.class);
+
     private static final String ATCODER_HISTORY_URL = "https://atcoder.jp/users/%s/history/json";
     private static final String KENKOOOO_URL = "https://kenkoooo.com/atcoder/atcoder-api/v3/user/ac_rank?user=";
 
@@ -28,7 +31,7 @@ public class AtCoderService {
     @Cacheable(value = "cpStats", key = "#username")
     @SuppressWarnings("unchecked")
     public Map<String, Object> getStats(String username) {
-        System.out.println("AtCoder: service.getStats() called for user: " + username);
+        log.debug("AtCoder: fetching stats for user={}", LogSafe.value(username));
         Map<String, Object> result = new HashMap<>();
 
         // 1. Get rating from AtCoder's own history/json endpoint (no scraping needed)
@@ -94,12 +97,12 @@ public class AtCoderService {
                 result.put("ratedContests", (int) ratedContests);
             }
         } catch (Exception e) {
-            System.err.println("AtCoder history fetch failed for " + username + ": " + e.getMessage());
+            log.warn("AtCoder: history fetch failed for user={}: {}", LogSafe.value(username), LogSafe.value(e.getMessage()));
         }
 
         // Fetch from Kenkoooo API using RestTemplate with browser headers
         try {
-            System.out.println("AtCoder: Fetching Kenkoooo API for solved count: " + KENKOOOO_URL + username);
+            log.debug("AtCoder: fetching solved count from Kenkoooo for user={}", LogSafe.value(username));
             
             HttpHeaders headers = new HttpHeaders();
             headers.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
@@ -128,13 +131,13 @@ public class AtCoderService {
                 if (count instanceof Number) {
                     int solved = ((Number) count).intValue();
                     result.put("totalSolved", solved);
-                    System.out.println("AtCoder: Fetched solved count for " + username + ": " + solved);
+                    log.debug("AtCoder: solved count for user={} is {}", LogSafe.value(username), solved);
                 }
             } else {
-                System.out.println("AtCoder: Kenkoooo response missing 'count' field");
+                log.warn("AtCoder: Kenkoooo response has no 'count' field");
             }
         } catch (Exception e) {
-            System.err.println("AtCoder Kenkoooo fetch failed for " + username + ": " + e.getMessage());
+            log.warn("AtCoder: Kenkoooo fetch failed for user={}: {}", LogSafe.value(username), LogSafe.value(e.getMessage()));
         }
 
         if (result.isEmpty()) {
