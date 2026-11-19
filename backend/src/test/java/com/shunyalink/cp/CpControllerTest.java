@@ -122,7 +122,7 @@ class CpControllerTest {
         mockMvc.perform(get("/api/v1/portfolio/madhav"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.leetcode.totalSolved").value(10))
-                .andExpect(jsonPath("$.codechef").doesNotExist())
+                .andExpect(jsonPath("$.codechef.rating").value("N/A"))
                 .andExpect(jsonPath("$.unavailablePlatforms[0]").value("codechef"))
                 .andExpect(jsonPath("$.totalGloballySolved").value(70));
 
@@ -139,6 +139,20 @@ class CpControllerTest {
                 .andExpect(jsonPath("$.codeforces").doesNotExist())
                 .andExpect(jsonPath("$.unavailablePlatforms[0]").value("codeforces"))
                 .andExpect(jsonPath("$.totalGloballySolved").value(80));
+    }
+
+    @Test
+    void codeChefUnavailable_keepsItsPlaceholderWidget_andIsListed() throws Exception {
+        // The owner's choice: the CodeChef widget shows "N/A" rather than disappearing when the scraper is down.
+        userWithEveryPlatform();
+        when(codeChefService.getStats("cc")).thenThrow(new PlatformUnavailableException("CodeChef", null));
+
+        mockMvc.perform(get("/api/v1/portfolio/madhav"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.codechef.rating").value("N/A"))
+                .andExpect(jsonPath("$.codechef.totalSolved").value(0))
+                .andExpect(jsonPath("$.unavailablePlatforms[0]").value("codechef"))
+                .andExpect(jsonPath("$.totalGloballySolved").value(70));
     }
 
     @Test

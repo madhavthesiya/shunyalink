@@ -28,6 +28,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 @RestController
 @RequestMapping("/api/v1/portfolio")
@@ -102,12 +103,14 @@ public class CpController {
                 .orElseThrow(() -> new BadRequestException("User not found"));
 
         // Every platform is asked at once, each on its own virtual thread, with the same deadline. A slow or failing
-        // platform is left out and listed in unavailablePlatforms; it never holds up or fails the whole page.
-        // A call that misses the deadline keeps running, and its @Cacheable result serves the next view.
+        // platform is left out (CodeChef shows its placeholder instead) and listed in unavailablePlatforms; it never
+        // holds up or fails the whole page. A call that misses the deadline keeps running, and its @Cacheable result
+        // serves the next view. A failure is never cached (PlatformUnavailableException), so the next view asks again.
         Set<String> unavailable = ConcurrentHashMap.newKeySet();
         var leetcode = ask("leetcode", user.getLeetcodeUsername(), leetCodeService::getStats, unavailable);
         var codeforces = ask("codeforces", user.getCodeforcesUsername(), codeforcesService::getStats, unavailable);
-        var codechef = ask("codechef", user.getCodeChefHandle(), codeChefService::getStats, unavailable);
+        var codechef = ask("codechef", user.getCodeChefHandle(), codeChefService::getStats, unavailable,
+                CodeChefService::unavailablePlaceholder);
         var atcoder = ask("atcoder", user.getAtCoderHandle(), handle -> {
             Map<String, Object> result = new HashMap<>(atCoderService.getStats(handle));
             result.put("handle", handle);
@@ -141,18 +144,33 @@ public class CpController {
     /** One platform's stats; null if the user has no handle there, the call failed, or it missed the deadline. */
     private CompletableFuture<Map<String, Object>> ask(String platform, String handle,
                                                        Function<String, Map<String, Object>> call, Set<String> unavailable) {
+        return ask(platform, handle, call, unavailable, () -> null);
+    }
+
+    /** As above, but a failed or late call is replaced by {@code fallback} (still listed as unavailable). */
+    private CompletableFuture<Map<String, Object>> ask(String platform, String handle,
+                                                       Function<String, Map<String, Object>> call, Set<String> unavailable,
+                                                       Supplier<Map<String, Object>> fallback) {
         if (handle == null) {
             return CompletableFuture.completedFuture(null);
         }
         return CompletableFuture.supplyAsync(() -> call.apply(handle), platformCalls)
                 .orTimeout(platformTimeout.toMillis(), TimeUnit.MILLISECONDS)
                 .exceptionally(failure -> {
-                    Throwable cause = failure instanceof CompletionException && failure.getCause() != null
-                            ? failure.getCause() : failure;
                     unavailable.add(platform);
-                    log.warn("Portfolio: {} left out ({})", platform, cause.getClass().getSimpleName());
-                    return null;
+                    log.warn("Portfolio: {} unavailable ({})", platform, describe(failure));
+                    return fallback.get();
                 });
+    }
+
+    /** The underlying failure's type, such as TimeoutException or ResourceAccessException. Messages can echo URLs. */
+    private static String describe(Throwable failure) {
+        Throwable cause = failure;
+        while ((cause instanceof CompletionException || cause instanceof PlatformUnavailableException)
+                && cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        return cause.getClass().getSimpleName();
     }
 
     private int toInt(Object value) {

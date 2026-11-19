@@ -6,6 +6,8 @@ import com.shunyalink.exception.BadRequestException;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
+import java.util.function.Function;
+
 /**
  * Generates the AI roast for a public portfolio. Each roast is a paid LLM call, so successful
  * roasts are cached per user (24h, see RedisConfig); failures return null and are not cached.
@@ -35,16 +37,25 @@ public class RoastService {
                 .orElseThrow(() -> new BadRequestException("User not found"));
 
         StringBuilder context = new StringBuilder();
-        if (user.getLeetcodeUsername() != null) {
-            context.append("LeetCode: ").append(leetCodeService.getStats(user.getLeetcodeUsername())).append("; ");
-        }
-        if (user.getCodeforcesUsername() != null) {
-            context.append("Codeforces: ").append(codeforcesService.getStats(user.getCodeforcesUsername())).append("; ");
-        }
-        if (user.getGithubUsername() != null) {
-            context.append("GitHub: ").append(githubService.getStats(user.getGithubUsername())).append("; ");
-        }
+        append(context, "LeetCode", user.getLeetcodeUsername(), leetCodeService::getStats);
+        append(context, "Codeforces", user.getCodeforcesUsername(), codeforcesService::getStats);
+        append(context, "GitHub", user.getGithubUsername(), githubService::getStats);
 
         return llmIntegrationService.roastProfile(context.toString()).orElse(null);
+    }
+
+    /** A platform that is down is named as unavailable, so one platform's outage does not stop the roast. */
+    private static void append(StringBuilder context, String platform, String handle,
+                               Function<String, Object> stats) {
+        if (handle == null) {
+            return;
+        }
+        Object answer;
+        try {
+            answer = stats.apply(handle);
+        } catch (PlatformUnavailableException down) {
+            answer = "unavailable";
+        }
+        context.append(platform).append(": ").append(answer).append("; ");
     }
 }

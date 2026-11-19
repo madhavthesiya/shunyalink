@@ -68,6 +68,16 @@ class RoastServiceTest {
     }
 
     @Test
+    void anUnavailablePlatform_isNamedAsSuch_andTheRoastStillHappens() {
+        when(githubService.getStats("octocat")).thenThrow(new PlatformUnavailableException("GitHub", null));
+        when(llm.roastProfile(anyString())).thenReturn(Optional.of("Ouch."));
+
+        assertThat(roastService.roast("madhav")).isEqualTo("Ouch.");
+
+        verify(llm).roastProfile("GitHub: unavailable; ");
+    }
+
+    @Test
     void failedRoast_isNotCachedSoTheNextViewRetries() {
         when(llm.roastProfile(anyString())).thenReturn(Optional.empty(), Optional.of("Second try."));
 
