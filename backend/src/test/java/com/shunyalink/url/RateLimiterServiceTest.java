@@ -4,7 +4,9 @@ import com.shunyalink.exception.TooManyRequestsException;
 import com.shunyalink.rate.RateLimiterService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
+import com.shunyalink.cache.RedisGuard;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.junit.jupiter.api.BeforeEach;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -22,8 +24,12 @@ class RateLimiterServiceTest {
     @Mock
     private RedisTemplate<String, String> redisTemplate;
 
-    @InjectMocks
     private RateLimiterService rateLimiterService;
+
+    @BeforeEach
+    void limiterBehindARealRedisBreaker() {
+        rateLimiterService = new RateLimiterService(redisTemplate, new RedisGuard(new SimpleMeterRegistry()));
+    }
 
     // ─── checkLimit tests ────────────────────────────────────────────
 
@@ -66,6 +72,14 @@ class RateLimiterServiceTest {
         assertDoesNotThrow(() ->
                 rateLimiterService.checkLimit("rate:shorten:127.0.0.1", 10, 60)
         );
+    }
+
+    @Test
+    void checkLimit_anUnexpectedError_stillFailsOpen() {
+        when(redisTemplate.execute(any(DefaultRedisScript.class), anyList(), any()))
+                .thenThrow(new IllegalStateException("connection factory is stopping"));
+
+        assertDoesNotThrow(() -> rateLimiterService.checkLimit("rate:login:127.0.0.1", 10, 60));
     }
 
     @Test
