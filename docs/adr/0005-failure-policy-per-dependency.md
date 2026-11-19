@@ -2,7 +2,7 @@
 
 - **Status:** Accepted (2026-11-01)
 - **Code:** `application.properties` (no secret defaults), `SecretConfigurationTest`, `RedisGuard`, `AnalyticsFallbackBuffer`,
-  `RateLimiterService`, `JwtAuthenticationFilter`, `LinkPasswordBackfill`, `ApplicationContextWiringTest`
+  `RateLimiterService`, `RateLimiterOutageIntegrationTest`, `JwtAuthenticationFilter`, `LinkPasswordBackfill`, `ApplicationContextWiringTest`
 
 ## Context
 
@@ -17,7 +17,7 @@ Pick the policy per dependency by asking **"what is the worst outcome if this ch
 | Dependency | If skipped… | Policy |
 |---|---|---|
 | `JWT_SECRET`, `ENCRYPTION_SECRET`, `LINK_PASSWORD_KEY` | Forged tokens / readable passwords with a public key: catastrophic and silent | **Fail fast**: no defaults; the app (and `docker compose`) refuses to start; blank or malformed values are rejected |
-| Rate limiter (Redis) | A few minutes of weaker abuse protection: bounded, visible | **Fail open**: log and allow, so a cache outage doesn't take down login and shortening |
+| Rate limiter (Redis) | A few minutes of weaker abuse protection: bounded, visible | **Fail open, and fast**: allow, so a cache outage doesn't take down login and shortening; behind the Redis breaker since 2026-11-19 (below) |
 | JWT blacklist / revocation (Redis) | A logged-out or revoked session keeps working: a security failure | **Fail closed**: the request is rejected, never served as authenticated (today as a 500; returning 503 is a planned refinement) |
 | Link password backfill at startup | Legacy values stay in the old format a little longer; unlock still works | **Never block startup**: log, retry on next start |
 | Optional integrations (AI keys, scraper key, Google client ID) | One feature degrades | **Degrade gracefully** |
@@ -64,6 +64,22 @@ first failure with a WARN log. `StartupWithoutRedisIntegrationTest` keeps this t
 
 Rejected: *raising the timeout again*, because that brings back 60 s hangs on every redirect during an
 outage. *Retrying the warmup*, because redirects fill the cache on demand anyway.
+
+### Rate limiter behind the same breaker (2026-11-19)
+
+The rate limiter failed open, but slowly: with Redis paused, every rate-limited request waited for the 1 s
+timeout before being allowed (measured: 12 requests, **1,009 to 1,096 ms each**). A password-reset request
+checks two limits, so it waited 2 s. `RateLimiterService` now calls Redis through `RedisGuard`, so it shares the
+breaker with the redirect cache: the same Redis server, so one view of its health. With the same test,
+latency went **1,130 ms for the first five requests, then 4 to 5 ms** (`RateLimiterOutageIntegrationTest`).
+
+While the breaker is open, no rate limit is enforced. That was already true during an outage; what changed is
+that it is now visible as one log line when it starts and one when it ends ("Redis circuit breaker opened ...
+rate limits are not enforced"), instead of an ERROR line on every request.
+
+Rejected: *an in-memory fallback limiter.* With one instance it would work, but it would forget counts on
+every deploy and be wrong as soon as there are two instances. A short outage of rate limiting is the accepted
+cost (the table above).
 
 Deploy safety follows from this: because missing secrets now stop the app, every merge to `main`
 (which auto-deploys) is preceded by confirming the production settings, and

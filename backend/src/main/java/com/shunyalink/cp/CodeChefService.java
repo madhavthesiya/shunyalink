@@ -8,6 +8,7 @@ import org.springframework.http.HttpHeaders;
 import java.util.regex.Pattern;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpMethod;
@@ -85,14 +86,23 @@ public class CodeChefService {
 
                 log.debug("CodeChef: fetched stats for handle={}", LogSafe.value(handle));
             } else {
-                log.warn("CodeChef: the scraper returned an error for handle={}", LogSafe.value(handle));
+                throw new IllegalStateException("scraper reply without stats");
             }
 
-        } catch (Exception e) {
-            log.warn("CodeChef: scraper call failed for handle={}: {}", LogSafe.value(handle), LogSafe.value(e.getMessage()));
+        } catch (HttpClientErrorException.NotFound noProfile) {
+            // The scraper found no CodeChef profile for this handle: an answer, cached like data.
+            log.debug("CodeChef: no profile for handle={}", LogSafe.value(handle));
+        } catch (RuntimeException e) {
+            // Thrown, so never cached; the portfolio shows unavailablePlaceholder() and asks again next view.
+            throw new PlatformUnavailableException("CodeChef", e);
         }
 
         return withFallbacks(result);
+    }
+
+    /** What the CodeChef widget shows while the scraper is down: the widget stays, with "N/A" values. */
+    static Map<String, Object> unavailablePlaceholder() {
+        return withFallbacks(new HashMap<>());
     }
 
     /** Graceful fallbacks so the widget never disappears. */

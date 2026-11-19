@@ -20,7 +20,8 @@ public class CodeforcesService {
         this.restTemplate = restTemplate;
     }
 
-    @Cacheable(value = "codeforces-stats", key = "#handle", unless = "#result == null or #result.containsKey('error')")
+    /** Any failure is thrown, so it is never cached. Codeforces answers 400 for more than unknown handles. */
+    @Cacheable(value = "codeforces-stats", key = "#handle")
     @SuppressWarnings("unchecked")
     public Map<String, Object> getStats(String handle) {
         try {
@@ -29,8 +30,8 @@ public class CodeforcesService {
             Map<String, Object> statusResponse = restTemplate.getForObject(CF_STATUS_URL + handle, Map.class);
 
             return parseResponse(infoResponse, ratingResponse, statusResponse);
-        } catch (Exception e) {
-            return Map.of("error", "Could not fetch Codeforces stats");
+        } catch (RuntimeException e) {
+            throw new PlatformUnavailableException("Codeforces", e);
         }
     }
 

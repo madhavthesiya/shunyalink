@@ -3,6 +3,7 @@ package com.shunyalink.cp;
 import com.shunyalink.logging.LogSafe;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -28,11 +29,18 @@ public class AtCoderService {
         this.restTemplate = restTemplate;
     }
 
-    @Cacheable(value = "cpStats", key = "#username")
+    /**
+     * Two independent sources: the rating from AtCoder, the solved count from Kenkoooo. If either answers, its part
+     * is returned and cached (a partial result can stay cached for an hour, as before). If neither answers because
+     * of a failure, the failure is thrown so it is never cached; if both say the user does not exist, that answer
+     * is cached.
+     */
+    @Cacheable(value = "atcoder-stats", key = "#username")
     @SuppressWarnings("unchecked")
     public Map<String, Object> getStats(String username) {
         log.debug("AtCoder: fetching stats for user={}", LogSafe.value(username));
         Map<String, Object> result = new HashMap<>();
+        RuntimeException failure = null;
 
         // 1. Get rating from AtCoder's own history/json endpoint (no scraping needed)
         try {
@@ -96,7 +104,10 @@ public class AtCoderService {
                         .count();
                 result.put("ratedContests", (int) ratedContests);
             }
-        } catch (Exception e) {
+        } catch (HttpClientErrorException.NotFound noSuchUser) {
+            log.debug("AtCoder: no such user");
+        } catch (RuntimeException e) {
+            failure = e;
             log.warn("AtCoder: history fetch failed for user={}: {}", LogSafe.value(username), LogSafe.value(e.getMessage()));
         }
 
@@ -136,12 +147,18 @@ public class AtCoderService {
             } else {
                 log.warn("AtCoder: Kenkoooo response has no 'count' field");
             }
-        } catch (Exception e) {
+        } catch (HttpClientErrorException.NotFound noSuchUser) {
+            log.debug("AtCoder: Kenkoooo has no such user");
+        } catch (RuntimeException e) {
+            failure = e;
             log.warn("AtCoder: Kenkoooo fetch failed for user={}: {}", LogSafe.value(username), LogSafe.value(e.getMessage()));
         }
 
         if (result.isEmpty()) {
-            return Map.of("error", "Could not fetch AtCoder stats for: " + username);
+            if (failure != null) {
+                throw new PlatformUnavailableException("AtCoder", failure);
+            }
+            return Map.of("error", "AtCoder user not found");
         }
 
         return result;

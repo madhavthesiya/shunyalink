@@ -2,6 +2,9 @@ package com.shunyalink.cache;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.data.redis.RedisSystemException;
 
@@ -33,6 +36,17 @@ class RedisGuardTest {
         assertThat(attempts).hasValue(5); // the sixth call never reached Redis
         assertThat(metrics.get("shunyalink.redis.breaker.skipped").counter().count()).isEqualTo(1);
         assertThat(metrics.get("shunyalink.redis.breaker.open").gauge().value()).isEqualTo(1);
+    }
+
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    void openingTheBreakerIsLoggedOnce_becauseRateLimitsStopBeingEnforced(CapturedOutput output) {
+        for (int i = 0; i < 8; i++) { // opens at the fifth failure; the rest are skipped
+            guard.call(() -> { throw new QueryTimeoutException("timed out"); }, () -> null);
+        }
+
+        assertThat(output.getAll().split("Redis circuit breaker opened", -1)).hasSize(2);
+        assertThat(output).contains("rate limits are not enforced");
     }
 
     @Test

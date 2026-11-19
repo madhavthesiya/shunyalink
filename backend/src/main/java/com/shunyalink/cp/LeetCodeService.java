@@ -57,15 +57,17 @@ public class LeetCodeService {
         try {
             Map<String, Object> response = restTemplate.postForObject(LEETCODE_API_URL, request, Map.class);
             return parseResponse(response);
-        } catch (Exception e) {
-            // Log error and return empty or error state
-            return Map.of("error", "Could not fetch LeetCode stats");
+        } catch (RuntimeException e) {
+            // Thrown, so never cached. An unknown user is a normal reply (matchedUser is null) and is cached.
+            throw new PlatformUnavailableException("LeetCode", e);
         }
     }
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> parseResponse(Map<String, Object> response) {
-        if (response == null || !response.containsKey("data")) return Map.of();
+        if (response == null || !(response.get("data") instanceof Map)) {
+            throw new IllegalStateException("reply without data");
+        }
 
         Map<String, Object> data = (Map<String, Object>) response.get("data");
         Map<String, Object> matchedUser = (Map<String, Object>) data.get("matchedUser");

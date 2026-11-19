@@ -7,6 +7,8 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
@@ -29,6 +31,8 @@ import java.util.function.Supplier;
  */
 @Component
 public class RedisGuard {
+    private static final Logger log = LoggerFactory.getLogger(RedisGuard.class);
+
     private final CircuitBreaker breaker;
     private final Counter skipped;
 
@@ -44,6 +48,16 @@ public class RedisGuard {
     RedisGuard(CircuitBreaker breaker, MeterRegistry metrics) {
         this.breaker = breaker;
         this.skipped = metrics.counter("shunyalink.redis.breaker.skipped");
+        // One line when Redis is given up on and one when it is back, instead of one per skipped call.
+        // While open, rate limits are not enforced (they fail open), so this moment must be visible.
+        breaker.getEventPublisher().onStateTransition(event -> {
+            if (event.getStateTransition().getToState() == CircuitBreaker.State.OPEN) {
+                log.warn("Redis circuit breaker opened ({}): Redis calls are skipped, so rate limits are not "
+                        + "enforced and redirects skip the cache", event.getStateTransition());
+            } else {
+                log.info("Redis circuit breaker {}", event.getStateTransition());
+            }
+        });
         Gauge.builder("shunyalink.redis.breaker.open", breaker, b -> b.getState() == CircuitBreaker.State.OPEN ? 1 : 0)
                 .register(metrics);
     }
