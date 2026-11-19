@@ -13,7 +13,8 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.test.web.client.MockRestServiceServer;
-import org.springframework.web.client.RestTemplate;
+import com.shunyalink.upstream.Upstreams;
+import org.springframework.web.client.RestClient;
 
 import java.util.Map;
 
@@ -44,19 +45,22 @@ class PlatformFailuresAreNotCachedTest {
             return new ConcurrentMapCacheManager();
         }
 
+        private final RestClient.Builder http = RestClient.builder();
+        private final MockRestServiceServer upstream = MockRestServiceServer.bindTo(http).build();
+
         @Bean
-        RestTemplate restTemplate() {
-            return new RestTemplate();
+        MockRestServiceServer upstream() {
+            return upstream;
         }
 
         @Bean
-        MockRestServiceServer upstream(RestTemplate restTemplate) {
-            return MockRestServiceServer.bindTo(restTemplate).build();
+        Upstreams upstreams() {
+            return Upstreams.using(http); // after binding, so every service's requests reach the mock
         }
 
         @Bean
-        CodeChefService codeChefService(RestTemplate restTemplate) {
-            return new CodeChefService(restTemplate, "http://scraper:3001", "key");
+        CodeChefService codeChefService(Upstreams upstreams) {
+            return new CodeChefService(upstreams, "key");
         }
     }
 

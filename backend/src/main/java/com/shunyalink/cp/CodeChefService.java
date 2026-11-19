@@ -1,19 +1,14 @@
 package com.shunyalink.cp;
 
 import com.shunyalink.logging.LogSafe;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.shunyalink.upstream.Upstream;
+import com.shunyalink.upstream.Upstreams;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
 import java.util.regex.Pattern;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import java.util.Map;
 import java.util.HashMap;
 
@@ -22,35 +17,20 @@ public class CodeChefService {
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(CodeChefService.class);
 
+    private static final ParameterizedTypeReference<Map<String, Object>> JSON_OBJECT = new ParameterizedTypeReference<>() {};
+
     /** CodeChef handles are letters, digits and underscores; anything else never leaves this service. */
     private static final Pattern VALID_HANDLE = Pattern.compile("^[A-Za-z0-9_]{1,30}$");
 
-    private final RestTemplate restTemplate;
-    private final String scraperUrl;
+    private final Upstream scraper;
     private final String scraperApiKey;
 
-    @Autowired
-    public CodeChefService(
-            @Value("${SCRAPER_URL:http://localhost:3001}") String scraperUrl,
-            @Value("${SCRAPER_API_KEY:}") String scraperApiKey) {
-        this(scraperRestTemplate(), scraperUrl, scraperApiKey);
-    }
-
-    CodeChefService(RestTemplate restTemplate, String scraperUrl, String scraperApiKey) {
-        this.restTemplate = restTemplate;
-        this.scraperUrl = scraperUrl;
+    public CodeChefService(Upstreams upstreams, @Value("${SCRAPER_API_KEY:}") String scraperApiKey) {
+        this.scraper = upstreams.scraper();
         this.scraperApiKey = scraperApiKey;
     }
 
-    private static RestTemplate scraperRestTemplate() {
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(5000);
-        factory.setReadTimeout(15000);
-        return new RestTemplate(factory);
-    }
-
     @Cacheable(value = "codechef-stats", key = "#handle")
-    @SuppressWarnings("unchecked")
     public Map<String, Object> getStats(String handle) {
         Map<String, Object> result = new HashMap<>();
 
@@ -60,20 +40,17 @@ public class CodeChefService {
         }
 
         try {
-            String url = scraperUrl + "/codechef/" + handle;
             log.debug("CodeChef: calling the scraper for handle={}", LogSafe.value(handle));
 
             // The scraper is a public service; the shared secret keeps it for our backend only
-            HttpHeaders headers = new HttpHeaders();
-            if (scraperApiKey != null && !scraperApiKey.isBlank()) {
-                headers.set("X-Scraper-Key", scraperApiKey);
-            }
-            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
-                    url, HttpMethod.GET, new HttpEntity<>(headers),
-                    new ParameterizedTypeReference<Map<String, Object>>() {}
-            );
+            Map<String, Object> data = scraper.call(client -> client.get().uri("/codechef/{handle}", handle)
+                    .headers(headers -> {
+                        if (scraperApiKey != null && !scraperApiKey.isBlank()) {
+                            headers.set("X-Scraper-Key", scraperApiKey);
+                        }
+                    })
+                    .retrieve().body(JSON_OBJECT));
 
-            Map<String, Object> data = response.getBody();
             if (data != null && !data.containsKey("error")) {
                 result.putAll(data);
 

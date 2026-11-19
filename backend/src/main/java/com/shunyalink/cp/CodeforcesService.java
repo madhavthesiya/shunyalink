@@ -1,8 +1,10 @@
 package com.shunyalink.cp;
 
+import com.shunyalink.upstream.Upstream;
+import com.shunyalink.upstream.Upstreams;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.List;
@@ -10,29 +12,30 @@ import java.util.List;
 @Service
 public class CodeforcesService {
 
-    private final RestTemplate restTemplate;
-    private static final String CF_INFO_URL = "https://codeforces.com/api/user.info?handles=";
-    private static final String CF_RATING_URL = "https://codeforces.com/api/user.rating?handle=";
+    private static final ParameterizedTypeReference<Map<String, Object>> JSON_OBJECT = new ParameterizedTypeReference<>() {};
 
-    private static final String CF_STATUS_URL = "https://codeforces.com/api/user.status?handle=";
+    private final Upstream codeforces;
 
-    public CodeforcesService(RestTemplate restTemplate) {
-        this.restTemplate = restTemplate;
+    public CodeforcesService(Upstreams upstreams) {
+        this.codeforces = upstreams.codeforces();
     }
 
     /** Any failure is thrown, so it is never cached. Codeforces answers 400 for more than unknown handles. */
     @Cacheable(value = "codeforces-stats", key = "#handle")
-    @SuppressWarnings("unchecked")
     public Map<String, Object> getStats(String handle) {
         try {
-            Map<String, Object> infoResponse = restTemplate.getForObject(CF_INFO_URL + handle, Map.class);
-            Map<String, Object> ratingResponse = restTemplate.getForObject(CF_RATING_URL + handle, Map.class);
-            Map<String, Object> statusResponse = restTemplate.getForObject(CF_STATUS_URL + handle, Map.class);
+            Map<String, Object> infoResponse = get("/api/user.info?handles={handle}", handle);
+            Map<String, Object> ratingResponse = get("/api/user.rating?handle={handle}", handle);
+            Map<String, Object> statusResponse = get("/api/user.status?handle={handle}", handle);
 
             return parseResponse(infoResponse, ratingResponse, statusResponse);
         } catch (RuntimeException e) {
             throw new PlatformUnavailableException("Codeforces", e);
         }
+    }
+
+    private Map<String, Object> get(String path, String handle) {
+        return codeforces.call(client -> client.get().uri(path, handle).retrieve().body(JSON_OBJECT));
     }
 
     @SuppressWarnings("unchecked")

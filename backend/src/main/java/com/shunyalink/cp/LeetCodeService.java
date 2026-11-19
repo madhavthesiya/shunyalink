@@ -1,10 +1,10 @@
 package com.shunyalink.cp;
 
+import com.shunyalink.upstream.Upstream;
+import com.shunyalink.upstream.Upstreams;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import java.util.Map;
 import java.util.HashMap;
@@ -13,19 +13,16 @@ import java.util.List;
 @Service
 public class LeetCodeService {
 
-    private final RestTemplate restTemplate;
-    private static final String LEETCODE_API_URL = "https://leetcode.com/graphql";
+    private static final ParameterizedTypeReference<Map<String, Object>> JSON_OBJECT = new ParameterizedTypeReference<>() {};
 
-    public LeetCodeService(RestTemplate restTemplate) {
-        this.restTemplate = restTemplate;
+    private final Upstream leetcode;
+
+    public LeetCodeService(Upstreams upstreams) {
+        this.leetcode = upstreams.leetcode();
     }
 
     @Cacheable(value = "leetcode-stats", key = "#username")
-    @SuppressWarnings("unchecked")
     public Map<String, Object> getStats(String username) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-
         String graphqlQuery = "query getUserProfile($username: String!) { " +
                 "  matchedUser(username: $username) { " +
                 "    submitStats { " +
@@ -52,10 +49,9 @@ public class LeetCodeService {
         body.put("query", graphqlQuery);
         body.put("variables", variables);
 
-        HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
-
         try {
-            Map<String, Object> response = restTemplate.postForObject(LEETCODE_API_URL, request, Map.class);
+            Map<String, Object> response = leetcode.call(client -> client.post().uri("/graphql")
+                    .contentType(MediaType.APPLICATION_JSON).body(body).retrieve().body(JSON_OBJECT));
             return parseResponse(response);
         } catch (RuntimeException e) {
             // Thrown, so never cached. An unknown user is a normal reply (matchedUser is null) and is cached.
