@@ -10,9 +10,24 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import java.util.Map;
+import com.shunyalink.logging.MdcTaskDecorator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+
+import java.time.Duration;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 
 @RestController
 @RequestMapping("/api/v1/portfolio")
@@ -32,6 +47,16 @@ public class CpController {
     private final RateLimiterService rateLimiterService;
     private final ClientIpResolver clientIpResolver;
 
+    private static final Logger log = LoggerFactory.getLogger(CpController.class);
+
+    /**
+     * One virtual thread per platform call. These calls only wait on the network, so a virtual thread costs almost
+     * nothing while waiting. The old code used the common ForkJoinPool, which is sized to the CPU count (one or two
+     * on this App Service plan), so the five blocking calls could run one after another. Request IDs are carried over.
+     */
+    private final Executor platformCalls;
+    private final Duration platformTimeout;
+
     public CpController(UserRepository userRepository,
                         LeetCodeService leetCodeService,
                         CodeforcesService codeforcesService,
@@ -40,7 +65,12 @@ public class CpController {
                         GithubService githubService,
                         RoastService roastService,
                         RateLimiterService rateLimiterService,
-                        ClientIpResolver clientIpResolver) {
+                        ClientIpResolver clientIpResolver,
+                        @Value("${app.portfolio.platform-timeout:5s}") Duration platformTimeout) {
+        ExecutorService virtualThreads = Executors.newVirtualThreadPerTaskExecutor();
+        MdcTaskDecorator requestContext = new MdcTaskDecorator();
+        this.platformCalls = task -> virtualThreads.execute(requestContext.decorate(task));
+        this.platformTimeout = platformTimeout;
         this.userRepository = userRepository;
         this.leetCodeService = leetCodeService;
         this.codeforcesService = codeforcesService;
@@ -71,77 +101,62 @@ public class CpController {
         UserEntity user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new BadRequestException("User not found"));
 
+        // Every platform is asked at once, each on its own virtual thread, with the same deadline. A slow or failing
+        // platform is left out and listed in unavailablePlatforms; it never holds up or fails the whole page.
+        // A call that misses the deadline keeps running, and its @Cacheable result serves the next view.
+        Set<String> unavailable = ConcurrentHashMap.newKeySet();
+        var leetcode = ask("leetcode", user.getLeetcodeUsername(), leetCodeService::getStats, unavailable);
+        var codeforces = ask("codeforces", user.getCodeforcesUsername(), codeforcesService::getStats, unavailable);
+        var codechef = ask("codechef", user.getCodeChefHandle(), codeChefService::getStats, unavailable);
+        var atcoder = ask("atcoder", user.getAtCoderHandle(), handle -> {
+            Map<String, Object> result = new HashMap<>(atCoderService.getStats(handle));
+            result.put("handle", handle);
+            return result;
+        }, unavailable);
+        var github = ask("github", user.getGithubUsername(), githubService::getStats, unavailable);
+        CompletableFuture.allOf(leetcode, codeforces, codechef, atcoder, github).join();
+
         Map<String, Object> stats = new HashMap<>();
-
-        // Fire all platform calls in parallel — prevents Puppeteer's 10-15s latency
-        // from blocking the other 4 fast API calls
-        CompletableFuture<Map<String, Object>> lcFuture = (user.getLeetcodeUsername() != null)
-                ? CompletableFuture.supplyAsync(() -> leetCodeService.getStats(user.getLeetcodeUsername()))
-                : CompletableFuture.completedFuture(null);
-
-        CompletableFuture<Map<String, Object>> cfFuture = (user.getCodeforcesUsername() != null)
-                ? CompletableFuture.supplyAsync(() -> codeforcesService.getStats(user.getCodeforcesUsername()))
-                : CompletableFuture.completedFuture(null);
-
-        CompletableFuture<Map<String, Object>> ccFuture = (user.getCodeChefHandle() != null)
-                ? CompletableFuture.supplyAsync(() -> codeChefService.getStats(user.getCodeChefHandle()))
-                : CompletableFuture.completedFuture(null);
-
-        CompletableFuture<Map<String, Object>> acFuture = (user.getAtCoderHandle() != null)
-                ? CompletableFuture.supplyAsync(() -> {
-                    Map<String, Object> ac = new HashMap<>(atCoderService.getStats(user.getAtCoderHandle()));
-                    ac.put("handle", user.getAtCoderHandle());
-                    return ac;
-                })
-                : CompletableFuture.completedFuture(null);
-
-        CompletableFuture<Map<String, Object>> ghFuture = (user.getGithubUsername() != null)
-                ? CompletableFuture.supplyAsync(() -> githubService.getStats(user.getGithubUsername()))
-                : CompletableFuture.completedFuture(null);
-
-        // Wait for all to complete
-        CompletableFuture.allOf(lcFuture, cfFuture, ccFuture, acFuture, ghFuture).join();
-
-        // Collect results
         int totalGloballySolved = 0;
-
-        Map<String, Object> lc = lcFuture.join();
-        if (lc != null) {
-            stats.put("leetcode", lc);
-            totalGloballySolved += (Integer) lc.getOrDefault("totalSolved", 0);
+        for (var platform : List.of(Map.entry("leetcode", leetcode), Map.entry("codeforces", codeforces),
+                Map.entry("codechef", codechef), Map.entry("atcoder", atcoder))) {
+            Map<String, Object> result = platform.getValue().join();
+            if (result != null) {
+                stats.put(platform.getKey(), result);
+                totalGloballySolved += toInt(result.get("totalSolved"));
+            }
         }
-
-        Map<String, Object> cf = cfFuture.join();
-        if (cf != null) {
-            stats.put("codeforces", cf);
-            totalGloballySolved += (Integer) cf.getOrDefault("totalSolved", 0);
-        }
-
-        Map<String, Object> cc = ccFuture.join();
-        if (cc != null) {
-            stats.put("codechef", cc);
-            totalGloballySolved += toInt(cc.get("totalSolved"));
-        }
-
-        Map<String, Object> ac = acFuture.join();
-        if (ac != null) {
-            stats.put("atcoder", ac);
-            totalGloballySolved += toInt(ac.get("totalSolved"));
-        }
-
-        Map<String, Object> gh = ghFuture.join();
-        if (gh != null) {
-            stats.put("github", gh);
+        Map<String, Object> githubStats = github.join();
+        if (githubStats != null) {
+            stats.put("github", githubStats);
         }
 
         stats.put("totalGloballySolved", totalGloballySolved);
+        stats.put("unavailablePlatforms", unavailable.stream().sorted().toList());
         stats.put("profileType", user.getProfileType());
 
         return ResponseEntity.ok(stats);
     }
 
+    /** One platform's stats; null if the user has no handle there, the call failed, or it missed the deadline. */
+    private CompletableFuture<Map<String, Object>> ask(String platform, String handle,
+                                                       Function<String, Map<String, Object>> call, Set<String> unavailable) {
+        if (handle == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return CompletableFuture.supplyAsync(() -> call.apply(handle), platformCalls)
+                .orTimeout(platformTimeout.toMillis(), TimeUnit.MILLISECONDS)
+                .exceptionally(failure -> {
+                    Throwable cause = failure instanceof CompletionException && failure.getCause() != null
+                            ? failure.getCause() : failure;
+                    unavailable.add(platform);
+                    log.warn("Portfolio: {} left out ({})", platform, cause.getClass().getSimpleName());
+                    return null;
+                });
+    }
+
     private int toInt(Object value) {
-        if (value instanceof Integer) return (Integer) value;
+        if (value instanceof Number number) return number.intValue();
         if (value instanceof String) {
             try { return Integer.parseInt((String) value); } catch (NumberFormatException e) { return 0; }
         }
