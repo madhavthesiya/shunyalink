@@ -31,4 +31,30 @@ public class AsyncConfig {
         executor.initialize();
         return executor;
     }
+
+    /**
+     * The pool for plain {@code @Async} work: emails and link previews.
+     *
+     * <p>Before this bean existed, Spring Boot saw {@code analyticsExecutor} and created no default executor, so
+     * plain {@code @Async} silently ran on the analytics pool. That pool rejects work when full, so a click flood
+     * would have failed sign-up emails and link creation (the preview is submitted inside the shorten
+     * transaction). Separate pools are bulkheads: one kind of overload can't take down unrelated features.
+     *
+     * <p>Platform threads, not virtual ones: this is fire-and-forget work, and a small fixed pool with a queue
+     * bounds how much of it runs at once (each preview ends with a write to a 2-connection database pool).
+     * The name "taskExecutor" is what {@code @Async} looks for when several executors exist.
+     */
+    @Bean(name = {"applicationTaskExecutor", "taskExecutor"})
+    public ThreadPoolTaskExecutor applicationTaskExecutor(com.shunyalink.logging.MdcTaskDecorator requestContext) {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setTaskDecorator(requestContext);
+        executor.setCorePoolSize(4);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(1_000);
+        executor.setThreadNamePrefix("async-");
+        executor.setWaitForTasksToCompleteOnShutdown(true); // finish queued emails on a normal shutdown
+        executor.setAwaitTerminationSeconds(20);
+        executor.initialize();
+        return executor;
+    }
 }
