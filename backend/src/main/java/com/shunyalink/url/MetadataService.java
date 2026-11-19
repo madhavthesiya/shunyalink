@@ -1,5 +1,6 @@
 package com.shunyalink.url;
 
+import com.shunyalink.logging.LogSafe;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.slf4j.Logger;
@@ -27,7 +28,9 @@ public class MetadataService {
     @Async
     public void fetchAndProcessMetadataAsync(String shortId, String longUrl, boolean shouldUpdateTitle) {
         try {
-            log.info("Smart AI Fetching for: {} (shortId: {}, updateTitle: {})", longUrl, shortId, shouldUpdateTitle);
+            // Host only: a destination's path or query can carry access tokens.
+            log.info("Fetching link preview host={} shortId={} updateTitle={}",
+                    LogSafe.host(longUrl), LogSafe.value(shortId), shouldUpdateTitle);
 
             // User-supplied URL: always fetched through the SSRF guard
             Document doc = safeUrlFetcher.fetch(longUrl, 8000);
@@ -68,7 +71,8 @@ public class MetadataService {
             // Refused by the SSRF guard: retrying through the fallback would hit the same target
             log.warn("Refused to fetch metadata for shortId={}: {}", shortId, e.getMessage());
         } catch (Exception e) {
-            log.warn("Smart AI failed for {}: {}. Falling back to simple scrape.", longUrl, e.getMessage());
+            log.warn("Smart preview failed for host={} ({}); falling back to a simple scrape",
+                    LogSafe.host(longUrl), LogSafe.value(e.getMessage()));
             // Fallback categorization can be added here if needed
             fallbackScrape(shortId, longUrl, shouldUpdateTitle);
         }
@@ -87,7 +91,7 @@ public class MetadataService {
                 });
             }
         } catch (Exception e) {
-            log.warn("Fallback scrape also failed for {}", longUrl);
+            log.warn("Fallback scrape also failed for host={}", LogSafe.host(longUrl));
         }
     }
 

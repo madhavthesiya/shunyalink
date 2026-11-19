@@ -34,6 +34,15 @@ public class RateLimiterService {
         this.redisTemplate = redisTemplate;
     }
 
+    /**
+     * "rate:login:203.0.113.7" → "rate:login". Keys end with who is being limited (an IP address or an email),
+     * which must not reach the logs; the request ID ties the log line to the request.
+     */
+    static String limitName(String key) {
+        String[] parts = key.split(":", 3);
+        return parts.length < 2 ? "rate" : parts[0] + ":" + parts[1];
+    }
+
     public void checkLimit(String key, int limit, int windowSeconds) {
         try {
             Long count = redisTemplate.execute(
@@ -43,7 +52,8 @@ public class RateLimiterService {
             );
 
             if (count != null && count > limit) {
-                log.warn("RATE LIMIT TRIGGERED key={}", key);
+                // Keys can contain a user's input (a short link alias), so the name is sanitized too.
+                log.warn("Rate limit exceeded limit={}", com.shunyalink.logging.LogSafe.value(limitName(key)));
                 throw new TooManyRequestsException("Rate limit exceeded. Try again later.");
             }
         } catch (TooManyRequestsException e) {

@@ -111,6 +111,19 @@ class UrlIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    void errorResponses_carryTheSameRequestIdAsTheHeader_soAUserReportCanBeFoundInTheLogs() throws Exception {
+        var response = mockMvc.perform(post("/api/v1/url/shorten")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{not json"))
+                .andExpect(status().isBadRequest())
+                .andReturn().getResponse();
+
+        String id = response.getHeader("X-Request-Id");
+        assertThat(id).isNotBlank();
+        assertThat(objectMapper.readTree(response.getContentAsString()).path("requestId").asText()).isEqualTo(id);
+    }
+
+    @Test
     void unknownShortLink_returns404() throws Exception {
         mockMvc.perform(get("/it-missing")).andExpect(status().isNotFound());
     }

@@ -30,6 +30,10 @@ RUN curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 15 --max-time 120 \
     && gunzip -c /tmp/dbip.mmdb.gz > /app/dbip-country.mmdb \
     && rm /tmp/dbip.mmdb.gz
 
+# One JSON object per log line (Elastic Common Schema) in the deployed container only: a stack trace stays in
+# one entry instead of 80 lines, and fields such as requestId can be searched. Local runs and tests stay plain text.
+ENV LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs
+
 # Commit this image was built from, published at /actuator/info (CI passes --build-arg).
 # Declared last so changing it never invalidates the cached layers above.
 ARG APP_COMMIT=unknown

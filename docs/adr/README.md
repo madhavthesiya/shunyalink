@@ -23,6 +23,7 @@ Each one states the context, the options considered, what was chosen and what it
 | [0016](0016-transactional-daily-unique-sketches.md) | Keep daily unique-visitor sketches with transactional rollups | Accepted for Phase 3 |
 | [0017](0017-bound-analytics-labels.md) | Bound analytics labels before queueing events | Accepted for Phase 3 |
 | [0018](0018-phishing-check-outside-the-transaction.md) | Run the phishing check before the transaction, and fail open visibly | Accepted |
+| [0019](0019-request-ids-and-structured-logs.md) | Request IDs, JSON logs in production, and what is never logged | Accepted |
 
 Format: *Context → Options → Decision → Consequences*. A superseded decision stays in place with
 its status changed, so the history of *why* is never lost.

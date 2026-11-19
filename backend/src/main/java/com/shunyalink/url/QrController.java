@@ -30,6 +30,8 @@ import java.util.Map;
 @RequestMapping("/api/v1/url")
 public class QrController {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(QrController.class);
+
     @Value("${app.base-url}")
     private String baseUrl;
 
@@ -95,7 +97,7 @@ public class QrController {
                 }
             } catch (Exception e) {
                 // If logo fails, we still return the plain QR code
-                System.err.println("QR Logo Overlay failed: " + e.getMessage());
+                log.warn("QR logo overlay failed: {}", com.shunyalink.logging.LogSafe.value(e.getMessage()));
             }
 
             ByteArrayOutputStream out = new ByteArrayOutputStream();

@@ -296,7 +296,7 @@ public class DbUrlService implements UrlService {
         if (plaintext != null && !LinkPasswordCipher.isCurrentFormat(stored)) {
             upgradeLegacyPassword(entity, plaintext);
         }
-        log.info("Link password revealed to owner: shortId={} userId={}", shortId, userId);
+        log.info("Link password revealed to owner: shortId={} userId={}", com.shunyalink.logging.LogSafe.value(shortId), userId);
         return plaintext; // null: stored as a one-way hash by an older version, so not recoverable
     }
 
@@ -376,7 +376,7 @@ public class DbUrlService implements UrlService {
                     lastAccessed = redisTime;
                 }
             } catch (Exception e) {
-                log.warn("Could not parse Redis timestamp for shortId={}", shortId);
+                log.warn("Could not parse Redis timestamp for shortId={}", com.shunyalink.logging.LogSafe.value(shortId));
             }
         }
 
