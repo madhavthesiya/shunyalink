@@ -1,10 +1,10 @@
 package com.shunyalink.url;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.shunyalink.BaseIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -128,7 +128,7 @@ class UrlIntegrationTest extends BaseIntegrationTest {
 
         String id = response.getHeader("X-Request-Id");
         assertThat(id).isNotBlank();
-        assertThat(objectMapper.readTree(response.getContentAsString()).path("requestId").asText()).isEqualTo(id);
+        assertThat(objectMapper.readTree(response.getContentAsString()).path("requestId").asString()).isEqualTo(id);
     }
 
     @Test
@@ -170,8 +170,8 @@ class UrlIntegrationTest extends BaseIntegrationTest {
 
                     assertThat(a.getStatus()).as("round %d, first", round).isEqualTo(200);
                     assertThat(b.getStatus()).as("round %d, second", round).isEqualTo(200);
-                    assertThat(objectMapper.readTree(a.getContentAsString()).path("shortId").asText())
-                            .isEqualTo(objectMapper.readTree(b.getContentAsString()).path("shortId").asText());
+                    assertThat(objectMapper.readTree(a.getContentAsString()).path("shortId").asString())
+                            .isEqualTo(objectMapper.readTree(b.getContentAsString()).path("shortId").asString());
                 } finally {
                     pool.shutdownNow();
                 }
@@ -196,7 +196,7 @@ class UrlIntegrationTest extends BaseIntegrationTest {
         try {
             String body = shorten("https://utc.example/" + alias, alias, null, null)
                     .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-            String createdAt = objectMapper.readTree(body).path("createdAt").asText();
+            String createdAt = objectMapper.readTree(body).path("createdAt").asString();
 
             assertThat(createdAt).as("createdAt carries its zone").endsWith("Z");
             assertThat(java.time.Duration.between(java.time.Instant.parse(createdAt), java.time.Instant.now()).abs())
