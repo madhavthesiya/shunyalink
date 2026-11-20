@@ -126,7 +126,7 @@ public class DurableAnalyticsReader {
             jdbc.query("SELECT url_id, human_clicks, last_accessed_at FROM analytics_link_totals WHERE url_id IN ("
                             + String.join(",", Collections.nCopies(batch.size(), "?")) + ")",
                     (RowCallbackHandler) row -> totals.put(row.getLong(1), new CollectedTotal(row.getLong(2),
-                            row.getObject(3, OffsetDateTime.class).withOffsetSameInstant(ZoneOffset.UTC).toLocalDateTime())),
+                            row.getObject(3, OffsetDateTime.class).toInstant())),
                     batch.stream().map(UrlEntity::getId).toArray());
         }
         return totals;
@@ -139,7 +139,7 @@ public class DurableAnalyticsReader {
     }
 
     private record CollectionBoundary(OffsetDateTime start, UUID id) { }
-    private record CollectedTotal(long clicks, LocalDateTime last) { }
+    private record CollectedTotal(long clicks, java.time.Instant last) { }
 
     public static UrlStatsResponse summary(UrlEntity link) {
         return response(link, Map.of(), Map.of(), Map.of(), Map.of());

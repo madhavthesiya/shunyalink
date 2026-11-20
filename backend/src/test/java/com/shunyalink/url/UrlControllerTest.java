@@ -21,7 +21,6 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
-import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 
@@ -82,7 +81,7 @@ class UrlControllerTest {
     private static UrlStatsResponse sampleStats(String shortId) {
         return new UrlStatsResponse(
                 shortId, "https://google.com", 42L,
-                LocalDateTime.now(), LocalDateTime.now(),
+                java.time.Instant.now(), java.time.Instant.now(),
                 false, "Title", false,
                 Collections.emptyMap(), Collections.emptyMap(),
                 Collections.emptyMap(), Collections.emptyMap(),

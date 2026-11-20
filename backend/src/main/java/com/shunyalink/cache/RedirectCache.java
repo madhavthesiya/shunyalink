@@ -69,7 +69,7 @@ public class RedirectCache {
         fields.put("longUrl", link.getLongUrl());
         fields.put("hasPassword", String.valueOf(link.getPassword() != null));
         fields.put("title", link.getTitle() != null ? link.getTitle() : "");
-        fields.put("expiryTime", link.getExpiryTime() != null ? link.getExpiryTime().toString() : "");
+        fields.put("expiryTime", link.getExpiryTime() != null ? com.shunyalink.util.UtcTimes.format(link.getExpiryTime()) : ""); // same text as before: rollback-safe
         redis.opsForHash().putAll(key, fields);
         redis.expire(key, TTL.plusSeconds(ThreadLocalRandom.current().nextLong(-JITTER_SECONDS, JITTER_SECONDS + 1)));
     }

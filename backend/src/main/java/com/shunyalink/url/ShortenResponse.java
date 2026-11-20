@@ -1,6 +1,6 @@
 package com.shunyalink.url;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Set;
 
 public class ShortenResponse {
@@ -8,14 +8,14 @@ public class ShortenResponse {
     private String shortId;
     private String shortUrl;
     private String longUrl;
-    private LocalDateTime createdAt;
+    private Instant createdAt;
     private String title;
     private boolean passwordProtected;
     // Deliberately no password field: link passwords are never sent back to clients.
     private String category;
     private Set<String> tags;
 
-    public ShortenResponse(String shortId, String shortUrl, String longUrl, LocalDateTime createdAt, String title, boolean passwordProtected, String category, Set<String> tags) {
+    public ShortenResponse(String shortId, String shortUrl, String longUrl, Instant createdAt, String title, boolean passwordProtected, String category, Set<String> tags) {
         this.shortId = shortId;
         this.shortUrl = shortUrl;
         this.longUrl = longUrl;
@@ -38,7 +38,7 @@ public class ShortenResponse {
 
     public String getLongUrl()        { return longUrl; }
 
-    public LocalDateTime getCreatedAt() { return createdAt; }
+    public Instant getCreatedAt() { return createdAt; }
 
     public boolean isPasswordProtected() { return passwordProtected; }
 

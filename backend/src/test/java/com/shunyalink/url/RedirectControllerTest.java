@@ -16,7 +16,6 @@ import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.Optional;
 
@@ -144,7 +143,7 @@ class RedirectControllerTest {
     @Test
     void redirect_expiredLink_returns410() throws Exception {
         UrlEntity entity = new UrlEntity("oldlink", "https://google.com", false);
-        entity.setExpiryTime(LocalDateTime.now().minusDays(1));
+        entity.setExpiryTime(java.time.Instant.now().minus(java.time.Duration.ofDays(1)));
         when(urlRepository.findByShortId("oldlink")).thenReturn(Optional.of(entity));
 
         mockMvc.perform(get("/oldlink"))

@@ -2,7 +2,7 @@ package com.shunyalink.url;
 
 import jakarta.persistence.*;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Set;
 import java.util.HashSet;
 
@@ -27,16 +27,16 @@ public class UrlEntity {
     @Column(nullable = false)
     private long clickCount = 0;
 
-    private LocalDateTime lastAccessedTime;
+    private Instant lastAccessedTime;
 
     @Column
-    private LocalDateTime expiryTime;
+    private Instant expiryTime;
 
     @Column(nullable = true, length = 100)
     private String title;
 
     @Column(nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     @Column(nullable = true)
     private String password;
@@ -60,7 +60,7 @@ public class UrlEntity {
 
     @PrePersist
     protected void onCreate() {
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = Instant.now();
     }
 
     public UrlEntity() {
@@ -108,23 +108,23 @@ public class UrlEntity {
         this.clickCount = clickCount;
     }
 
-    public LocalDateTime getLastAccessedTime() {
+    public Instant getLastAccessedTime() {
         return lastAccessedTime;
     }
 
-    public void setLastAccessedTime(LocalDateTime lastAccessedTime) {
+    public void setLastAccessedTime(Instant lastAccessedTime) {
         this.lastAccessedTime = lastAccessedTime;
     }
 
-    public LocalDateTime getExpiryTime() {
+    public Instant getExpiryTime() {
         return expiryTime;
     }
 
-    public void setExpiryTime(LocalDateTime expiryTime) {
+    public void setExpiryTime(Instant expiryTime) {
         this.expiryTime = expiryTime;
     }
 
-    public LocalDateTime getCreatedAt() {
+    public Instant getCreatedAt() {
         return createdAt;
     }
 

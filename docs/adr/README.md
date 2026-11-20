@@ -31,6 +31,7 @@ Each one states the context, the options considered, what was chosen and what it
 | [0024](0024-safe-browsing-before-the-ai-check.md) | Google Safe Browsing first, the AI check second | Accepted |
 | [0025](0025-shared-anonymous-links-under-concurrency.md) | Let the database decide which identical link wins, then return the winner | Accepted |
 | [0026](0026-problem-details-and-validation-at-the-edge.md) | Problem Details for errors (without breaking clients), and validation at the edge | Accepted |
+| [0027](0027-instants-in-code-utc-in-storage-schema-later.md) | Instants in the code and the API now; column types later, in a rollback-safe way | Accepted |
 
 Format: *Context → Options → Decision → Consequences*. A superseded decision stays in place with
 its status changed, so the history of *why* is never lost.

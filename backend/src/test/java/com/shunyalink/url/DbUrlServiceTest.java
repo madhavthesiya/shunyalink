@@ -18,7 +18,6 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -320,7 +319,7 @@ class DbUrlServiceTest {
     @Test
     void resolve_expiredLink_throwsGoneEvenWithTheCorrectPassword() {
         UrlEntity entity = protectedLink("old", linkPasswordCipher.encrypt("s3cret", "old"));
-        entity.setExpiryTime(LocalDateTime.now().minusMinutes(1));
+        entity.setExpiryTime(java.time.Instant.now().minusSeconds(60));
 
         assertThrows(GoneException.class, () -> dbUrlService.resolveProtectedLink("old", "s3cret"));
     }

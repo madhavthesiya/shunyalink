@@ -1,5 +1,5 @@
 package com.shunyalink.url;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
 
@@ -8,8 +8,8 @@ public class UrlStatsResponse {
     private String shortId;
     private String longUrl;
     private long clickCount;
-    private LocalDateTime lastAccessedTime;
-    private LocalDateTime createdAt;
+    private Instant lastAccessedTime;
+    private Instant createdAt;
     private boolean showOnBio;
     private String title;
     private boolean passwordProtected;
@@ -27,7 +27,7 @@ public class UrlStatsResponse {
     private String analyticsCollectionStartedAt;
     public String getAnalyticsCollectionStartedAt() { return analyticsCollectionStartedAt; }
     public void setAnalyticsCollectionStartedAt(String start) { analyticsCollectionStartedAt = start; }
-    public void setCollectedTotals(long clicks, LocalDateTime last) { clickCount = clicks; lastAccessedTime = last; }
+    public void setCollectedTotals(long clicks, Instant last) { clickCount = clicks; lastAccessedTime = last; }
 
     public Long getBotClicks() { return botClicks; }
     public void setBotClicks(long clicks) { botClicks = clicks; }
@@ -41,7 +41,7 @@ public class UrlStatsResponse {
     public String getAnalyticsRangeEnd() { return analyticsRangeEnd; }
     public void setAnalyticsRange(String start, String end) { analyticsRangeStart = start; analyticsRangeEnd = end; }
 
-    public UrlStatsResponse(String shortId, String longUrl, long clickCount, LocalDateTime lastAccessedTime, LocalDateTime createdAt, boolean showOnBio, String title, boolean passwordProtected, Map<String, Long> timeSeries, Map<String, Long> countries, Map<String, Long> referrers, Map<String, Long> devices, Integer orderIndex, String category, Set<String> tags) {
+    public UrlStatsResponse(String shortId, String longUrl, long clickCount, Instant lastAccessedTime, Instant createdAt, boolean showOnBio, String title, boolean passwordProtected, Map<String, Long> timeSeries, Map<String, Long> countries, Map<String, Long> referrers, Map<String, Long> devices, Integer orderIndex, String category, Set<String> tags) {
         this.shortId = shortId;
         this.longUrl = longUrl;
         this.clickCount = clickCount;
@@ -75,11 +75,11 @@ public class UrlStatsResponse {
         return clickCount;
     }
 
-    public LocalDateTime getLastAccessedTime() {
+    public Instant getLastAccessedTime() {
         return lastAccessedTime;
     }
 
-    public LocalDateTime getCreatedAt() {
+    public Instant getCreatedAt() {
         return createdAt;
     }
 

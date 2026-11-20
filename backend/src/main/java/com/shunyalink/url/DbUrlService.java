@@ -24,7 +24,9 @@ import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.LocalDateTime;
+import com.shunyalink.util.UtcTimes;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
@@ -196,7 +198,7 @@ public class DbUrlService implements UrlService {
                 entity.setTags(tags);
             }
             if (expiryDays != null) {
-                entity.setExpiryTime(LocalDateTime.now().plusDays(expiryDays));
+                entity.setExpiryTime(Instant.now().plus(Duration.ofDays(expiryDays)));
             }
             if (password != null && !password.isBlank()) {
                 entity.setPassword(encryptLinkPassword(password, normalized));
@@ -233,7 +235,7 @@ public class DbUrlService implements UrlService {
             entity.setTags(tags);
         }
         if (expiryDays != null) {
-            entity.setExpiryTime(LocalDateTime.now().plusDays(expiryDays));
+            entity.setExpiryTime(Instant.now().plus(Duration.ofDays(expiryDays)));
         }
         if (password != null && !password.isBlank()) {
             entity.setPassword(encryptLinkPassword(password, shortId));
@@ -283,7 +285,7 @@ public class DbUrlService implements UrlService {
     public ResolvedLink resolveProtectedLinkWithIdentity(String shortId, String rawPassword) {
         UrlEntity entity = urlRepository.findByShortId(shortId)
                 .orElseThrow(() -> new NotFoundException("URL not found"));
-        if (entity.getExpiryTime() != null && entity.getExpiryTime().isBefore(LocalDateTime.now())) {
+        if (entity.getExpiryTime() != null && entity.getExpiryTime().isBefore(Instant.now())) {
             throw new GoneException("Short URL has expired");
         }
 
@@ -381,11 +383,11 @@ public class DbUrlService implements UrlService {
             redisClicks = Long.parseLong(redisClicksObj.toString());
         }
         long totalClicks = dbClicks + redisClicks;
-        LocalDateTime lastAccessed = entity.getLastAccessedTime();
+        Instant lastAccessed = entity.getLastAccessedTime();
         String redisTimestamp = redisTemplate.opsForValue().get("last_access:" + shortId);
         if (redisTimestamp != null) {
             try {
-                LocalDateTime redisTime = LocalDateTime.parse(redisTimestamp);
+                Instant redisTime = UtcTimes.parse(redisTimestamp); // written as UTC wall-clock text
                 if (lastAccessed == null || redisTime.isAfter(lastAccessed)) {
                     lastAccessed = redisTime;
                 }
@@ -443,11 +445,11 @@ public class DbUrlService implements UrlService {
             }
             long totalClicks = dbClicks + redisClicks;
 
-            LocalDateTime lastAccessed = entity.getLastAccessedTime();
+            Instant lastAccessed = entity.getLastAccessedTime();
             String redisTimestamp = redisTemplate.opsForValue().get("last_access:" + entity.getShortId());
             if (redisTimestamp != null) {
                 try {
-                    LocalDateTime redisTime = LocalDateTime.parse(redisTimestamp);
+                    Instant redisTime = UtcTimes.parse(redisTimestamp); // written as UTC wall-clock text
                     if (lastAccessed == null || redisTime.isAfter(lastAccessed)) {
                         lastAccessed = redisTime;
                     }
