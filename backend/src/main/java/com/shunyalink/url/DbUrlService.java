@@ -41,7 +41,7 @@ public class DbUrlService implements UrlService {
     private final MetadataService metadataService;
     private final com.shunyalink.util.EncryptionUtils encryptionUtils;
     private final AnalyticsService analyticsService;
-    private final com.shunyalink.cp.LlmIntegrationService llmIntegrationService;
+    private final com.shunyalink.safety.LinkSafetyCheck linkSafetyCheck;
     private final PasswordEncoder passwordEncoder;
     private final LinkPasswordCipher linkPasswordCipher;
     private final TransactionOperations transactions;
@@ -54,7 +54,7 @@ public class DbUrlService implements UrlService {
                         MetadataService metadataService,
                         com.shunyalink.util.EncryptionUtils encryptionUtils,
                         AnalyticsService analyticsService,
-                        com.shunyalink.cp.LlmIntegrationService llmIntegrationService,
+                        com.shunyalink.safety.LinkSafetyCheck linkSafetyCheck,
                         PasswordEncoder passwordEncoder,
                         LinkPasswordCipher linkPasswordCipher,
                         TransactionOperations transactions,
@@ -68,7 +68,7 @@ public class DbUrlService implements UrlService {
         this.metadataService = metadataService;
         this.encryptionUtils = encryptionUtils;
         this.analyticsService = analyticsService;
-        this.llmIntegrationService = llmIntegrationService;
+        this.linkSafetyCheck = linkSafetyCheck;
         this.passwordEncoder = passwordEncoder;
         this.linkPasswordCipher = linkPasswordCipher;
     }
@@ -98,14 +98,14 @@ public class DbUrlService implements UrlService {
     }
 
     /**
-     * The phishing check calls external AI providers and can take seconds. It runs before the transaction,
+     * The safety check calls Google Safe Browsing and AI providers and can take seconds. It runs before the transaction,
      * so a slow provider never holds one of the pool's two connections; only the database work below is
      * transactional. (An annotation could not express this: the check would sit inside the transaction.)
      */
     @Override
     public UrlEntity shortenUrl(String longUrl, String customAlias, Integer expiryDays, Long userId, String title, String password, boolean useAutoTitle, java.util.Set<String> tags) {
-        if (llmIntegrationService.isPhishing(longUrl)) {
-            throw new BadRequestException("Security Alert: This URL has been flagged as malicious or phishing by our AI monitors.");
+        if (linkSafetyCheck.isUnsafe(longUrl)) {
+            throw new BadRequestException("Security Alert: This URL has been flagged as malicious or phishing.");
         }
         UrlEntity link = transactions.execute(status -> createLink(longUrl, customAlias, expiryDays, userId, title, password, useAutoTitle, tags));
         // After the commit, so the link exists before a "missing" marker for its ID is cleared.

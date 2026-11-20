@@ -1,5 +1,6 @@
 package com.shunyalink.url;
 
+import com.shunyalink.exception.BadRequestException;
 import com.shunyalink.exception.ConflictException;
 import com.shunyalink.exception.GoneException;
 import com.shunyalink.exception.NotFoundException;
@@ -60,7 +61,7 @@ class DbUrlServiceTest {
     private com.shunyalink.analytics.AnalyticsService analyticsService;
 
     @Mock
-    private com.shunyalink.cp.LlmIntegrationService llmIntegrationService;
+    private com.shunyalink.safety.LinkSafetyCheck linkSafetyCheck;
 
     /** Real cipher (spied so Mockito injects it): tests exercise actual GCM round trips. */
     @Spy
@@ -85,6 +86,20 @@ class DbUrlServiceTest {
     }
 
     // ─── shortenUrl tests ───────────────────────────────────────────
+
+    @Test
+    void aUrlTheSafetyCheckFlags_isRejected_andNothingIsWritten() {
+        // Google lists Google's own test URL as malware; the AI alone might call it fine.
+        String malware = "http://malware.testing.google.test/testing/malware/";
+        when(linkSafetyCheck.isUnsafe(malware)).thenReturn(true);
+
+        BadRequestException rejected = assertThrows(BadRequestException.class,
+                () -> dbUrlService.shortenUrl(malware, null, null, null, null, null, false, null));
+
+        assertTrue(rejected.getMessage().startsWith("Security Alert"));
+        verify(transactions, never()).execute(any());
+        verify(urlRepository, never()).save(any());
+    }
 
     @Test
     void shortenUrl_autoGenerate_returnShortId() {

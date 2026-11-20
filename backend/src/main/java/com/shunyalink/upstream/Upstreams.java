@@ -31,6 +31,7 @@ import java.util.function.Function;
  *   <li>10 s for Codeforces, whose {@code user.status} reply lists every submission and can be several MB;</li>
  *   <li>15 s for the CodeChef scraper, which drives a headless browser;</li>
  *   <li>3 s for each AI provider, as before: the phishing check runs while a user waits for their short link.</li>
+ *   <li>2 s for Google Safe Browsing, which normally answers in well under a second, also while a user waits.</li>
  * </ul>
  */
 @Component
@@ -49,7 +50,8 @@ public class Upstreams {
                 new Spec("kenkoooo", "https://kenkoooo.com", Duration.ofSeconds(5)),
                 new Spec("scraper", scraperUrl, Duration.ofSeconds(15)),
                 new Spec("gemini", "https://generativelanguage.googleapis.com", Duration.ofSeconds(3)),
-                new Spec("groq", "https://api.groq.com", Duration.ofSeconds(3)));
+                new Spec("groq", "https://api.groq.com", Duration.ofSeconds(3)),
+                new Spec("safebrowsing", "https://safebrowsing.googleapis.com", Duration.ofSeconds(2)));
     }
 
     private final Map<String, Upstream> byName = new LinkedHashMap<>();
@@ -100,6 +102,7 @@ public class Upstreams {
     public Upstream scraper() { return get("scraper"); }
     public Upstream gemini() { return get("gemini"); }
     public Upstream groq() { return get("groq"); }
+    public Upstream safeBrowsing() { return get("safebrowsing"); }
 
     Upstream get(String name) {
         return byName.get(name);
