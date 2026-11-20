@@ -52,3 +52,20 @@ build is still running.
   `ShunyaLink-DeploySmoke`, is filtered out once bot filtering lands in the analytics pipeline.
 - Images built before this pipeline do not publish their commit, so verifying a rollback to one of
   them times out; that needs a manual health check (once, during the transition).
+
+## Update (2026-11-20): health is retried for up to 60 s, and a failure says why
+
+The deploy of `6ef00a4` was rolled back although the new build was fine. It was serving the right commit, but
+`/actuator/health` answered 503 once. The container logs showed why: `DataSource health check failed:
+CannotGetJdbcConnectionException`, three health requests at the same moment, each giving up at the pool's 2 s
+connection timeout. In the first seconds after a start, the 2-connection pool to the database in Sydney is still
+warming up while the cold JVM serves the first requests. The logs of the previous, successful deploy show the same
+pool exhaustion right after startup; it just didn't coincide with the check.
+
+A gate that fails good builds teaches people to ignore it, so the check is now retried for up to 60 s
+(`SMOKE_HEALTH_SECONDS`), and on failure it prints the HTTP status and the body, which names the component that is
+down. A real outage is still DOWN at the end of the window, so a broken build is still rolled back. Tested against a
+fake backend: health that stays DOWN fails with the body shown; health that is DOWN for two checks and then UP passes.
+
+Rejected: removing the database from the health check (it is the one dependency the app cannot work without), and
+raising the pool's connection timeout (it protects every request, not only the health check).
