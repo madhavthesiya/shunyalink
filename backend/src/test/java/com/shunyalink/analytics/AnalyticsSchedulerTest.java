@@ -13,6 +13,7 @@ import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
+import java.time.Duration;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.*;
@@ -51,7 +52,7 @@ class AnalyticsSchedulerTest {
     @Test
     void sync_lockNotAcquired_skipsSync() {
         // Another instance holds the lock
-        when(valueOperations.setIfAbsent(anyString(), anyString(), anyLong(), any()))
+        when(valueOperations.setIfAbsent(anyString(), anyString(), any(Duration.class)))
                 .thenReturn(false);
 
         analyticsScheduler.syncClicksToDatabase();
@@ -62,7 +63,7 @@ class AnalyticsSchedulerTest {
 
     @Test
     void sync_lockAcquired_noClickCountsKey_skipsSync() {
-        when(valueOperations.setIfAbsent(anyString(), anyString(), anyLong(), any()))
+        when(valueOperations.setIfAbsent(anyString(), anyString(), any(Duration.class)))
                 .thenReturn(true);
         when(redisTemplate.hasKey("analytics:click_counts")).thenReturn(false);
         when(valueOperations.get(anyString())).thenReturn("some-lock-value");
@@ -74,7 +75,7 @@ class AnalyticsSchedulerTest {
 
     @Test
     void sync_lockAcquired_withClickCounts_flushesToDb() {
-        when(valueOperations.setIfAbsent(anyString(), anyString(), anyLong(), any()))
+        when(valueOperations.setIfAbsent(anyString(), anyString(), any(Duration.class)))
                 .thenReturn(true);
         when(redisTemplate.hasKey("analytics:click_counts")).thenReturn(true);
 
@@ -102,7 +103,7 @@ class AnalyticsSchedulerTest {
 
     @Test
     void sync_releasesOnlyItsOwnLock() {
-        when(valueOperations.setIfAbsent(anyString(), anyString(), anyLong(), any()))
+        when(valueOperations.setIfAbsent(anyString(), anyString(), any(Duration.class)))
                 .thenReturn(true);
         when(redisTemplate.hasKey("analytics:click_counts")).thenReturn(false);
         // The lock expired mid-run and another instance now owns it
@@ -115,7 +116,7 @@ class AnalyticsSchedulerTest {
 
     @Test
     void sync_lockAcquired_emptyCounters_doesNotCallDb() {
-        when(valueOperations.setIfAbsent(anyString(), anyString(), anyLong(), any()))
+        when(valueOperations.setIfAbsent(anyString(), anyString(), any(Duration.class)))
                 .thenReturn(true);
         when(redisTemplate.hasKey("analytics:click_counts")).thenReturn(true);
         when(hashOperations.entries(anyString())).thenReturn(Map.of());
@@ -130,7 +131,7 @@ class AnalyticsSchedulerTest {
     @Test
     void sync_lockNull_skipsSync() {
         // Redis returns null (connection issue)
-        when(valueOperations.setIfAbsent(anyString(), anyString(), anyLong(), any()))
+        when(valueOperations.setIfAbsent(anyString(), anyString(), any(Duration.class)))
                 .thenReturn(null);
 
         analyticsScheduler.syncClicksToDatabase();

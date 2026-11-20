@@ -140,7 +140,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<ProblemDetail> handleUploadTooLarge(MaxUploadSizeExceededException ex) {
-        return buildResponse("File is too large", HttpStatus.PAYLOAD_TOO_LARGE);
+        return buildResponse("File is too large", HttpStatus.CONTENT_TOO_LARGE);
     }
 
     /** Usually a uniqueness race (two requests claiming the same username or email). */

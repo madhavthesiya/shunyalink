@@ -8,7 +8,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
@@ -48,8 +47,9 @@ public class AnalyticsService {
         
         // 4. Update last access timestamp (with 30-day TTL)
         String lastAccessKey = "last_access:" + shortId;
-        redisTemplate.opsForValue().set(lastAccessKey, com.shunyalink.util.UtcTimes.format(java.time.Instant.now())); // UTC whatever the JVM zone
-        redisTemplate.expire(lastAccessKey, 30, TimeUnit.DAYS);
+        // One command (SET … EX): the value can never be left without its expiry. UTC whatever the JVM zone.
+        redisTemplate.opsForValue().set(lastAccessKey, com.shunyalink.util.UtcTimes.format(java.time.Instant.now()),
+                java.time.Duration.ofDays(30));
 
         // 5. Record the result for this click without changing earlier observations.
         String country = countryResolver.resolve(ipAddress);

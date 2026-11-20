@@ -78,8 +78,12 @@ serving the previous build, with no downtime.
 - (+) A supported framework line that still receives security fixes.
 - (+) Our code uses one JSON library: Jackson 3, the one Spring's HTTP layer uses. Jackson 2 stays on the classpath
   only for jjwt and Swagger.
-- (−) Deprecation warnings remain (Redis `TimeUnit` overloads, `HttpStatus.PAYLOAD_TOO_LARGE`, the old Testcontainers
-  `PostgreSQLContainer`). They are cleaned up in the next PR, not mixed into this one.
+- (−) The upgrade left deprecation warnings: Redis `TimeUnit` overloads, `HttpStatus.PAYLOAD_TOO_LARGE`, the old
+  Testcontainers `PostgreSQLContainer`. **Cleaned up in 3.13c**, a separate PR, which leaves 0 compiler warnings. That
+  PR also writes the legacy `last_access` key with its expiry in one command (`SET … EX`, previously `SET` and then
+  `EXPIRE`). A lesson from it: when the code moved to the `Duration` overload, 5 of the 6 scheduler tests still passed.
+  Their stubs targeted the old overload, and an unmatched stub returns `null`, which means "lock not acquired".
+  Only one test failed loudly. All the stubs now target the new overload.
 - (−) A lesson worth keeping: configuration that names classes or keys **as strings** (auto-configuration excludes,
   property names) fails silently after a major upgrade. Only a test that starts the application finds it. The same goes
   for anything that reads JSON as text: the deploy gate was such a reader, and nothing tested it until it misfired.

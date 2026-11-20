@@ -5,9 +5,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
-import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
@@ -33,7 +33,7 @@ class JwtBlacklistServiceTest {
     void revokeAllForUser_storesCutoffForOneTokenLifetime() {
         service.revokeAllForUser(42L);
 
-        verify(values).set(eq("jwt:revoked-before:42"), anyString(), eq(LIFETIME_MS), eq(TimeUnit.MILLISECONDS));
+        verify(values).set(eq("jwt:revoked-before:42"), anyString(), eq(Duration.ofMillis(LIFETIME_MS)));
     }
 
     @Test

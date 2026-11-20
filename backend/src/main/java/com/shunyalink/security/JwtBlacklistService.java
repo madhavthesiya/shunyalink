@@ -4,9 +4,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
-import java.util.concurrent.TimeUnit;
 
 @Service
 public class JwtBlacklistService {
@@ -29,7 +29,7 @@ public class JwtBlacklistService {
     public void blacklistToken(String token, long remainingTimeMs) {
         if (remainingTimeMs > 0) {
             String key = BLACKLIST_PREFIX + token;
-            redisTemplate.opsForValue().set(key, "revoked", remainingTimeMs, TimeUnit.MILLISECONDS);
+            redisTemplate.opsForValue().set(key, "revoked", Duration.ofMillis(remainingTimeMs));
         }
     }
 
@@ -48,7 +48,7 @@ public class JwtBlacklistService {
      */
     public void revokeAllForUser(long userId) {
         redisTemplate.opsForValue().set(REVOKED_BEFORE_PREFIX + userId,
-                String.valueOf(Instant.now().getEpochSecond()), tokenLifetimeMs, TimeUnit.MILLISECONDS);
+                String.valueOf(Instant.now().getEpochSecond()), Duration.ofMillis(tokenLifetimeMs));
     }
 
     /**

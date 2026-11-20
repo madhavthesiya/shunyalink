@@ -18,9 +18,9 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -140,7 +140,8 @@ class DbUrlServiceTest {
         assertEquals("abc123", result.getShortId());
         verify(urlRepository).save(any(UrlEntity.class));
         verify(redirectCache).forgetQuietly("abc123"); // any stale "missing" marker is cleared after the commit
-        verify(valueOperations, never()).set(eq("url:abc123"), any(), anyLong(), any());
+        verify(valueOperations, never()).set(eq("url:abc123"), any());
+        verify(valueOperations, never()).set(eq("url:abc123"), any(), any(Duration.class));
     }
 
     @Test
