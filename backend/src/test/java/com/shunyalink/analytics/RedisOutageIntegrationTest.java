@@ -6,7 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.mock.mockito.SpyBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -41,7 +41,7 @@ class RedisOutageIntegrationTest extends BaseIntegrationTest {
     @Autowired MockMvc http;
     @Autowired JdbcTemplate jdbc;
     @Autowired FreshAnalyticsCutover cutover;
-    @SpyBean AnalyticsBatchApplier applier;
+    @MockitoSpyBean AnalyticsBatchApplier applier;
 
     private final Set<String> databaseWriterThreads = ConcurrentHashMap.newKeySet();
     private long urlId;

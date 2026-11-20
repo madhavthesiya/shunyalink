@@ -10,7 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.ApplicationContext;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -39,22 +39,22 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class ApplicationContextWiringTest {
 
-    @MockBean
+    @MockitoBean
     private UrlRepository urlRepository;
-    @MockBean
+    @MockitoBean
     private UserRepository userRepository;
-    @MockBean
+    @MockitoBean
     private GlobalStatsRepository globalStatsRepository;
-    @MockBean
+    @MockitoBean
     private VerificationTokenRepository verificationTokenRepository;
-    @MockBean
+    @MockitoBean
     private PasswordResetTokenRepository passwordResetTokenRepository;
-    @MockBean
+    @MockitoBean
     private RedisConnectionFactory redisConnectionFactory;
-    @MockBean
+    @MockitoBean
     private StringRedisTemplate stringRedisTemplate;
     /** JPA is excluded above, so Boot defines no transaction manager or template to inject. */
-    @MockBean
+    @MockitoBean
     private org.springframework.transaction.support.TransactionOperations transactionOperations;
 
     @Autowired

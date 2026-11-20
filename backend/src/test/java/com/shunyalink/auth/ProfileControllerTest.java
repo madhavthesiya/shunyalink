@@ -8,7 +8,7 @@ import com.shunyalink.security.SecurityConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -36,11 +36,11 @@ class ProfileControllerTest {
 
     @Autowired private MockMvc mockMvc;
 
-    @MockBean private AuthService authService;
-    @MockBean private ProfileService profileService;
-    @MockBean private JwtService jwtService;
-    @MockBean private JwtBlacklistService jwtBlacklistService;
-    @MockBean private CustomUserDetailsService customUserDetailsService;
+    @MockitoBean private AuthService authService;
+    @MockitoBean private ProfileService profileService;
+    @MockitoBean private JwtService jwtService;
+    @MockitoBean private JwtBlacklistService jwtBlacklistService;
+    @MockitoBean private CustomUserDetailsService customUserDetailsService;
 
     private static RequestPostProcessor as(long userId) {
         return authentication(new UsernamePasswordAuthenticationToken(userId, null, List.of()));

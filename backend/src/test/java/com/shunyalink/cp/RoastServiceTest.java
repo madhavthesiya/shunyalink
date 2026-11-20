@@ -5,7 +5,7 @@ import com.shunyalink.auth.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
@@ -38,15 +38,15 @@ class RoastServiceTest {
     @Autowired
     private CacheManager cacheManager;
 
-    @MockBean
+    @MockitoBean
     private UserRepository userRepository;
-    @MockBean
+    @MockitoBean
     private LeetCodeService leetCodeService;
-    @MockBean
+    @MockitoBean
     private CodeforcesService codeforcesService;
-    @MockBean
+    @MockitoBean
     private GithubService githubService;
-    @MockBean
+    @MockitoBean
     private LlmIntegrationService llm;
 
     @BeforeEach
