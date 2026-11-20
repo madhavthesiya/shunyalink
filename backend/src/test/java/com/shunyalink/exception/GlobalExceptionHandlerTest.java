@@ -26,6 +26,13 @@ class GlobalExceptionHandlerTest {
             throw new DataIntegrityViolationException("duplicate key value violates unique constraint \"users_username_key\"");
         }
 
+        @GetMapping("/conflict/{constraint}")
+        String conflict(@PathVariable String constraint) {
+            throw new DataIntegrityViolationException("could not execute statement",
+                    new org.hibernate.exception.ConstraintViolationException("could not execute statement",
+                            new java.sql.SQLException("duplicate key"), constraint));
+        }
+
         /** What PostgreSQL really says for a duplicate link: the detail repeats the whole URL, token included. */
         @GetMapping("/duplicate-link")
         String duplicateLink() {
@@ -71,6 +78,32 @@ class GlobalExceptionHandlerTest {
                 .contains("idx_long_url_non_custom")
                 .doesNotContain("s3cr3t-reset-token")
                 .doesNotContain("bank.example");
+    }
+
+    @Test
+    void errors_areRfc9457ProblemDetails_andKeepTheFieldsTheFrontendReads() throws Exception {
+        // Standard format (type, title, status, detail) plus the old fields, so existing clients keep working.
+        mockMvc.perform(get("/duplicate"))
+                .andExpect(status().isConflict())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.title").value("Conflict"))
+                .andExpect(jsonPath("$.detail").exists())
+                .andExpect(jsonPath("$.message").exists())
+                .andExpect(jsonPath("$.timestamp").exists());
+    }
+
+    @Test
+    void aConflict_saysWhatConflicts_whenTheConstraintIsKnown() throws Exception {
+        mockMvc.perform(get("/conflict/users_username_key"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("That username is already taken."));
+        mockMvc.perform(get("/conflict/users_email_key"))
+                .andExpect(jsonPath("$.message").value("An account with this email already exists."));
+        mockMvc.perform(get("/conflict/urls_short_id_key"))
+                .andExpect(jsonPath("$.message").value("That alias is already taken."));
+        mockMvc.perform(get("/conflict/some_other_constraint"))
+                .andExpect(jsonPath("$.message").value("This conflicts with existing data. Please try again."));
     }
 
     @Test
