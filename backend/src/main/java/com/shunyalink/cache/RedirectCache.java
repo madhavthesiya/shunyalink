@@ -82,6 +82,18 @@ public class RedirectCache {
         redis.delete(List.of(ENTRY + shortId, MISSING + shortId));
     }
 
+    /** {@link #forget} for many links at once, as one DEL command. Just as strict: throws on a Redis failure. */
+    public void forgetAll(java.util.Collection<String> shortIds) {
+        List<String> keys = new java.util.ArrayList<>(shortIds.size() * 2);
+        for (String shortId : shortIds) {
+            keys.add(ENTRY + shortId);
+            keys.add(MISSING + shortId);
+        }
+        if (!keys.isEmpty()) {
+            redis.delete(keys);
+        }
+    }
+
     /** For a newly created link: at worst it answers 404 until a stale marker expires (60 s). */
     public void forgetQuietly(String shortId) {
         guard.run(() -> forget(shortId));

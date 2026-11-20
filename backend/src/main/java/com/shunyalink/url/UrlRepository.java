@@ -8,22 +8,25 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import jakarta.transaction.Transactional;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
-public interface UrlRepository extends JpaRepository<UrlEntity, Long> {
+public interface UrlRepository extends JpaRepository<UrlEntity, Long>, UrlRepositoryCustom {
 
     Optional<UrlEntity> findByShortId(String shortId);
 
-    Optional<UrlEntity> findByLongUrl(String longUrl);
-
     List<UrlEntity> findTop1000ByOrderByClickCountDesc();
 
-    Optional<UrlEntity> findFirstByLongUrlAndIsCustomFalse(String longUrl);
+    /** Of these short IDs, the ones this user owns: one query for a whole bulk delete. */
+    @Query("SELECT u.shortId FROM UrlEntity u WHERE u.userId = :userId AND u.shortId IN :shortIds")
+    List<String> findShortIdsOwnedBy(@Param("shortIds") Collection<String> shortIds, @Param("userId") Long userId);
 
-    Optional<UrlEntity> findFirstByLongUrlAndUserIdAndIsCustomFalse(String longUrl, Long userId);
-
-    Optional<UrlEntity> findFirstByLongUrlAndUserIdIsNullAndIsCustomFalse(String longUrl);
+    /** One DELETE for a whole bulk delete. Tags and analytics rows go with it: their foreign keys cascade. */
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM UrlEntity u WHERE u.userId = :userId AND u.shortId IN :shortIds")
+    int deleteAllOwnedBy(@Param("shortIds") Collection<String> shortIds, @Param("userId") Long userId);
 
     Optional<UrlEntity> findFirstByLongUrlAndUserIdAndIsCustomFalseAndExpiryTimeIsNullAndPasswordIsNull(String longUrl, Long userId);
 
@@ -57,11 +60,6 @@ public interface UrlRepository extends JpaRepository<UrlEntity, Long> {
 
 
     List<UrlEntity> findByUserIdAndShowOnBioTrueOrderByOrderIndexAscCreatedAtDesc(Long userId);
-
-    @Modifying
-    @Transactional
-    @Query("UPDATE UrlEntity u SET u.orderIndex = :orderIndex WHERE u.shortId = :shortId AND u.userId = :userId")
-    void updateOrderIndex(@Param("shortId") String shortId, @Param("userId") Long userId, @Param("orderIndex") int orderIndex);
 
     Optional<UrlEntity> findByShortIdAndUserId(String shortId, Long userId);
 

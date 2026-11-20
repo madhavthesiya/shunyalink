@@ -21,7 +21,6 @@ public interface UrlService {
     /** Owner-only: the link's password, "" if unprotected, null if stored in an unrecoverable legacy format. */
     String revealLinkPassword(String shortId, Long userId);
     void updateTags(String shortId, Long userId, Set<String> tags);
-    void incrementClickCount(String shortId);
     void reorderLinks(Long userId, List<String> shortIds);
     /** The links a user chose to show on their public bio page, in their order. */
     List<UrlStatsResponse> getBioLinks(Long userId);
