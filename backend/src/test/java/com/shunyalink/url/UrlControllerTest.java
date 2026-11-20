@@ -1,8 +1,6 @@
 package com.shunyalink.url;
 
 import com.shunyalink.analytics.AnalyticsClickRecorder;
-import com.shunyalink.analytics.GlobalStatsEntity;
-import com.shunyalink.analytics.GlobalStatsRepository;
 import com.shunyalink.exception.ConflictException;
 import com.shunyalink.exception.NotFoundException;
 import com.shunyalink.rate.RateLimiterService;
@@ -11,7 +9,6 @@ import com.shunyalink.security.JwtService;
 import com.shunyalink.security.CustomUserDetailsService;
 import com.shunyalink.security.ClientIpResolver;
 import com.shunyalink.security.SecurityConfig;
-import com.shunyalink.auth.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -63,20 +60,16 @@ class UrlControllerTest {
     private CustomUserDetailsService customUserDetailsService;
 
     @MockBean
-    private UrlRepository urlRepository;
+    private com.shunyalink.auth.AuthService authService;
 
     @MockBean
-    private UserRepository userRepository;
-
-
-    @MockBean
-    private CsvExportService csvExportService;
+    private LinkExportService linkExportService;
 
     @MockBean
     private CsvImportService csvImportService;
 
     @MockBean
-    private GlobalStatsRepository globalStatsRepository;
+    private com.shunyalink.analytics.PublicStatsService publicStatsService;
 
     @MockBean
     private AnalyticsClickRecorder analyticsService;
@@ -160,10 +153,9 @@ class UrlControllerTest {
 
     @Test
     void bulkImport_unverifiedEmail_isRejectedLikeSingleShortening() throws Exception {
-        com.shunyalink.auth.UserEntity user = new com.shunyalink.auth.UserEntity();
-        user.setAuthProvider("LOCAL");
-        user.setEmailVerified(false);
-        when(userRepository.findById(OWNER_ID)).thenReturn(java.util.Optional.of(user));
+        // The verification rule itself is tested in AuthServiceTest; here: the import asks it, and stops.
+        doThrow(new com.shunyalink.exception.ForbiddenException("You must verify your email address before you can create links."))
+                .when(authService).requireVerifiedEmail(OWNER_ID);
 
         mockMvc.perform(multipart("/api/v1/url/bulk-import")
                         .file(new org.springframework.mock.web.MockMultipartFile(
@@ -376,13 +368,13 @@ class UrlControllerTest {
 
     @Test
     void publicStats_anonymous_staysPublic() throws Exception {
-        GlobalStatsEntity global = new GlobalStatsEntity();
-        global.setTotalLinks(3);
-        when(globalStatsRepository.getStats()).thenReturn(global);
+        when(publicStatsService.current()).thenReturn(new com.shunyalink.analytics.PublicStatsService.PublicStats(3, 2, 9));
 
         mockMvc.perform(get("/api/v1/url/stats/public"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalLinks").value(3));
+                .andExpect(jsonPath("$.totalLinks").value(3))   // same JSON as the old PublicStatsResponse class
+                .andExpect(jsonPath("$.totalUsers").value(2))
+                .andExpect(jsonPath("$.totalClicks").value(9));
     }
 
     // ─── Validation tests ────────────────────────────────────────────
@@ -441,6 +433,17 @@ class UrlControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void exportingSomeoneElsesLinkStats_isNotFound_likeViewingThem() throws Exception {
+        // Viewing another user's stats is a 404, so nobody can probe which links exist. The CSV export said 403.
+        // The ownership rule now lives in LinkExportService (LinkExportServiceTest); here: its 404 reaches the client.
+        when(linkExportService.linkCsv("theirs", OWNER_ID))
+                .thenThrow(new com.shunyalink.exception.NotFoundException("URL not found"));
+
+        mockMvc.perform(get("/api/v1/url/stats/theirs/export").with(asUser(OWNER_ID)))
+                .andExpect(status().isNotFound());
     }
 
     // ─── Typed, validated request bodies (3.8a) ─────────────────────

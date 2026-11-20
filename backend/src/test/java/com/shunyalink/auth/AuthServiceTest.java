@@ -299,4 +299,31 @@ class AuthServiceTest {
                 u.getEmail().equals("new@gmail.com") && u.isEmailVerified()
                         && "GOOGLE".equals(u.getAuthProvider()) && u.getPassword() == null));
     }
+
+    // ─── Email verification before creating links (moved from UrlController, 3.8b) ──────────
+
+    private UserEntity account(String provider, boolean verified) {
+        UserEntity user = new UserEntity();
+        user.setAuthProvider(provider);
+        user.setEmailVerified(verified);
+        return user;
+    }
+
+    @Test
+    void anUnverifiedPasswordAccount_cannotCreateLinks() {
+        when(userRepository.findById(5L)).thenReturn(java.util.Optional.of(account("LOCAL", false)));
+
+        assertThatThrownBy(() -> authService.requireVerifiedEmail(5L))
+                .isInstanceOf(com.shunyalink.exception.ForbiddenException.class)
+                .hasMessageContaining("verify your email");
+    }
+
+    @Test
+    void verifiedAccountsAndGoogleAccounts_canCreateLinks() {
+        when(userRepository.findById(5L)).thenReturn(java.util.Optional.of(account("LOCAL", true)));
+        when(userRepository.findById(6L)).thenReturn(java.util.Optional.of(account("GOOGLE", false)));
+
+        authService.requireVerifiedEmail(5L);
+        authService.requireVerifiedEmail(6L); // Google has verified the address
+    }
 }
