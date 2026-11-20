@@ -36,6 +36,20 @@ class CsvImportServiceTest {
     }
 
     @Test
+    void tagsOverTheLimits_areRejectedPerRow_likeTheApiDoes() {
+        // A CSV row bypasses request validation, so the tag limits are checked here too.
+        String twentyOneTags = java.util.stream.IntStream.range(0, 21).mapToObj(i -> "t" + i)
+                .collect(java.util.stream.Collectors.joining("|"));
+        Map<String, Object> result = service.importCsv(csv("longUrl,tags\nhttps://a.example," + twentyOneTags
+                + "\nhttps://b.example," + "z".repeat(51)), 1L);
+
+        assertThat(result.get("failCount")).isEqualTo(2);
+        assertThat(errors(result).get(0)).contains("at most 20 tags");
+        assertThat(errors(result).get(1)).contains("at most 50 characters");
+        verifyNoInteractions(urlService);
+    }
+
+    @Test
     void unexpectedErrors_doNotExposeInternalMessages() {
         when(urlService.shortenUrl(any(), any(), any(), any(), any(), any(), anyBoolean(), any()))
                 .thenThrow(new IllegalStateException("could not execute statement; SQL [insert into urls ...] secret"));

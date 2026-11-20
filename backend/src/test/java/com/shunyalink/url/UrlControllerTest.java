@@ -442,4 +442,64 @@ class UrlControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
     }
+
+    // ─── Typed, validated request bodies (3.8a) ─────────────────────
+
+    private org.springframework.test.web.servlet.ResultActions send(
+            org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request, String json) throws Exception {
+        return mockMvc.perform(request.with(asUser(OWNER_ID)).contentType(MediaType.APPLICATION_JSON).content(json));
+    }
+
+    @Test
+    void updateMetadata_aTitleOver100Characters_isRejectedBeforeTheService() throws Exception {
+        send(patch("/api/v1/url/abc123/metadata"), "{\"title\":\"" + "x".repeat(101) + "\"}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("Title")));
+
+        verify(urlService, never()).updateUrlMetadata(anyString(), anyLong(), any(), any());
+    }
+
+    @Test
+    void updateMetadata_aValidBody_reachesTheService() throws Exception {
+        send(patch("/api/v1/url/abc123/metadata"), "{\"title\":\"My link\",\"password\":\"open-sesame\"}")
+                .andExpect(status().isOk());
+
+        verify(urlService).updateUrlMetadata("abc123", OWNER_ID, "My link", "open-sesame");
+    }
+
+    @Test
+    void updateTags_tooManyOrTooLong_isRejected() throws Exception {
+        // Unbounded before: thousands of tags, or a tag past the 255-character column, reached the database.
+        String twentyOne = java.util.stream.IntStream.range(0, 21).mapToObj(i -> "\"t" + i + "\"")
+                .collect(java.util.stream.Collectors.joining(",", "[", "]"));
+        send(patch("/api/v1/url/abc123/tags"), "{\"tags\":" + twentyOne + "}").andExpect(status().isBadRequest());
+        send(patch("/api/v1/url/abc123/tags"), "{\"tags\":[\"" + "y".repeat(51) + "\"]}").andExpect(status().isBadRequest());
+
+        verify(urlService, never()).updateTags(anyString(), anyLong(), any());
+    }
+
+    @Test
+    void updateTags_aValidBody_reachesTheService() throws Exception {
+        send(patch("/api/v1/url/abc123/tags"), "{\"tags\":[\"work\",\"java\"]}").andExpect(status().isOk());
+
+        verify(urlService).updateTags("abc123", OWNER_ID, java.util.Set.of("work", "java"));
+    }
+
+    @Test
+    void bioVisibility_withoutTheFlag_isRejected() throws Exception {
+        send(put("/api/v1/url/abc123/bio-visibility"), "{}").andExpect(status().isBadRequest());
+
+        verify(urlService, never()).toggleShowOnBio(anyString(), anyLong(), anyBoolean());
+    }
+
+    @Test
+    void bulkDelete_moreThan200Ids_isRejected() throws Exception {
+        // One request could ask to delete an unbounded number of links; the dashboard selects at most a page.
+        String tooMany = java.util.stream.IntStream.range(0, 201).mapToObj(i -> "\"id" + i + "\"")
+                .collect(java.util.stream.Collectors.joining(",", "[", "]"));
+
+        send(post("/api/v1/url/bulk-delete"), tooMany).andExpect(status().isBadRequest());
+
+        verify(urlService, never()).deleteUrls(any(), any());
+    }
 }

@@ -116,6 +116,17 @@ public class CsvImportService {
                     errors.add("Row " + rowNumber + ": Title cannot exceed 100 characters");
                     continue;
                 }
+                // The same tag limits as the API, which validates request bodies; a CSV row bypasses that.
+                if (tags.size() > LinkTags.MAX_TAGS) {
+                    failCount++;
+                    errors.add("Row " + rowNumber + ": A link can have at most " + LinkTags.MAX_TAGS + " tags");
+                    continue;
+                }
+                if (tags.stream().anyMatch(tag -> tag.length() > LinkTags.MAX_LENGTH)) {
+                    failCount++;
+                    errors.add("Row " + rowNumber + ": A tag can be at most " + LinkTags.MAX_LENGTH + " characters");
+                    continue;
+                }
 
                 try {
                     urlService.shortenUrl(longUrl, customAlias, null, userId, title, null, false, tags);
