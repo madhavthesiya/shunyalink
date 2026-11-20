@@ -1,7 +1,7 @@
 package com.shunyalink.auth;
 
 import jakarta.persistence.*;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 @Entity
@@ -20,18 +20,18 @@ public class VerificationToken {
     private UserEntity user;
 
     @Column(nullable = false)
-    private LocalDateTime expiresAt = LocalDateTime.now().plusHours(24);
+    private Instant expiresAt = Instant.now().plus(java.time.Duration.ofHours(24));
 
     @Column(nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     @PrePersist
-    protected void onCreate() { this.createdAt = LocalDateTime.now(); }
+    protected void onCreate() { this.createdAt = Instant.now(); }
 
     public Long getId() { return id; }
     public String getToken() { return token; }
     public UserEntity getUser() { return user; }
     public void setUser(UserEntity user) { this.user = user; }
-    public LocalDateTime getExpiresAt() { return expiresAt; }
-    public boolean isExpired() { return LocalDateTime.now().isAfter(expiresAt); }
+    public Instant getExpiresAt() { return expiresAt; }
+    public boolean isExpired() { return Instant.now().isAfter(expiresAt); }
 }

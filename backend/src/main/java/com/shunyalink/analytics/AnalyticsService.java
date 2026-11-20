@@ -48,7 +48,7 @@ public class AnalyticsService {
         
         // 4. Update last access timestamp (with 30-day TTL)
         String lastAccessKey = "last_access:" + shortId;
-        redisTemplate.opsForValue().set(lastAccessKey, java.time.LocalDateTime.now().toString());
+        redisTemplate.opsForValue().set(lastAccessKey, com.shunyalink.util.UtcTimes.format(java.time.Instant.now())); // UTC whatever the JVM zone
         redisTemplate.expire(lastAccessKey, 30, TimeUnit.DAYS);
 
         // 5. Record the result for this click without changing earlier observations.

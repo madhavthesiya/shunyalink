@@ -188,6 +188,28 @@ class UrlIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    void timestamps_areUtcInstants_inTheApiAndInTheDatabase_whateverTheServersTimeZone() throws Exception {
+        // The API sent createdAt without a zone ("2026-11-20T14:38:32.64"); browsers read that as local time, so in
+        // India every time was 5½ hours off. And LocalDateTime.now() wrote the JVM's local time: UTC in production,
+        // IST on a developer's machine.
+        String alias = "it-utc-" + java.util.UUID.randomUUID().toString().substring(0, 6);
+        try {
+            String body = shorten("https://utc.example/" + alias, alias, null, null)
+                    .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            String createdAt = objectMapper.readTree(body).path("createdAt").asText();
+
+            assertThat(createdAt).as("createdAt carries its zone").endsWith("Z");
+            assertThat(java.time.Duration.between(java.time.Instant.parse(createdAt), java.time.Instant.now()).abs())
+                    .isLessThan(java.time.Duration.ofMinutes(1));
+            Double secondsFromUtcNow = jdbc.queryForObject("SELECT abs(extract(epoch FROM (created_at - "
+                    + "(now() AT TIME ZONE 'UTC')))) FROM urls WHERE short_id = ?", Double.class, alias);
+            assertThat(secondsFromUtcNow).as("stored as UTC wall-clock time, as production always has").isLessThan(60);
+        } finally {
+            jdbc.update("DELETE FROM urls WHERE short_id = ?", alias);
+        }
+    }
+
+    @Test
     void bulkDeleteAndReorder_onRealPostgres_touchOnlyTheOwnersLinks() {
         // The batch SQL (one DELETE with IN, one UPDATE over unnest) runs here against real PostgreSQL.
         String run = java.util.UUID.randomUUID().toString().substring(0, 6);

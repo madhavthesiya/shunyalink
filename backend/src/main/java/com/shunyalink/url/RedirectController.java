@@ -14,7 +14,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.util.HtmlUtils;
 import java.net.URI;
-import java.time.LocalDateTime;
+import com.shunyalink.util.UtcTimes;
+import java.time.Instant;
 import java.util.Map;
 import com.shunyalink.analytics.AnalyticsClickRecorder;
 import com.shunyalink.cache.RedirectCache;
@@ -72,7 +73,7 @@ public class RedirectController {
             // Check expiry from cache
             String expiryStr = (String) cached.get("expiryTime");
             if (expiryStr != null && !expiryStr.isEmpty()
-                    && LocalDateTime.parse(expiryStr).isBefore(LocalDateTime.now())) {
+                    && UtcTimes.parse(expiryStr).isBefore(Instant.now())) {
                 throw new GoneException("Short URL has expired");
             }
         } else {
@@ -85,7 +86,7 @@ public class RedirectController {
                 return new NotFoundException("URL not found");
             });
 
-            if (entity.getExpiryTime() != null && entity.getExpiryTime().isBefore(LocalDateTime.now())) {
+            if (entity.getExpiryTime() != null && entity.getExpiryTime().isBefore(Instant.now())) {
                 throw new GoneException("Short URL has expired");
             }
 
@@ -138,7 +139,7 @@ public class RedirectController {
         try {
             long id = Long.parseLong((String) cached.get("urlId"));
             Object expiry = cached.get("expiryTime");
-            if (expiry != null && !"".equals(expiry)) LocalDateTime.parse((String) expiry);
+            if (expiry != null && !"".equals(expiry)) UtcTimes.parse((String) expiry);
             return id > 0 ? id : null;
         } catch (RuntimeException invalid) {
             return null;
