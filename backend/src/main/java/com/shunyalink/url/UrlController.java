@@ -2,7 +2,6 @@ package com.shunyalink.url;
 
 import com.shunyalink.auth.UserEntity;
 import com.shunyalink.auth.UserRepository;
-import com.shunyalink.exception.BadRequestException;
 import com.shunyalink.exception.ForbiddenException;
 import com.shunyalink.exception.UnauthorizedException;
 import com.shunyalink.rate.RateLimiterService;
@@ -133,7 +132,7 @@ public class UrlController {
     @PutMapping("/reorder")
     public ResponseEntity<Void> reorderLinks(
             @AuthenticationPrincipal Object principal,
-            @RequestBody ReorderRequest request) {
+            @Valid @RequestBody ReorderRequest request) {
         Long userId = getUserIdFromPrincipal(principal);
         urlService.reorderLinks(userId, request.getShortIds());
         return ResponseEntity.ok().build();
@@ -181,7 +180,10 @@ public class UrlController {
 
     @PostMapping("/bulk-delete")
     @Operation(summary = "Bulk delete short URLs", security = @SecurityRequirement(name = "Bearer Authentication"))
-    public ResponseEntity<?> bulkDelete(@RequestBody List<String> shortIds, @AuthenticationPrincipal Long userId) {
+    public ResponseEntity<?> bulkDelete(
+            @RequestBody @jakarta.validation.constraints.Size(max = 200, message = "At most 200 links can be deleted at once")
+            List<@jakarta.validation.constraints.NotBlank String> shortIds,
+            @AuthenticationPrincipal Long userId) {
         if (shortIds == null || shortIds.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("message", "No IDs provided"));
         }
@@ -204,31 +206,20 @@ public class UrlController {
 
     @Operation(summary = "Toggle Bio Link visibility", description = "Shows or hides a link on your public Bio Profile.", security = @SecurityRequirement(name = "Bearer Authentication"))
     @PutMapping("/{shortId}/bio-visibility")
-    public void toggleBioVisibility(@PathVariable String shortId, @RequestBody Map<String, Boolean> request) {
-        Long userId = requireUserId();
-        Boolean showOnBio = request.get("showOnBio");
-        if (showOnBio == null) throw new BadRequestException("showOnBio parameter is required");
-        urlService.toggleShowOnBio(shortId, userId, showOnBio);
+    public void toggleBioVisibility(@PathVariable String shortId, @Valid @RequestBody BioVisibilityRequest request) {
+        urlService.toggleShowOnBio(shortId, requireUserId(), request.showOnBio());
     }
 
     @Operation(summary = "Update link metadata", description = "Allows editing the title and password of an existing link.", security = @SecurityRequirement(name = "Bearer Authentication"))
     @PatchMapping("/{shortId}/metadata")
-    public void updateMetadata(@PathVariable String shortId, @RequestBody Map<String, String> request) {
-        Long userId = requireUserId();
-        
-        String title = request.get("title");
-        String password = request.get("password");
-        
-        urlService.updateUrlMetadata(shortId, userId, title, password);
+    public void updateMetadata(@PathVariable String shortId, @Valid @RequestBody UpdateMetadataRequest request) {
+        urlService.updateUrlMetadata(shortId, requireUserId(), request.title(), request.password());
     }
 
     @Operation(summary = "Update link tags", description = "Allows editing the tags of an existing link.", security = @SecurityRequirement(name = "Bearer Authentication"))
     @PatchMapping("/{shortId}/tags")
-    public void updateTags(@PathVariable String shortId, @RequestBody Map<String, java.util.Set<String>> request) {
-        Long userId = requireUserId();
-        
-        java.util.Set<String> tags = request.get("tags");
-        urlService.updateTags(shortId, userId, tags);
+    public void updateTags(@PathVariable String shortId, @Valid @RequestBody UpdateTagsRequest request) {
+        urlService.updateTags(shortId, requireUserId(), request.tags());
     }
 
     @Operation(summary = "Get public system stats", description = "Returns total links, users, and clicks for landing pages.")

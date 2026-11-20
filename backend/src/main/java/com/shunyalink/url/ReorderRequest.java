@@ -1,9 +1,16 @@
 package com.shunyalink.url;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+
 import java.util.List;
 
 public class ReorderRequest {
-    private List<String> shortIds;
+    /** The owner's links in their new order. Bounded, so one request can't ask for an unbounded number of updates. */
+    @NotNull(message = "shortIds is required")
+    @Size(max = 1000, message = "At most 1000 links can be reordered at once")
+    private List<@NotBlank String> shortIds;
 
     public ReorderRequest() {
     }

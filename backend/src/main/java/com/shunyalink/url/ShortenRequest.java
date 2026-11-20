@@ -34,7 +34,8 @@ public class ShortenRequest {
 
     private boolean useAutoTitle = false;
 
-    private Set<String> tags;
+    @Size(max = LinkTags.MAX_TAGS, message = "A link can have at most " + LinkTags.MAX_TAGS + " tags")
+    private Set<@NotBlank(message = "A tag cannot be blank") @Size(max = LinkTags.MAX_LENGTH, message = "A tag can be at most " + LinkTags.MAX_LENGTH + " characters") String> tags;
 
     public String getLongUrl() {
         return longUrl;
