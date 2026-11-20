@@ -1,10 +1,10 @@
 package com.shunyalink;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
@@ -30,9 +30,9 @@ class ApplicationStartupTest extends BaseIntegrationTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode health = objectMapper.readTree(response.getBody());
-        assertThat(health.path("status").asText()).isEqualTo("UP");
-        assertThat(health.path("components").path("db").path("status").asText()).isEqualTo("UP");
-        assertThat(health.path("components").path("redis").path("status").asText()).isEqualTo("UP");
+        assertThat(health.path("status").asString()).isEqualTo("UP");
+        assertThat(health.path("components").path("db").path("status").asString()).isEqualTo("UP");
+        assertThat(health.path("components").path("redis").path("status").asString()).isEqualTo("UP");
         // Component details (database product, Redis version, disk paths) stay private
         assertThat(response.getBody()).doesNotContain("details");
     }
@@ -43,7 +43,7 @@ class ApplicationStartupTest extends BaseIntegrationTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode document = objectMapper.readTree(response.getBody());
-        assertThat(document.path("openapi").asText()).startsWith("3.");
+        assertThat(document.path("openapi").asString()).startsWith("3.");
         assertThat(document.path("paths").has("/api/v1/auth/login")).isTrue();
     }
 }

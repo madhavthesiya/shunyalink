@@ -1,6 +1,5 @@
 package com.shunyalink.safety;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.shunyalink.logging.LogSafe;
 import com.shunyalink.upstream.Upstream;
 import com.shunyalink.upstream.Upstreams;
@@ -11,6 +10,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClientResponseException;
+import tools.jackson.databind.JsonNode;
 
 import java.util.List;
 import java.util.Locale;
@@ -78,7 +78,7 @@ public class SafeBrowsingClient {
             JsonNode matches = reply.path("matches");
             if (matches.isArray() && !matches.isEmpty()) {
                 log.warn("Safe Browsing flagged host={} threat={}", LogSafe.host(url),
-                        LogSafe.value(matches.get(0).path("threatType").asText()));
+                        LogSafe.value(matches.get(0).path("threatType").asString()));
                 return Verdict.UNSAFE;
             }
             return Verdict.CLEAR; // Google answers {} when the URL is on no list

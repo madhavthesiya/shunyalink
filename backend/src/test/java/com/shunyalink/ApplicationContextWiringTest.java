@@ -7,7 +7,7 @@ import com.shunyalink.auth.VerificationTokenRepository;
 import com.shunyalink.url.UrlRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -27,12 +27,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest(properties = {
         "spring.autoconfigure.exclude="
-                + "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,"
-                + "org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration,"
-                + "org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration,"
-                + "org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration,"
-                + "org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration,"
-                + "org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration",
+                + "org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,"
+                + "org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration,"
+                + "org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration,"
+                + "org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration,"
+                + "org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration,"
+                + "org.springframework.boot.data.redis.autoconfigure.DataRedisRepositoriesAutoConfiguration",
         "app.scheduling.enabled=false"
 })
 @ActiveProfiles("test")
@@ -66,6 +66,19 @@ class ApplicationContextWiringTest {
     @Test
     void applicationContextStarts() {
         assertThat(context.getBeanDefinitionCount()).isPositive();
+    }
+
+    /**
+     * Caching is enabled in RedisConfig rather than on the main class (slice tests inherit the main class's
+     * annotations). Without it, every portfolio view would pay for a new AI roast; this proves it is still on.
+     */
+    @Test
+    void caching_isOnInTheApplication_soRoastsComeFromTheCache() {
+        Object roasts = context.getBean(com.shunyalink.cp.RoastService.class);
+
+        assertThat(roasts).isInstanceOf(org.springframework.aop.framework.Advised.class);
+        assertThat(((org.springframework.aop.framework.Advised) roasts).getAdvisors())
+                .anyMatch(advisor -> advisor.getAdvice() instanceof org.springframework.cache.interceptor.CacheInterceptor);
     }
 
     @Test

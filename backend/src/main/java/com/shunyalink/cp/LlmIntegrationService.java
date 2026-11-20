@@ -1,7 +1,5 @@
 package com.shunyalink.cp;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,6 +8,8 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.core.ParameterizedTypeReference;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import com.shunyalink.upstream.Upstream;
 import com.shunyalink.upstream.Upstreams;
 import java.util.Map;
@@ -26,7 +26,7 @@ import java.util.function.Supplier;
 public class LlmIntegrationService {
 
     private static final Logger log = LoggerFactory.getLogger(LlmIntegrationService.class);
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final JsonMapper JSON = JsonMapper.shared();
 
     private static final String GEMINI_PATH = "/v1beta/models/{model}:generateContent";
     private static final String GROQ_PATH = "/openai/v1/chat/completions";

@@ -32,6 +32,7 @@ Each one states the context, the options considered, what was chosen and what it
 | [0025](0025-shared-anonymous-links-under-concurrency.md) | Let the database decide which identical link wins, then return the winner | Accepted |
 | [0026](0026-problem-details-and-validation-at-the-edge.md) | Problem Details for errors (without breaking clients), and validation at the edge | Accepted |
 | [0027](0027-instants-in-code-utc-in-storage-schema-later.md) | Instants in the code and the API now; column types later, in a rollback-safe way | Accepted |
+| [0028](0028-spring-boot-4-upgrade-proven-by-tests.md) | Spring Boot 4.1 as a version bump on its own, proven by the tests rather than by the compiler | Accepted |
 
 Format: *Context → Options → Decision → Consequences*. A superseded decision stays in place with
 its status changed, so the history of *why* is never lost.

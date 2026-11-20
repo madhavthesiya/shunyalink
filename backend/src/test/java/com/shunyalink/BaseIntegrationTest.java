@@ -3,6 +3,7 @@ package com.shunyalink;
 import com.shunyalink.url.MetadataService;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -21,6 +22,7 @@ import org.testcontainers.utility.DockerImageName;
  * cached application context kept pointing at them. Ryuk removes the containers when the JVM exits.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@AutoConfigureTestRestTemplate // Spring Boot 4 no longer adds a TestRestTemplate to every @SpringBootTest
 @ActiveProfiles("test")
 public abstract class BaseIntegrationTest {
 

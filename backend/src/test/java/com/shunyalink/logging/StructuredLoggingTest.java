@@ -3,8 +3,8 @@ package com.shunyalink.logging;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.spi.LoggingEvent;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.logging.logback.StructuredLogEncoder;
 import org.springframework.core.env.Environment;
@@ -42,9 +42,9 @@ class StructuredLoggingTest {
         String output = new String(encoder.encode(event), StandardCharsets.UTF_8);
 
         assertThat(output.strip().lines()).as("one entry is one line, even with a line break in the message").hasSize(1);
-        JsonNode json = new ObjectMapper().readTree(output);
-        assertThat(json.path("message").asText()).isEqualTo("probe line\nsecond line");
-        assertThat(json.path("requestId").asText()).isEqualTo("req-structured-1");
+        JsonNode json = JsonMapper.shared().readTree(output);
+        assertThat(json.path("message").asString()).isEqualTo("probe line\nsecond line");
+        assertThat(json.path("requestId").asString()).isEqualTo("req-structured-1");
         assertThat(json.has("@timestamp")).isTrue();
     }
 
