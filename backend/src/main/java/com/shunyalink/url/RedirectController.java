@@ -31,6 +31,9 @@ public class RedirectController {
     private static final String PROTECTED_TITLE = "Password-protected link | ShunyaLink";
     private static final String PROTECTED_DESCRIPTION =
             "This link is password-protected. Open it to enter the password.";
+    private static final String BLOCKED_TITLE = "Blocked link | ShunyaLink";
+    private static final String BLOCKED_DESCRIPTION =
+            "This link was blocked: ShunyaLink's safety checks flagged its destination as unsafe.";
 
     private final UrlService urlService;
     private final UrlRepository urlRepository;
@@ -61,6 +64,7 @@ public class RedirectController {
 
         String longUrl;
         boolean hasPassword;
+        boolean blocked;
         String title;
         Long urlId = cachedUrlId(cached);
 
@@ -68,6 +72,7 @@ public class RedirectController {
             // Cache HIT — zero DB hit on the hot path
             longUrl     = (String) cached.get("longUrl");
             hasPassword = "true".equals(cached.get("hasPassword"));
+            blocked     = LinkStatus.FLAGGED.name().equals(cached.get("status"));
             title       = (String) cached.get("title");
 
             // Check expiry from cache
@@ -92,6 +97,7 @@ public class RedirectController {
 
             longUrl     = entity.getLongUrl();
             hasPassword = entity.getPassword() != null;
+            blocked     = entity.getStatus() == LinkStatus.FLAGGED;
             title       = entity.getTitle();
             urlId       = entity.getId();
 
@@ -101,6 +107,15 @@ public class RedirectController {
 
         // Social Bot Detection for Rich Previews (WhatsApp, Twitter, FB, etc.)
         boolean socialBot = isSocialBot(request.getHeader("User-Agent"));
+
+        // A blocked link comes first: not even the right password, and no preview, may lead to its destination (3.4c)
+        if (blocked) {
+            String warningUrl = frontendUrl + "/blocked/" + shortId;
+            if (socialBot) {
+                return socialPreview(BLOCKED_TITLE, BLOCKED_DESCRIPTION, warningUrl, shortId, request);
+            }
+            return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(warningUrl)).build();
+        }
 
         // Password check comes first: the User-Agent is client-controlled, so "being a bot"
         // must never unlock the destination of a protected link.
@@ -132,10 +147,15 @@ public class RedirectController {
                 .build();
     }
 
-    /** Old/incomplete hashes must reload the whole snapshot, never attach a new ID to an old URL. */
+    /**
+     * Old/incomplete hashes must reload the whole snapshot, never attach a new ID to an old URL. An entry without a
+     * status (written before 3.4c) reloads once too, so a link is never assumed active.
+     */
     private Long cachedUrlId(Map<Object, Object> cached) {
         if (cached == null || !(cached.get("longUrl") instanceof String destination) || destination.isBlank()
-                || !("true".equals(cached.get("hasPassword")) || "false".equals(cached.get("hasPassword")))) return null;
+                || !("true".equals(cached.get("hasPassword")) || "false".equals(cached.get("hasPassword")))
+                || !(LinkStatus.ACTIVE.name().equals(cached.get("status"))
+                        || LinkStatus.FLAGGED.name().equals(cached.get("status")))) return null;
         try {
             long id = Long.parseLong((String) cached.get("urlId"));
             Object expiry = cached.get("expiryTime");

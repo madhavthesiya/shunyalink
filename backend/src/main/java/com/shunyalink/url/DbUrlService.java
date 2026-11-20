@@ -41,6 +41,7 @@ public class DbUrlService implements UrlService {
     private final IdEncoder idEncoder;
     private final RedisTemplate<String, String> redisTemplate;
     private static final Logger log = LoggerFactory.getLogger(DbUrlService.class);
+    static final String BLOCKED_MESSAGE = "This link was blocked: our safety checks flagged its destination as unsafe.";
     private final com.shunyalink.analytics.GlobalStatsRepository globalStatsRepository;
     private final MetadataService metadataService;
     private final com.shunyalink.util.EncryptionUtils encryptionUtils;
@@ -50,6 +51,7 @@ public class DbUrlService implements UrlService {
     private final LinkPasswordCipher linkPasswordCipher;
     private final TransactionOperations transactions;
     private final com.shunyalink.cache.RedirectCache redirectCache;
+    private final com.shunyalink.safety.LinkSafetyReview linkSafetyReview;
 
     public DbUrlService(UrlRepository urlRepository,
                         IdEncoder idEncoder,
@@ -62,7 +64,9 @@ public class DbUrlService implements UrlService {
                         PasswordEncoder passwordEncoder,
                         LinkPasswordCipher linkPasswordCipher,
                         TransactionOperations transactions,
-                        com.shunyalink.cache.RedirectCache redirectCache) {
+                        com.shunyalink.cache.RedirectCache redirectCache,
+                        com.shunyalink.safety.LinkSafetyReview linkSafetyReview) {
+        this.linkSafetyReview = linkSafetyReview;
         this.transactions = transactions;
         this.redirectCache = redirectCache;
         this.urlRepository = urlRepository;
@@ -102,13 +106,14 @@ public class DbUrlService implements UrlService {
     }
 
     /**
-     * The safety check calls Google Safe Browsing and AI providers and can take seconds. It runs before the transaction,
-     * so a slow provider never holds one of the pool's two connections; only the database work below is
-     * transactional. (An annotation could not express this: the check would sit inside the transaction.)
+     * Google Safe Browsing runs first, before the transaction, so a slow provider never holds one of the pool's two
+     * connections; only the database work below is transactional. (An annotation could not express this: the check
+     * would sit inside the transaction.) The slower AI check runs after the commit (3.4c): shortening doesn't wait for
+     * it, and a link it flags stops redirecting.
      */
     @Override
     public UrlEntity shortenUrl(String longUrl, String customAlias, Integer expiryDays, Long userId, String title, String password, boolean useAutoTitle, java.util.Set<String> tags) {
-        if (linkSafetyCheck.isUnsafe(longUrl)) {
+        if (linkSafetyCheck.isKnownUnsafe(longUrl)) {
             throw new BadRequestException("Security Alert: This URL has been flagged as malicious or phishing.");
         }
         UrlEntity link;
@@ -137,30 +142,38 @@ public class DbUrlService implements UrlService {
     }
 
     /**
-     * Queues the link preview only once the link is committed. Queued inside the transaction, a rolled-back link
-     * still got a preview (seen in production for a link that lost a race), and a preview could start before its row
-     * was visible. A preview is optional, so a full queue never fails link creation. Without a transaction (unit
-     * tests) it is queued at once.
+     * Runs a task only once the link is committed. Queued inside the transaction, a rolled-back link still got a
+     * preview (seen in production for a link that lost a race), and a task could start before its row was visible.
+     * Without a transaction (unit tests) it runs at once.
      */
+    private static void afterCommit(Runnable task) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    task.run();
+                }
+            });
+        } else {
+            task.run();
+        }
+    }
+
+    /** A preview is optional, so a full queue never fails link creation. */
     private void previewAfterCommit(String shortId, String longUrl, boolean useAutoTitle) {
-        Runnable queue = () -> {
+        afterCommit(() -> {
             try {
                 metadataService.fetchAndProcessMetadataAsync(shortId, longUrl, useAutoTitle);
             } catch (RuntimeException rejected) {
                 log.warn("Link preview not queued for shortId={}: {}", com.shunyalink.logging.LogSafe.value(shortId),
                         rejected.getClass().getSimpleName());
             }
-        };
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    queue.run();
-                }
-            });
-        } else {
-            queue.run();
-        }
+        });
+    }
+
+    /** New links only: an existing link returned for the same URL was reviewed when it was created. */
+    private void reviewAfterCommit(String shortId, String longUrl) {
+        afterCommit(() -> linkSafetyReview.reviewAfterCreation(shortId, longUrl));
     }
 
     private UrlEntity createLink(String longUrl, String customAlias, Integer expiryDays, Long userId, String title, String password, boolean useAutoTitle, java.util.Set<String> tags) {
@@ -207,6 +220,7 @@ public class DbUrlService implements UrlService {
 
             // Trigger Unified Smart AI Fetching (Async) - Always for categorization
             previewAfterCommit(normalized, longUrl, useAutoTitle);
+            reviewAfterCommit(normalized, longUrl);
             return saved;
         }
         // Rule: Only reuse existing links if NO password and NO expiry is requested.
@@ -245,6 +259,7 @@ public class DbUrlService implements UrlService {
 
         // Trigger Unified Smart AI Fetching (Async) - Always for categorization
         previewAfterCommit(shortId, longUrl, useAutoTitle);
+        reviewAfterCommit(shortId, longUrl);
         return saved;
     }
 
@@ -287,6 +302,10 @@ public class DbUrlService implements UrlService {
                 .orElseThrow(() -> new NotFoundException("URL not found"));
         if (entity.getExpiryTime() != null && entity.getExpiryTime().isBefore(Instant.now())) {
             throw new GoneException("Short URL has expired");
+        }
+        // The right password must not unlock a blocked destination either (3.4c)
+        if (entity.getStatus() == LinkStatus.FLAGGED) {
+            throw new com.shunyalink.exception.ForbiddenException(BLOCKED_MESSAGE);
         }
 
         String stored = entity.getPassword();
@@ -375,7 +394,7 @@ public class DbUrlService implements UrlService {
         // indistinguishable from links that don't exist.
         UrlEntity entity = urlRepository.findByShortIdAndUserId(shortId, userId)
                 .orElseThrow(() -> new NotFoundException("Short URL not found"));
-        if (durableAnalyticsReader != null) return durableAnalyticsReader.read(entity, lookbackMs);
+        if (durableAnalyticsReader != null) return withStatus(durableAnalyticsReader.read(entity, lookbackMs), entity);
         long dbClicks = entity.getClickCount();
         Object redisClicksObj = redisTemplate.opsForHash().get("analytics:click_counts", shortId);
         long redisClicks = 0;
@@ -406,7 +425,7 @@ public class DbUrlService implements UrlService {
         Map<String, Long> referrers = analyticsService.getReferrerDistribution(shortId, lookbackMs);
         Map<String, Long> devices = analyticsService.getDeviceDistribution(shortId, lookbackMs);
 
-        return new UrlStatsResponse(
+        return withStatus(new UrlStatsResponse(
                 entity.getShortId(),
                 entity.getLongUrl(),
                 totalClicks,
@@ -421,7 +440,15 @@ public class DbUrlService implements UrlService {
                 devices,
                 entity.getOrderIndex(),
                 entity.getCategory(),
-                entity.getTags());
+                entity.getTags()), entity);
+    }
+
+    /** The owner sees a blocked link, marked as such (3.4c). A missing summary stays missing, as before. */
+    private static UrlStatsResponse withStatus(UrlStatsResponse response, UrlEntity entity) {
+        if (response != null) {
+            response.setStatus(entity.getStatus());
+        }
+        return response;
     }
 
     @Override
@@ -434,7 +461,7 @@ public class DbUrlService implements UrlService {
         }
         if (durableAnalyticsReader != null) {
             var summaries = durableAnalyticsReader.summaries(entities.getContent());
-            return entities.map(entity -> summaries.get(entity.getId()));
+            return entities.map(entity -> withStatus(summaries.get(entity.getId()), entity));
         }
         return entities.map(entity -> {
             long dbClicks = entity.getClickCount();
@@ -456,7 +483,7 @@ public class DbUrlService implements UrlService {
                 } catch (Exception e) {}
             }
 
-            return new UrlStatsResponse(
+            return withStatus(new UrlStatsResponse(
                     entity.getShortId(),
                     entity.getLongUrl(),
                     totalClicks,
@@ -472,14 +499,16 @@ public class DbUrlService implements UrlService {
                     entity.getOrderIndex(),
                     entity.getCategory(),
                     entity.getTags()
-            );
+            ), entity);
         });
     }
 
 
     @Override
     public List<UrlStatsResponse> getBioLinks(Long userId) {
-        List<UrlEntity> entities = urlRepository.findByUserIdAndShowOnBioTrueOrderByOrderIndexAscCreatedAtDesc(userId);
+        // A public page: a blocked link is not listed at all (its owner still sees it, marked, in the dashboard)
+        List<UrlEntity> entities = urlRepository.findByUserIdAndShowOnBioTrueOrderByOrderIndexAscCreatedAtDesc(userId)
+                .stream().filter(link -> link.getStatus() == LinkStatus.ACTIVE).toList();
         if (durableAnalyticsReader != null) {
             return List.copyOf(durableAnalyticsReader.summaries(entities).values());
         }

@@ -39,6 +39,8 @@ export default function PasswordPage() {
         setError("Too many attempts. Please wait a minute and try again.");
       } else if (response.status === 410) {
         setError("This link has expired.");
+      } else if (response.status === 403) {
+        setError("This link was blocked: our safety checks flagged its destination as unsafe.");
       } else if (response.status === 404) {
         setError("This link doesn't exist.");
       } else {

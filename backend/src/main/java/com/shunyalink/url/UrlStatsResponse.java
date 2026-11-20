@@ -27,6 +27,10 @@ public class UrlStatsResponse {
     private String analyticsCollectionStartedAt;
     public String getAnalyticsCollectionStartedAt() { return analyticsCollectionStartedAt; }
     public void setAnalyticsCollectionStartedAt(String start) { analyticsCollectionStartedAt = start; }
+    /** For the owner: ACTIVE, or FLAGGED when the safety checks blocked the link (3.4c). */
+    private LinkStatus status = LinkStatus.ACTIVE;
+    public LinkStatus getStatus() { return status; }
+    public void setStatus(LinkStatus status) { this.status = status; }
     public void setCollectedTotals(long clicks, Instant last) { clickCount = clicks; lastAccessedTime = last; }
 
     public Long getBotClicks() { return botClicks; }

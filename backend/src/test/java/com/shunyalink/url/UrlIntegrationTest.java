@@ -92,30 +92,31 @@ class UrlIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    void phishingCheck_runsBeforeAnyTransactionOrConnectionIsOpened() throws Exception {
-        // The pool has 2 connections. A slow AI call holding one would starve redirects that miss the cache.
-        var transactionActive = new java.util.concurrent.atomic.AtomicReference<Boolean>();
-        var boundResources = new java.util.concurrent.atomic.AtomicReference<java.util.Map<Object, Object>>();
+    void safetyChecks_neverRunInsideATransaction_orHoldAConnection() throws Exception {
+        // The pool has 2 connections. A slow external call holding one would starve redirects that miss the cache.
+        // Safe Browsing runs before the transaction; the AI check runs after the commit, on another thread (3.4c).
+        var states = new java.util.concurrent.ConcurrentHashMap<String, String>();
+        java.util.function.Function<String, Object> record = check -> {
+            states.put(check, org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()
+                    + " " + org.springframework.transaction.support.TransactionSynchronizationManager.getResourceMap());
+            return null;
+        };
+        org.mockito.Mockito.when(safeBrowsing.check(org.mockito.ArgumentMatchers.anyString())).thenAnswer(call -> {
+            record.apply("safe browsing");
+            return com.shunyalink.safety.SafeBrowsingClient.Verdict.CLEAR;
+        });
         org.mockito.Mockito.when(llmIntegrationService.isPhishing(org.mockito.ArgumentMatchers.anyString())).thenAnswer(call -> {
-            transactionActive.set(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive());
-            boundResources.set(org.springframework.transaction.support.TransactionSynchronizationManager.getResourceMap());
+            record.apply("ai");
             return false;
         });
 
         shorten("https://example.com/checked-first", "it-checked", null, null).andExpect(status().isOk());
 
-        assertThat(transactionActive.get()).as("transaction open during the AI call").isFalse();
-        assertThat(boundResources.get()).as("connection or EntityManager bound during the AI call").isEmpty();
+        org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(5)).until(() -> states.containsKey("ai"));
+        assertThat(states).as("transaction active, and resources bound, during each check")
+                .containsEntry("safe browsing", "false {}")
+                .containsEntry("ai", "false {}");
         assertThat(urlRepository.findByShortId("it-checked")).isPresent();
-    }
-
-    @Test
-    void flaggedUrl_isRejectedAndNothingIsStored() throws Exception {
-        org.mockito.Mockito.when(llmIntegrationService.isPhishing("https://paypa1-login.example/verify")).thenReturn(true);
-
-        shorten("https://paypa1-login.example/verify", "it-flagged", null, null).andExpect(status().isBadRequest());
-
-        assertThat(urlRepository.findByShortId("it-flagged")).isEmpty();
     }
 
     @Test
@@ -157,9 +158,10 @@ class UrlIntegrationTest extends BaseIntegrationTest {
             for (int round = 0; round < 5; round++) {
                 String url = prefix + round;
                 var together = new java.util.concurrent.CyclicBarrier(2);
-                org.mockito.Mockito.when(llmIntegrationService.isPhishing(url)).thenAnswer(call -> {
+                // Safe Browsing is the check that runs before the insert (the AI check now runs after the commit)
+                org.mockito.Mockito.when(safeBrowsing.check(url)).thenAnswer(call -> {
                     together.await(10, java.util.concurrent.TimeUnit.SECONDS); // both pass the check at the same moment
-                    return false;
+                    return com.shunyalink.safety.SafeBrowsingClient.Verdict.CLEAR;
                 });
                 var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
                 try {
