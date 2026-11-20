@@ -46,11 +46,8 @@ public class MetadataService {
             String[] parts = aiResult.split("\\|", 2);
             String cleanTitle = parts[0].trim();
             if (cleanTitle.length() > 100) cleanTitle = cleanTitle.substring(0, 100);
-            String category = (parts.length > 1) ? parts[1].trim().toUpperCase() : "GENERAL";
-            // Validate category against known set
-            if (!java.util.Set.of("GENERAL", "VIDEO", "GITHUB", "DOCUMENTATION", "SOCIAL_MEDIA", "PORTFOLIO", "BLOG", "SOCIAL", "NEWS", "TOOL", "EDUCATION", "SHOPPING", "OTHER").contains(category)) {
-                category = "GENERAL";
-            }
+            // Only the categories the prompt offers and the frontend draws; anything else is GENERAL.
+            String category = LinkCategory.parse(parts.length > 1 ? parts[1] : null).name();
 
             final String finalTitle = cleanTitle;
             final String finalCategory = category;

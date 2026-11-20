@@ -121,7 +121,7 @@ public class LlmIntegrationService {
                 "- Remove technical junk like '.html', 'index', or 'Welcome to...'.\n" +
                 "- If the raw title is weak, use the description to craft something much more relatable and descriptive.\n\n" +
                 "RULES FOR THE CATEGORY:\n" +
-                "- Select EXACTLY one: [VIDEO, GITHUB, DOCUMENTATION, SOCIAL_MEDIA, PORTFOLIO, BLOG, GENERAL].\n" +
+                "- Select EXACTLY one: " + com.shunyalink.url.LinkCategory.promptList() + ".\n" +
                 "- This is used for backend indexing only.\n\n" +
                 "OUTPUT FORMAT: CLEAN_TITLE|CATEGORY\n" +
                 "Return ONLY that one line. No quotes, no intro text.\n\n" +
@@ -148,36 +148,6 @@ public class LlmIntegrationService {
 
         // Default fallback if AI fails
         return rawTitle + "|GENERAL";
-    }
-
-    /**
-     * Categorize a URL based on its metadata using Hybrid AI (Gemini prioritized for reasoning).
-     */
-    public String categorizeUrl(String title, String description) {
-        String prompt = "Review this website title and description and categorize it into exactly one word from this list: " +
-                "[VIDEO, GITHUB, DOCUMENTATION, SOCIAL_MEDIA, PORTFOLIO, BLOG, GENERAL]. " +
-                "Only return the category word. " +
-                "Title: " + title + " | Description: " + description;
-
-        // Try Gemini First (Better reasoning for classification)
-        if (isKeyValid(geminiApiKey)) {
-            try {
-                return callGemini(prompt, false).toUpperCase().trim();
-            } catch (Exception e) {
-                // Fallback to Groq
-            }
-        }
-
-        // Fallback to Groq
-        if (isKeyValid(groqApiKey)) {
-            try {
-                return callGroq(prompt, false).toUpperCase().trim();
-            } catch (Exception e) {
-                // Return default
-            }
-        }
-
-        return "GENERAL";
     }
 
     /**
