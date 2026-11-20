@@ -88,6 +88,35 @@ class DbUrlServiceTest {
     // ─── shortenUrl tests ───────────────────────────────────────────
 
     @Test
+    void twoIdenticalAnonymousShortensAtOnce_theLoserGetsTheWinnersLink_notAnError() {
+        // Seen in production (Nov 20): both requests found no link yet, both inserted, and the unique index
+        // idx_long_url_non_custom let only one commit. The other user got 409 "conflicts with existing data".
+        UrlEntity winner = new UrlEntity();
+        winner.setShortId("ei");
+        winner.setLongUrl("https://example.com/same");
+        doThrow(new org.springframework.dao.DataIntegrityViolationException("idx_long_url_non_custom"))
+                .when(transactions).execute(any());
+        when(urlRepository.findFirstByLongUrlAndUserIdIsNullAndIsCustomFalseAndExpiryTimeIsNullAndPasswordIsNull(
+                "https://example.com/same")).thenReturn(Optional.of(winner));
+
+        UrlEntity result = dbUrlService.shortenUrl("https://example.com/same", null, null, null, null, null, false, null);
+
+        assertEquals("ei", result.getShortId());
+    }
+
+    @Test
+    void aConflictOnAnyOtherKindOfLink_isStillReported() {
+        // A custom alias, a password or an expiry is never shared between requests, so there is no winner to return.
+        doThrow(new org.springframework.dao.DataIntegrityViolationException("short_id taken"))
+                .when(transactions).execute(any());
+
+        assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
+                () -> dbUrlService.shortenUrl("https://example.com/x", "myalias", null, null, null, null, false, null));
+        assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
+                () -> dbUrlService.shortenUrl("https://example.com/x", null, 7, null, null, null, false, null));
+    }
+
+    @Test
     void aUrlTheSafetyCheckFlags_isRejected_andNothingIsWritten() {
         // Google lists Google's own test URL as malware; the AI alone might call it fine.
         String malware = "http://malware.testing.google.test/testing/malware/";
