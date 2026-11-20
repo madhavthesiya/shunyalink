@@ -518,15 +518,20 @@ public class DbUrlService implements UrlService {
         urlRepository.delete(entity);
     }
 
+    /**
+     * One query to find which of these links the user owns, one Redis command to drop their cache entries, one DELETE.
+     * It used to be a lookup and a delete per link: 200 links meant 400 round trips to the database in Sydney.
+     * As in {@link #deleteUrl}, the cache is cleared first and strictly: if Redis fails, nothing is deleted.
+     */
     @Override
     @Transactional
     public void deleteUrls(List<String> shortIds, Long userId) {
-        for (String shortId : shortIds) {
-            urlRepository.findByShortIdAndUserId(shortId, userId).ifPresent(entity -> {
-                redirectCache.forget(shortId);
-                urlRepository.delete(entity);
-            });
+        List<String> owned = urlRepository.findShortIdsOwnedBy(shortIds, userId);
+        if (owned.isEmpty()) {
+            return;
         }
+        redirectCache.forgetAll(owned);
+        urlRepository.deleteAllOwnedBy(owned, userId);
     }
 
     @Override
@@ -538,17 +543,9 @@ public class DbUrlService implements UrlService {
         urlRepository.save(entity);
     }
 
+    /** One UPDATE for the whole list (see {@link UrlRepositoryCustomImpl}), not one per link. */
     @Override
-    public void incrementClickCount(String shortId) {
-        redisTemplate.opsForHash().increment("analytics:click_counts", shortId, 1);
-        redisTemplate.opsForValue().set("last_access:" + shortId, LocalDateTime.now().toString());
-    }
-
-    @Override
-    @Transactional
     public void reorderLinks(Long userId, List<String> shortIds) {
-        for (int i = 0; i < shortIds.size(); i++) {
-            urlRepository.updateOrderIndex(shortIds.get(i), userId, i);
-        }
+        urlRepository.reorder(userId, shortIds);
     }
 }

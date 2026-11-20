@@ -446,6 +446,16 @@ class UrlControllerTest {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    void myLinks_aHugePageSize_isCappedAt200() throws Exception {
+        // Unbounded, one request could ask for every row at once. 200 is the most the dashboard asks for.
+        mockMvc.perform(get("/api/v1/url/my-links").param("size", "100000").with(asUser(OWNER_ID)))
+                .andExpect(status().isOk());
+
+        verify(urlService).getMyLinks(eq(OWNER_ID), any(),
+                argThat((org.springframework.data.domain.Pageable page) -> page.getPageSize() == 200));
+    }
+
     // ─── Typed, validated request bodies (3.8a) ─────────────────────
 
     private org.springframework.test.web.servlet.ResultActions send(

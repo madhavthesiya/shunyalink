@@ -19,6 +19,7 @@ import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
@@ -410,10 +411,12 @@ class DbUrlServiceTest {
         existingPublic.setCustom(false);
         existingPublic.setPassword(null);
 
-        // We want the service to ignore this and create a NEW one because we provide a password
-        when(urlRepository.findFirstByLongUrlAndUserIdIsNullAndIsCustomFalse("https://google.com"))
-                .thenReturn(Optional.of(existingPublic));
-        
+        // We want the service to ignore this and create a NEW one because we provide a password.
+        // (This test used to stub a finder the service never calls, so it passed whatever the service did. It now
+        // stubs the real reuse lookup and checks it is never consulted for a password-protected link.)
+        lenient().when(urlRepository.findFirstByLongUrlAndUserIdIsNullAndIsCustomFalseAndExpiryTimeIsNullAndPasswordIsNull(
+                "https://google.com")).thenReturn(Optional.of(existingPublic));
+
         when(urlRepository.getNextId()).thenReturn(9999L);
         when(idEncoder.encode(9999L)).thenReturn("newp123");
         when(urlRepository.save(any())).thenAnswer(i -> i.getArgument(0));
@@ -423,6 +426,41 @@ class DbUrlServiceTest {
         assertEquals("newp123", result.getShortId());
         assertNotEquals("public123", result.getShortId());
         verify(urlRepository).save(any(UrlEntity.class));
+        verify(urlRepository, never())
+                .findFirstByLongUrlAndUserIdIsNullAndIsCustomFalseAndExpiryTimeIsNullAndPasswordIsNull(anyString());
+    }
+
+    // ─── Bulk operations: a fixed number of queries, not one per link (3.8c) ─────────
+
+    @Test
+    void bulkDelete_isOneLookupOneCacheCallAndOneDelete_notTwoQueriesPerLink() {
+        // 200 links used to mean 400 round trips to the database in Sydney, about a minute.
+        when(urlRepository.findShortIdsOwnedBy(List.of("a", "b", "c"), 7L)).thenReturn(List.of("a", "b"));
+
+        dbUrlService.deleteUrls(List.of("a", "b", "c"), 7L);
+
+        verify(redirectCache).forgetAll(List.of("a", "b"));       // only links this user owns
+        verify(urlRepository).deleteAllOwnedBy(List.of("a", "b"), 7L);
+        verify(urlRepository, never()).findByShortIdAndUserId(anyString(), anyLong());
+        verify(urlRepository, never()).delete(any(UrlEntity.class));
+    }
+
+    @Test
+    void bulkDelete_ofLinksNobodyHere_owns_touchesNothing() {
+        when(urlRepository.findShortIdsOwnedBy(List.of("theirs"), 7L)).thenReturn(List.of());
+
+        dbUrlService.deleteUrls(List.of("theirs"), 7L);
+
+        verifyNoInteractions(redirectCache);
+        verify(urlRepository, never()).deleteAllOwnedBy(any(), any());
+    }
+
+    @Test
+    void reorder_isOneStatement_notOneUpdatePerLink() {
+        dbUrlService.reorderLinks(7L, List.of("x", "y", "z"));
+
+        verify(urlRepository).reorder(7L, List.of("x", "y", "z"));
+        verifyNoMoreInteractions(urlRepository);
     }
     // ─── getStats tests ──────────────────────────────────────────────
 

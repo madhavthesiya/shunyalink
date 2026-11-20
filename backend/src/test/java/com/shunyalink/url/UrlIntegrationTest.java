@@ -10,6 +10,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -32,6 +34,9 @@ class UrlIntegrationTest extends BaseIntegrationTest {
 
     @Autowired
     private org.springframework.jdbc.core.JdbcTemplate jdbc;
+
+    @Autowired
+    private UrlService urlService;
 
     @Autowired
     private StringRedisTemplate redis;
@@ -179,6 +184,43 @@ class UrlIntegrationTest extends BaseIntegrationTest {
                     .allSatisfy(id -> assertThat(urlRepository.findByShortId(id)).isPresent());
         } finally {
             jdbc.update("DELETE FROM urls WHERE long_url LIKE ?", prefix + "%");
+        }
+    }
+
+    @Test
+    void bulkDeleteAndReorder_onRealPostgres_touchOnlyTheOwnersLinks() {
+        // The batch SQL (one DELETE with IN, one UPDATE over unnest) runs here against real PostgreSQL.
+        String run = java.util.UUID.randomUUID().toString().substring(0, 6);
+        long owner = jdbc.queryForObject("INSERT INTO users (email, name) VALUES (?, 'Bulk test') RETURNING id",
+                Long.class, "bulk-owner-" + run + "@example.com");
+        long someoneElse = jdbc.queryForObject("INSERT INTO users (email, name) VALUES (?, 'Other') RETURNING id",
+                Long.class, "bulk-other-" + run + "@example.com");
+        java.util.function.BiConsumer<String, Long> link = (id, user) -> jdbc.update(
+                "INSERT INTO urls (short_id, long_url, is_custom, click_count, created_at, user_id) "
+                        + "VALUES (?, ?, true, 0, CURRENT_TIMESTAMP, ?)", id, "https://bulk.example/" + id, user);
+        String a = "b" + run + "a", b = "b" + run + "b", c = "b" + run + "c", e = "b" + run + "e", f = "b" + run + "f";
+        String theirs = "b" + run + "d";
+        for (String id : List.of(a, b, c, e, f)) link.accept(id, owner);
+        link.accept(theirs, someoneElse);
+        jdbc.update("INSERT INTO url_tags (url_id, tag) SELECT id, 'work' FROM urls WHERE short_id = ?", a);
+        try {
+            urlService.deleteUrls(List.of(a, b, theirs), owner);
+
+            assertThat(urlRepository.findByShortId(a)).isEmpty();
+            assertThat(urlRepository.findByShortId(b)).isEmpty();
+            assertThat(urlRepository.findByShortId(theirs)).as("someone else's link").isPresent();
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM url_tags t LEFT JOIN urls u ON u.id = t.url_id "
+                    + "WHERE u.id IS NULL", Integer.class)).as("orphaned tags").isZero();
+
+            urlService.reorderLinks(owner, List.of(f, c, e, theirs, c)); // c listed twice: its last position wins
+
+            assertThat(urlRepository.findByShortId(f).orElseThrow().getOrderIndex()).isEqualTo(0);
+            assertThat(urlRepository.findByShortId(e).orElseThrow().getOrderIndex()).isEqualTo(2);
+            assertThat(urlRepository.findByShortId(c).orElseThrow().getOrderIndex()).isEqualTo(4);
+            assertThat(urlRepository.findByShortId(theirs).orElseThrow().getOrderIndex()).as("not the owner's").isZero();
+        } finally {
+            jdbc.update("DELETE FROM urls WHERE user_id IN (?, ?)", owner, someoneElse);
+            jdbc.update("DELETE FROM users WHERE id IN (?, ?)", owner, someoneElse);
         }
     }
 
