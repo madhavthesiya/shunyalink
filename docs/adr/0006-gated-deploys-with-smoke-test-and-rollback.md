@@ -69,3 +69,11 @@ fake backend: health that stays DOWN fails with the body shown; health that is D
 
 Rejected: removing the database from the health check (it is the one dependency the app cannot work without), and
 raising the pool's connection timeout (it protects every request, not only the health check).
+
+### Update (Nov 21, 2026): a healthy build rolled back, because the gate read JSON as text
+
+The first Spring Boot 4 deploy (`ecf9d0c`) answered health with HTTP 200 and everything UP, but Jackson 3 sorts JSON
+properties, so the body began with `"components"`, not `"status"`. The smoke test matched the prefix
+`{"status":"UP"` and rolled the build back. It now parses responses with `jq` (the top-level `status`, and
+`app.commit`), and `test-smoke-test.sh` runs it in CI against a stub backend. The gate is code that decides
+whether a deploy stays, so it gets tests like any other code. Details in ADR 0028.
