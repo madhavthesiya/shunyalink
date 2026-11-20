@@ -69,25 +69,29 @@ public class LinkSafetyReview {
                 count("clear"); // also when the AI was unavailable: it fails open, and LlmIntegrationService counts that
                 return;
             }
-            flag(shortId, url);
+            count(flag(shortId, url, "ai") ? "flagged" : "not_active"); // not active: already flagged, or deleted
         } catch (RuntimeException e) {
             count("failed");
             log.warn("AI check failed for shortId={}: {}", LogSafe.value(shortId), e.getClass().getSimpleName());
         }
     }
 
-    private void flag(String shortId, String url) {
+    /**
+     * Blocks a link found unsafe after creation, by the AI check or the daily Safe Browsing re-check ({@code source}).
+     * Returns false if it was no longer active (already flagged, or deleted meanwhile).
+     */
+    public boolean flag(String shortId, String url, String source) {
         if (links.flagIfActive(shortId) == 0) {
-            count("not_active"); // already flagged, or deleted meanwhile
-            return;
+            return false;
         }
-        count("flagged");
-        log.warn("Link flagged after creation by the AI check: shortId={} host={}",
-                LogSafe.value(shortId), LogSafe.host(url));
+        metrics.counter("shunyalink.links.flagged", "source", source).increment();
+        log.warn("Link flagged after creation: shortId={} host={} source={}",
+                LogSafe.value(shortId), LogSafe.host(url), source);
         // A redirect that read the link just before the flag can still be writing its cache entry. Drop the entry now,
         // and again a few seconds later, so a stale ACTIVE copy cannot keep redirecting for the cache's 24 hours.
         redirectCache.forgetQuietly(shortId);
         secondEviction.execute(() -> redirectCache.forgetQuietly(shortId));
+        return true;
     }
 
     private void count(String outcome) {

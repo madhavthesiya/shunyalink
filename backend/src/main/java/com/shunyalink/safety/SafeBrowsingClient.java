@@ -12,9 +12,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.databind.JsonNode;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
 /**
  * Google Safe Browsing Lookup API (v4): is this URL on Google's lists of malware, phishing ("social engineering") or
@@ -88,14 +91,59 @@ public class SafeBrowsingClient {
         }
     }
 
+    /** Google's limit for one threatMatches:find request. */
+    public static final int MAX_URLS_PER_REQUEST = 500;
+
+    /**
+     * Which of these URLs are on Google's lists, in one request: for re-checking existing links (3.4c part 2), where a
+     * link that was safe when created may be listed later. Empty when the answer is unknown (off, or Google can't be
+     * asked), so an outage is never mistaken for "all clear"; that is counted.
+     */
+    public Optional<Set<String>> findListed(List<String> urls) {
+        if (urls.size() > MAX_URLS_PER_REQUEST) {
+            throw new IllegalArgumentException("At most " + MAX_URLS_PER_REQUEST + " URLs per request, got " + urls.size());
+        }
+        if (!isEnabled()) {
+            return Optional.empty();
+        }
+        if (urls.isEmpty()) {
+            return Optional.of(Set.of());
+        }
+        try {
+            JsonNode reply = safeBrowsing.call(client -> client.post().uri("/v4/threatMatches:find")
+                    .header("X-Goog-Api-Key", apiKey)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request(urls))
+                    .retrieve().body(JsonNode.class));
+            if (reply == null || !reply.isObject()) {
+                metrics.counter("shunyalink.safebrowsing.batches", "outcome", "unavailable").increment();
+                return Optional.empty();
+            }
+            Set<String> listed = new HashSet<>();
+            for (JsonNode match : reply.path("matches")) {
+                listed.add(match.path("threat").path("url").asString());
+            }
+            metrics.counter("shunyalink.safebrowsing.batches", "outcome", "checked").increment();
+            return Optional.of(listed);
+        } catch (RuntimeException e) {
+            log.warn("Safe Browsing batch unavailable ({})", describe(e));
+            metrics.counter("shunyalink.safebrowsing.batches", "outcome", "unavailable").increment();
+            return Optional.empty();
+        }
+    }
+
     private static Map<String, Object> request(String url) {
+        return request(List.of(url));
+    }
+
+    private static Map<String, Object> request(List<String> urls) {
         return Map.of(
                 "client", Map.of("clientId", "shunyalink", "clientVersion", "1.0"),
                 "threatInfo", Map.of(
                         "threatTypes", THREAT_TYPES,
                         "platformTypes", List.of("ANY_PLATFORM"),
                         "threatEntryTypes", List.of("URL"),
-                        "threatEntries", List.of(Map.of("url", url))));
+                        "threatEntries", urls.stream().map(url -> Map.of("url", url)).toList()));
     }
 
     /** Status code or exception type only. A 400 or 403 here usually means the key is wrong or restricted. */
