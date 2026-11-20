@@ -460,6 +460,7 @@ docker-compose up --build
 | `MAIL_PASSWORD` | Gmail App Password ([generate here](https://myaccount.google.com/apppasswords)) |
 | `GEMINI_API_KEY` | Google Gemini API key (AI categorization + phishing detection) |
 | `GROQ_API_KEY` | Groq API key (AI profile roasts) |
+| `SAFE_BROWSING_API_KEY` | Optional. Google Safe Browsing API key: blocks links on Google's malware and phishing lists before the AI check. Without it the check is off |
 | `CLOUDINARY_URL` | Cloudinary environment URL (profile picture uploads) |
 | `LINK_PASSWORD_KEY` | **Required.** AES-256-GCM key for link passwords: base64 of 32 random bytes (`openssl rand -base64 32`). Keep it safe: losing it makes existing link passwords unreadable |
 | `SCRAPER_API_KEY` | Shared secret between backend and scraper (`openssl rand -hex 32`). Optional locally; set it in production so only the backend can use the scraper |

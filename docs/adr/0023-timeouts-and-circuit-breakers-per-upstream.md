@@ -27,9 +27,9 @@ timeout. Two problems:
   - One client, so one connection pool, with a 2 s connect timeout.
   - A read timeout per service that covers the whole response, body included:
     - 3 s for the platform APIs, below the portfolio's 5 s deadline;
-    - 5 s for Kenkoooo, which took 2 s to answer even from a home connection. In production after part 1 it
-      returned no solved count at all, so either Azure is blocked or it was slower than the old 3 s limit; the
-      new log line names the exception type, which will tell which;
+    - 5 s for Kenkoooo, which took 2 s to answer even from a home connection. In production it had
+      returned no solved count at all. It was not blocked, only slow: with the 5 s timeout, the count appeared
+      (checked Nov 19);
     - 10 s for Codeforces;
     - 15 s for the scraper;
     - 3 s for each AI provider.
