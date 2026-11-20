@@ -5,7 +5,7 @@
 #
 # 1. Waits until <base-url>/actuator/info reports <expected-commit>. A healthy response alone is not
 #    enough: until Azure switches containers, the OLD build keeps answering and would pass.
-# 2. Checks /actuator/health reports UP overall.
+# 2. Checks /actuator/health reports UP overall, retrying for up to SMOKE_HEALTH_SECONDS (default 60).
 # 3. Checks that /<short-id>, a real link, still answers 302 with a Location. This exercises routing,
 #    PostgreSQL or the Redis cache, and the redirect itself.
 #
@@ -50,13 +50,29 @@ while :; do
 done
 echo "    serving ${serving} after ~$((SECONDS))s"
 
-echo "2/3 Checking health"
-health=$(curl -fsS --max-time 10 -A "$user_agent" "${base_url}/actuator/health") \
-  || fail "/actuator/health did not answer 2xx"
-case "$health" in
-  '{"status":"UP"'*) echo "    UP" ;;
-  *) fail "/actuator/health is not UP: ${health}" ;;
-esac
+# Retried, not checked once: in the first seconds after a start the 2-connection database pool can be busy,
+# and the database health check gives up after its 2 s connection timeout (deploy of 6ef00a4, Nov 20). A real
+# outage is still DOWN at the end of the window, so the deploy is still rolled back.
+health_seconds=${SMOKE_HEALTH_SECONDS:-60}
+health_poll_seconds=${SMOKE_HEALTH_POLL_SECONDS:-5}
+echo "2/3 Checking health (up to ${health_seconds}s)"
+health_deadline=$((SECONDS + health_seconds))
+while :; do
+  # No -f: a 503 body names the component that is down, which is what a failed deploy must show.
+  response=$(curl -sS --max-time 10 -A "$user_agent" -w '\n%{http_code}' "${base_url}/actuator/health" 2>/dev/null || true)
+  status=${response##*$'\n'}
+  body=${response%$'\n'*}
+  if [ "$status" = "200" ]; then
+    case "$body" in
+      '{"status":"UP"'*) echo "    UP"; break ;;
+    esac
+  fi
+  if [ "$SECONDS" -ge "$health_deadline" ]; then
+    fail "/actuator/health not UP after ${health_seconds}s: HTTP ${status:-<no answer>} ${body}"
+  fi
+  echo "    not UP yet: HTTP ${status:-<no answer>} ${body}"
+  sleep "$health_poll_seconds"
+done
 
 echo "3/3 Checking that /${short_id} redirects"
 result=$(curl -sS --max-time 10 -A "$user_agent" -o /dev/null -w '%{http_code} %{redirect_url}' "${base_url}/${short_id}") \
