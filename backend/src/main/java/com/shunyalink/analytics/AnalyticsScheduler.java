@@ -7,9 +7,9 @@ import org.springframework.stereotype.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 @Component
 @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
@@ -39,7 +39,7 @@ public class AnalyticsScheduler {
         // Distributed lock — only ONE instance runs this at a time
         String lockValue = UUID.randomUUID().toString();
         Boolean locked = redisTemplate.opsForValue()
-                .setIfAbsent(LOCK_KEY, lockValue, 25, TimeUnit.SECONDS);
+                .setIfAbsent(LOCK_KEY, lockValue, Duration.ofSeconds(25));
 
         if (locked == null || !locked) {
             log.debug("Analytics sync skipped — another instance holds the lock");

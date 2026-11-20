@@ -11,7 +11,7 @@ import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 /**
@@ -27,8 +27,8 @@ import org.testcontainers.utility.DockerImageName;
 public abstract class BaseIntegrationTest {
 
     @ServiceConnection
-    protected static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>(DockerImageName.parse("postgres:16-alpine"));
+    protected static final PostgreSQLContainer POSTGRES =
+            new PostgreSQLContainer(DockerImageName.parse("postgres:16-alpine"));
 
     @ServiceConnection(name = "redis")
     @SuppressWarnings("resource") // closed by Ryuk at JVM exit (singleton pattern)
