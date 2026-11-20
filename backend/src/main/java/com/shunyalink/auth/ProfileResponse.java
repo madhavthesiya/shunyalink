@@ -1,7 +1,6 @@
 package com.shunyalink.auth;
 
 import java.util.List;
-import com.shunyalink.url.UrlStatsResponse;
 
 public class ProfileResponse {
     private String username;
@@ -17,13 +16,14 @@ public class ProfileResponse {
     private String codeChefHandle;
     private String atCoderHandle;
     private String profilePictureUrl;
-    private List<UrlStatsResponse> links;
+    /** Only on a public profile, and only what the bio page shows (see PublicBioLink). */
+    private List<PublicBioLink> links;
 
     public ProfileResponse(String username, String name, String email, boolean emailVerified,
                           String bioText, String themeColor, String profileType,
                           String githubUsername, String leetcodeUsername, String codeforcesUsername,
                           String codeChefHandle, String atCoderHandle, String profilePictureUrl,
-                          List<UrlStatsResponse> links) {
+                          List<PublicBioLink> links) {
         this.username = username;
         this.name = name;
         this.email = email;
@@ -53,5 +53,5 @@ public class ProfileResponse {
     public String getCodeChefHandle() { return codeChefHandle; }
     public String getAtCoderHandle() { return atCoderHandle; }
     public String getProfilePictureUrl() { return profilePictureUrl; }
-    public List<UrlStatsResponse> getLinks() { return links; }
+    public List<PublicBioLink> getLinks() { return links; }
 }

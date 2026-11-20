@@ -41,7 +41,7 @@ public class ProfileService {
                 profile.getCodeChefHandle(),
                 profile.getAtCoderHandle(),
                 profile.getProfilePictureUrl(),
-                urlService.getBioLinks(user.getId()));
+                urlService.getBioLinks(user.getId()).stream().map(PublicBioLink::of).toList());
     }
 
     /**

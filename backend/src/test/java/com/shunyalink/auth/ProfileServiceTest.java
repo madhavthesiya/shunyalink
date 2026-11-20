@@ -10,6 +10,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -31,17 +32,22 @@ class ProfileServiceTest {
     void aPublicProfile_neverShowsTheEmailOrVerificationStatus_andCarriesTheBioLinks() {
         ProfileResponse full = new ProfileResponse("madhav", "Madhav", "me@example.com", true, "bio", "#fff",
                 "PROGRAMMER", "gh", "lc", "cf", "cc", "ac", "https://img.example/p.png", null);
-        List<UrlStatsResponse> bioLinks = List.of(mock(UrlStatsResponse.class));
+        UrlStatsResponse link = mock(UrlStatsResponse.class);
+        when(link.getShortId()).thenReturn("gh");
+        when(link.getTitle()).thenReturn("My GitHub");
+        when(link.getCategory()).thenReturn("CODE");
         when(authService.getProfile("madhav")).thenReturn(full);
         when(users.findByUsername("madhav")).thenReturn(Optional.of(user(7L)));
-        when(urlService.getBioLinks(7L)).thenReturn(bioLinks);
+        when(urlService.getBioLinks(7L)).thenReturn(List.of(link));
 
         ProfileResponse publicView = profiles.publicProfile("madhav");
 
         assertThat(publicView.getEmail()).isNull();
         assertThat(publicView.isEmailVerified()).isFalse();
         assertThat(publicView.getName()).isEqualTo("Madhav");
-        assertThat(publicView.getLinks()).isSameAs(bioLinks);
+        // Only what the bio page shows: never the destination (getLongUrl is not even read)
+        assertThat(publicView.getLinks()).containsExactly(new PublicBioLink("gh", "My GitHub", "CODE"));
+        verify(link, never()).getLongUrl();
     }
 
     @Test
