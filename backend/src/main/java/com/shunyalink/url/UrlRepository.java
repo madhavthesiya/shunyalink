@@ -32,6 +32,16 @@ public interface UrlRepository extends JpaRepository<UrlEntity, Long>, UrlReposi
             + "WHERE u.shortId = :shortId AND u.status = com.shunyalink.url.LinkStatus.ACTIVE")
     int flagIfActive(@Param("shortId") String shortId);
 
+    /**
+     * One page of links that still redirect (active, not expired), after {@code afterId} in id order: keyset pagination,
+     * so each page is an index range scan, and links added or flagged during a run don't shift the pages.
+     */
+    @Query("SELECT new com.shunyalink.url.ActiveLink(u.id, u.shortId, u.longUrl) FROM UrlEntity u "
+            + "WHERE u.status = com.shunyalink.url.LinkStatus.ACTIVE AND u.id > :afterId "
+            + "AND (u.expiryTime IS NULL OR u.expiryTime > :now) ORDER BY u.id")
+    List<ActiveLink> findActiveAfter(@Param("afterId") long afterId, @Param("now") java.time.Instant now,
+                                     org.springframework.data.domain.Pageable limit);
+
     /** One DELETE for a whole bulk delete. Tags and analytics rows go with it: their foreign keys cascade. */
     @Modifying
     @Transactional

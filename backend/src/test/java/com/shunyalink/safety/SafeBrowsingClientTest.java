@@ -90,4 +90,44 @@ class SafeBrowsingClientTest {
         google.verify(); // no request
         assertThat(client("${SAFE_BROWSING_API_KEY}").isEnabled()).isFalse();
     }
+
+    // ─── Batch lookups, for the daily re-check (3.4c part 2) ─────────
+
+    @Test
+    void aBatch_asksAboutEveryUrlInOneRequest_andReturnsTheListedOnes() {
+        google.expect(once(), requestTo(LOOKUP))
+                .andExpect(header("X-Goog-Api-Key", "sb-key"))
+                .andExpect(jsonPath("$.threatInfo.threatEntries.length()").value(2))
+                .andExpect(jsonPath("$.threatInfo.threatEntries[0].url").value("https://example.com/fine"))
+                .andExpect(jsonPath("$.threatInfo.threatEntries[1].url").value(TEST_MALWARE))
+                .andRespond(withSuccess("""
+                        {"matches":[{"threatType":"MALWARE","platformType":"ANY_PLATFORM","threatEntryType":"URL",
+                          "threat":{"url":"http://malware.testing.google.test/testing/malware/"}}]}""",
+                        MediaType.APPLICATION_JSON));
+
+        assertThat(client("sb-key").findListed(java.util.List.of("https://example.com/fine", TEST_MALWARE)))
+                .contains(java.util.Set.of(TEST_MALWARE));
+        google.verify();
+    }
+
+    @Test
+    void aBatchDuringAnOutage_isUnknown_neverAllClear() {
+        google.expect(once(), requestTo(LOOKUP)).andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
+
+        assertThat(client("sb-key").findListed(java.util.List.of(TEST_MALWARE))).isEmpty();
+        var unavailable = metrics.find("shunyalink.safebrowsing.batches").tag("outcome", "unavailable").counter();
+        assertThat(unavailable).isNotNull();
+        assertThat(unavailable.count()).isEqualTo(1);
+    }
+
+    @Test
+    void aBatch_isUnknownWhenOff_andRefusesMoreThanGoogleAccepts() {
+        assertThat(client("").findListed(java.util.List.of(TEST_MALWARE))).isEmpty();
+        google.verify(); // no request
+
+        var tooMany = java.util.stream.IntStream.range(0, SafeBrowsingClient.MAX_URLS_PER_REQUEST + 1)
+                .mapToObj(i -> "https://example.com/" + i).toList();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> client("sb-key").findListed(tooMany))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
 }

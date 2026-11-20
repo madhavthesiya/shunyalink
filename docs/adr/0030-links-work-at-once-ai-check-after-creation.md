@@ -1,10 +1,11 @@
 # ADR 0030: A link works at once; the AI check runs after it exists, and can block it
 
-- **Status:** Accepted (roadmap 3.4c, part 1; owner decision, Nov 21, 2026). Part 2 adds a daily Safe Browsing
-  re-check of active links.
+- **Status:** Accepted (roadmap 3.4c; owner decision, Nov 21, 2026). Part 1 (PR #54): the hybrid check. Part 2: a
+  daily Safe Browsing re-check of active links (see the end of this record).
 - **Code:** `V19__link_status.sql`, `url/LinkStatus`, `safety/LinkSafetyCheck`, `safety/LinkSafetyReview`,
   `url/DbUrlService`, `url/RedirectController`, `cache/RedirectCache`, frontend `app/blocked/[shortId]`,
-  `LinkSafetyIntegrationTest`
+  `LinkSafetyIntegrationTest`; part 2: `safety/LinkSafetyRecheck`, `SafeBrowsingClient.findListed`,
+  `UrlRepository.findActiveAfter`
 
 ## Context
 
@@ -74,3 +75,24 @@ So every shorten took seconds. Of the two, the AI check is the slower one and th
 
   Unit tests cover the double eviction, the full-queue and database-error outcomes, the cache entries without a
   status, and the bio filter.
+
+## Part 2: a daily Safe Browsing re-check of active links
+
+A link that was safe when it was created can lead somewhere malicious later: the domain changes hands, or the page is
+compromised. Once a day (03:30 UTC, `app.safety.recheck-cron`), every link that still redirects (active, not expired)
+is checked against Safe Browsing, and a listed one is flagged exactly as an AI flag would be. That means the same
+status, the same double eviction, and a count in `shunyalink.links.flagged{source=safe_browsing|ai}`.
+
+- **Cost:** one request per 500 links (Google's limit per lookup), with duplicate URLs sent once. This is far inside the
+  free daily quota.
+- **Keyset pagination** (`id > last ORDER BY id`): each page is an index range scan, and links added or flagged
+  during the run don't shift the pages.
+- **An unknown answer is never "all clear":** if Google can't be asked, the run stops and reports how far it got
+  (`Result.complete = false`). The next day's run covers everything again.
+- **Two containers running it** (during a deploy) is harmless: flagging only changes an active link.
+
+Evidence:
+- Unit tests: paging over 500, one entry per duplicate URL, stopping on an outage, and no key means no work.
+- An integration test against real PostgreSQL: only active, unexpired links are sent; a listed one flips to
+  `FLAGGED`. Mutation: without the `status = ACTIVE` condition, an already-blocked link is sent to Google, and the test
+  fails.
