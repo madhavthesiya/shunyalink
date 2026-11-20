@@ -11,12 +11,17 @@
 #
 # Exits non-zero on the first failed check. SMOKE_TIMEOUT_SECONDS (default 900) bounds step 1: cold
 # starts on the App Service plan have taken up to ~5 minutes.
+#
+# Responses are parsed as JSON (jq), never matched as text: the order of JSON properties is not part of the
+# contract. Jackson 3 (Spring Boot 4) sorts them, and a match on '{"status":"UP"' rolled back a healthy build
+# (ecf9d0c, Nov 21, 2026). Tested by test-smoke-test.sh.
 set -euo pipefail
 
 if [ "$#" -ne 3 ]; then
   echo "usage: $0 <base-url> <expected-commit> <short-id>" >&2
   exit 2
 fi
+command -v jq >/dev/null || { echo "::error::smoke-test.sh needs jq"; exit 2; }
 base_url=${1%/}
 expected_commit=$2
 short_id=$3
@@ -29,9 +34,9 @@ fail() {
   exit 1
 }
 
-# Prints the value of a top-level-unique JSON string field, or nothing
-json_field() {
-  grep -o "\"$1\":\"[^\"]*\"" | head -n 1 | cut -d '"' -f 4
+# Prints the string at a jq path of the JSON on stdin, or nothing (missing field, or not JSON)
+json_string() {
+  jq -r "($1) // empty | strings" 2>/dev/null || true
 }
 
 echo "1/3 Waiting up to ${timeout_seconds}s for ${base_url} to serve commit ${expected_commit}"
@@ -39,7 +44,7 @@ deadline=$((SECONDS + timeout_seconds))
 serving=""
 while :; do
   info=$(curl -fsS --max-time 10 -A "$user_agent" "${base_url}/actuator/info" 2>/dev/null || true)
-  serving=$(printf '%s' "$info" | json_field commit || true)
+  serving=$(printf '%s' "$info" | json_string .app.commit)
   if [ "$serving" = "$expected_commit" ]; then
     break
   fi
@@ -62,10 +67,10 @@ while :; do
   response=$(curl -sS --max-time 10 -A "$user_agent" -w '\n%{http_code}' "${base_url}/actuator/health" 2>/dev/null || true)
   status=${response##*$'\n'}
   body=${response%$'\n'*}
-  if [ "$status" = "200" ]; then
-    case "$body" in
-      '{"status":"UP"'*) echo "    UP"; break ;;
-    esac
+  # The overall status is the top-level one; every component also has a "status" of its own.
+  if [ "$status" = "200" ] && [ "$(printf '%s' "$body" | json_string .status)" = "UP" ]; then
+    echo "    UP"
+    break
   fi
   if [ "$SECONDS" -ge "$health_deadline" ]; then
     fail "/actuator/health not UP after ${health_seconds}s: HTTP ${status:-<no answer>} ${body}"

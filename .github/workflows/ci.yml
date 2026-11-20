@@ -116,6 +116,10 @@ jobs:
       - name: Test deployment input validation
         run: bash .github/scripts/test-deploy-inputs.sh
 
+      # The smoke test decides whether a deploy stays or is rolled back, so it is tested too
+      - name: Test the deploy smoke test
+        run: bash .github/scripts/test-smoke-test.sh
+
   dependency-review:
     name: Dependencies · review
     if: github.event_name == 'pull_request'

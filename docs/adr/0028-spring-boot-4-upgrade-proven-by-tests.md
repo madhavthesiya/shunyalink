@@ -47,7 +47,8 @@ Jackson 3, Tomcat 11, Testcontainers 2, and Spring Boot itself split into many s
   - `FAIL_ON_NULL_FOR_PRIMITIVES` is now on. The only request field it affects is `ShortenRequest.useAutoTitle`, and
     only for an explicit `null`; a missing field still means `false`. The frontend always sends a boolean. We keep
     the stricter default: a `null` boolean is a client bug.
-  - Response properties are sorted alphabetically, which JSON clients do not depend on.
+  - Response properties are now sorted alphabetically. I wrote here that JSON clients do not depend on the order.
+    **One did: our own deploy smoke test** (see "The first deploy" below).
 - **Mutations.**
   - With `@EnableCaching` removed entirely, the new `caching_isOnInTheApplication_soRoastsComeFromTheCache` test fails.
     Without that test, moving the annotation could have switched caching off silently, and every portfolio view
@@ -57,6 +58,21 @@ Jackson 3, Tomcat 11, Testcontainers 2, and Spring Boot itself split into many s
 - **Rollback.** No schema change. Hibernate 7 validates the same columns (`ddl-auto=validate` in the integration
   tests), so the automatic rollback of ADR 0006 can still start the previous image.
 
+## The first deploy (PR #49, `ecf9d0c`, Nov 21) was rolled back, and the application was fine
+
+The new build answered `/actuator/health` with **HTTP 200 and every component UP**, ten times in a row. The smoke test
+still declared it unhealthy and rolled it back. It matched the body as text, `{"status":"UP"`, and with Jackson 3 the
+body starts with `{"components":…`, because the properties are sorted. The rollback worked as designed: production kept
+serving the previous build, with no downtime.
+
+- **Fix (PR #51):** the smoke test parses JSON (`jq`) and reads the top-level `status` and `app.commit`, whatever their
+  order.
+- **Why it wasn't caught:** nothing tested the smoke test itself. `test-smoke-test.sh` now runs it in CI against a stub
+  backend with both property orders, a DOWN component, a top-level `UNKNOWN` status where only a component says UP,
+  and a body that isn't JSON. Run against the old script, the Spring Boot 4 case fails, which is the red.
+- **We keep Jackson 3's sorted output** rather than switching it off. JSON object members have no defined order
+  (RFC 8259), so a consumer that depends on the order is the bug, and fixing the consumer removes it for good.
+
 ## Consequences
 
 - (+) A supported framework line that still receives security fixes.
@@ -65,4 +81,5 @@ Jackson 3, Tomcat 11, Testcontainers 2, and Spring Boot itself split into many s
 - (−) Deprecation warnings remain (Redis `TimeUnit` overloads, `HttpStatus.PAYLOAD_TOO_LARGE`, the old Testcontainers
   `PostgreSQLContainer`). They are cleaned up in the next PR, not mixed into this one.
 - (−) A lesson worth keeping: configuration that names classes or keys **as strings** (auto-configuration excludes,
-  property names) fails silently after a major upgrade. Only a test that starts the application finds it.
+  property names) fails silently after a major upgrade. Only a test that starts the application finds it. The same goes
+  for anything that reads JSON as text: the deploy gate was such a reader, and nothing tested it until it misfired.
