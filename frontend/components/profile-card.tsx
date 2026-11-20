@@ -10,6 +10,7 @@ import { GithubWidget } from "./cp/GithubWidget"
 import { CodeChefWidget } from "./cp/CodeChefWidget"
 import { AtCoderWidget } from "./cp/AtCoderWidget"
 import { RoastWidget } from "./cp/RoastWidget"
+import { UnavailablePlatformsNote } from "./cp/UnavailablePlatformsNote"
 
 export interface ProfileLink {
   id: string
@@ -325,6 +326,7 @@ function ProgrammerProfile({ profile, showWatermark }: { profile: ProfileData; s
               </a>
             )}
           </div>
+          <UnavailablePlatformsNote platforms={portfolio?.unavailablePlatforms} />
         </section>
 
         {/* ── LINKS ── */}

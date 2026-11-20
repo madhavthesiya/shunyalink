@@ -120,8 +120,20 @@ public class GlobalExceptionHandler {
     /** Usually a uniqueness race (two requests claiming the same username or email). */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ErrorResponse> handleDataIntegrity(DataIntegrityViolationException ex) {
-        log.warn("Data integrity violation: {}", ex.getMostSpecificCause().getMessage());
+        // Only the constraint's name. PostgreSQL's detail repeats the conflicting values ("Key (long_url)=(...)"),
+        // and a URL can carry a reset token or session ID, which must never reach the logs (ADR 0019).
+        log.warn("Data integrity violation: constraint={}", com.shunyalink.logging.LogSafe.value(constraintName(ex)));
         return buildResponse("This conflicts with existing data. Please try again.", HttpStatus.CONFLICT);
+    }
+
+    static String constraintName(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof org.hibernate.exception.ConstraintViolationException violation
+                    && violation.getConstraintName() != null) {
+                return violation.getConstraintName();
+            }
+        }
+        return "unknown";
     }
 
     /**

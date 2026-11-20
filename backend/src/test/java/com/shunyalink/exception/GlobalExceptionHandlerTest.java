@@ -26,6 +26,16 @@ class GlobalExceptionHandlerTest {
             throw new DataIntegrityViolationException("duplicate key value violates unique constraint \"users_username_key\"");
         }
 
+        /** What PostgreSQL really says for a duplicate link: the detail repeats the whole URL, token included. */
+        @GetMapping("/duplicate-link")
+        String duplicateLink() {
+            java.sql.SQLException postgres = new java.sql.SQLException("ERROR: duplicate key value violates unique "
+                    + "constraint \"idx_long_url_non_custom\"\n  Detail: Key (long_url)=(https://bank.example/reset?token=s3cr3t-reset-token) already exists.");
+            throw new DataIntegrityViolationException("could not execute statement",
+                    new org.hibernate.exception.ConstraintViolationException("could not execute statement", postgres,
+                            "idx_long_url_non_custom"));
+        }
+
         @PostMapping("/json")
         String json(@RequestBody java.util.Map<String, String> body) {
             return "ok";
@@ -48,6 +58,19 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.message").value(GlobalExceptionHandler.GENERIC_ERROR))
                 .andExpect(content().string(not(containsString("hunter2"))))
                 .andExpect(content().string(not(containsString("IllegalStateException"))));
+    }
+
+    @Test
+    @org.junit.jupiter.api.extension.ExtendWith(org.springframework.boot.test.system.OutputCaptureExtension.class)
+    void constraintViolation_logsTheConstraintName_neverTheValuesInIt(org.springframework.boot.test.system.CapturedOutput logs)
+            throws Exception {
+        // URLs can carry reset tokens or session IDs; the logs must never contain them (ADR 0019).
+        mockMvc.perform(get("/duplicate-link")).andExpect(status().isConflict());
+
+        org.assertj.core.api.Assertions.assertThat(logs.getAll())
+                .contains("idx_long_url_non_custom")
+                .doesNotContain("s3cr3t-reset-token")
+                .doesNotContain("bank.example");
     }
 
     @Test

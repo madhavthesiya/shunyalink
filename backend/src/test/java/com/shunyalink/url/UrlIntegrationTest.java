@@ -31,6 +31,9 @@ class UrlIntegrationTest extends BaseIntegrationTest {
     private UrlRepository urlRepository;
 
     @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbc;
+
+    @Autowired
     private StringRedisTemplate redis;
 
     @Test
@@ -135,6 +138,48 @@ class UrlIntegrationTest extends BaseIntegrationTest {
             shorten("https://example.com", null, null, null).andExpect(status().isOk());
         }
         shorten("https://example.com", null, null, null).andExpect(status().isTooManyRequests());
+    }
+
+    @Test
+    void twoIdenticalAnonymousShortensAtOnce_bothGetTheSameLink_andNoPreviewIsQueuedForALinkThatWasRolledBack()
+            throws Exception {
+        // Production, Nov 20: two requests for the same URL both saw "no link yet". The unique index rejected the
+        // second insert (409), and that request had already queued a link preview for a short ID that never existed.
+        // The pool has 2 connections, like production, so exactly two requests race here; a few rounds make the
+        // collision near-certain on the old code.
+        String prefix = "https://race.example/" + java.util.UUID.randomUUID() + "/page-";
+        try {
+            for (int round = 0; round < 5; round++) {
+                String url = prefix + round;
+                var together = new java.util.concurrent.CyclicBarrier(2);
+                org.mockito.Mockito.when(llmIntegrationService.isPhishing(url)).thenAnswer(call -> {
+                    together.await(10, java.util.concurrent.TimeUnit.SECONDS); // both pass the check at the same moment
+                    return false;
+                });
+                var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+                try {
+                    var first = pool.submit(() -> shorten(url, null, null, null).andReturn().getResponse());
+                    var second = pool.submit(() -> shorten(url, null, null, null).andReturn().getResponse());
+                    var a = first.get(30, java.util.concurrent.TimeUnit.SECONDS);
+                    var b = second.get(30, java.util.concurrent.TimeUnit.SECONDS);
+
+                    assertThat(a.getStatus()).as("round %d, first", round).isEqualTo(200);
+                    assertThat(b.getStatus()).as("round %d, second", round).isEqualTo(200);
+                    assertThat(objectMapper.readTree(a.getContentAsString()).path("shortId").asText())
+                            .isEqualTo(objectMapper.readTree(b.getContentAsString()).path("shortId").asText());
+                } finally {
+                    pool.shutdownNow();
+                }
+            }
+
+            var previewed = org.mockito.ArgumentCaptor.forClass(String.class);
+            org.mockito.Mockito.verify(metadataService, org.mockito.Mockito.atLeastOnce()).fetchAndProcessMetadataAsync(
+                    previewed.capture(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyBoolean());
+            assertThat(previewed.getAllValues()).as("previews queued for links that exist")
+                    .allSatisfy(id -> assertThat(urlRepository.findByShortId(id)).isPresent());
+        } finally {
+            jdbc.update("DELETE FROM urls WHERE long_url LIKE ?", prefix + "%");
+        }
     }
 
     private ResultActions shorten(String longUrl, String alias, String title, String password) throws Exception {

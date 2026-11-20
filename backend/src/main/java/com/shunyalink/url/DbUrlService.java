@@ -6,6 +6,8 @@ import com.shunyalink.exception.GoneException;
 import com.shunyalink.exception.NotFoundException;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionOperations;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.stereotype.Service;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.domain.Page;
@@ -107,10 +109,56 @@ public class DbUrlService implements UrlService {
         if (linkSafetyCheck.isUnsafe(longUrl)) {
             throw new BadRequestException("Security Alert: This URL has been flagged as malicious or phishing.");
         }
-        UrlEntity link = transactions.execute(status -> createLink(longUrl, customAlias, expiryDays, userId, title, password, useAutoTitle, tags));
+        UrlEntity link;
+        try {
+            link = transactions.execute(status -> createLink(longUrl, customAlias, expiryDays, userId, title, password, useAutoTitle, tags));
+        } catch (org.springframework.dao.DataIntegrityViolationException raced) {
+            link = winnerOfARace(longUrl, customAlias, expiryDays, userId, password).orElseThrow(() -> raced);
+        }
         // After the commit, so the link exists before a "missing" marker for its ID is cleared.
         redirectCache.forgetQuietly(link.getShortId());
         return link;
+    }
+
+    /**
+     * Plain anonymous links are shared: one URL, one link, enforced by the unique index {@code idx_long_url_non_custom}.
+     * Two identical requests at the same moment can both find no link and both insert; the index lets one commit.
+     * The other request gets the link that won, exactly as if it had arrived a moment later, instead of a 409.
+     * Any other conflict (an alias, a password or an expiry is never shared) is still reported.
+     */
+    private Optional<UrlEntity> winnerOfARace(String longUrl, String customAlias, Integer expiryDays, Long userId, String password) {
+        boolean shared = userId == null && (customAlias == null || customAlias.isBlank())
+                && expiryDays == null && (password == null || password.isBlank());
+        return shared
+                ? urlRepository.findFirstByLongUrlAndUserIdIsNullAndIsCustomFalseAndExpiryTimeIsNullAndPasswordIsNull(longUrl)
+                : Optional.empty();
+    }
+
+    /**
+     * Queues the link preview only once the link is committed. Queued inside the transaction, a rolled-back link
+     * still got a preview (seen in production for a link that lost a race), and a preview could start before its row
+     * was visible. A preview is optional, so a full queue never fails link creation. Without a transaction (unit
+     * tests) it is queued at once.
+     */
+    private void previewAfterCommit(String shortId, String longUrl, boolean useAutoTitle) {
+        Runnable queue = () -> {
+            try {
+                metadataService.fetchAndProcessMetadataAsync(shortId, longUrl, useAutoTitle);
+            } catch (RuntimeException rejected) {
+                log.warn("Link preview not queued for shortId={}: {}", com.shunyalink.logging.LogSafe.value(shortId),
+                        rejected.getClass().getSimpleName());
+            }
+        };
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    queue.run();
+                }
+            });
+        } else {
+            queue.run();
+        }
     }
 
     private UrlEntity createLink(String longUrl, String customAlias, Integer expiryDays, Long userId, String title, String password, boolean useAutoTitle, java.util.Set<String> tags) {
@@ -134,7 +182,7 @@ public class DbUrlService implements UrlService {
                             + "' already exists. Edit that link to change its password or expiry.");
                 }
                 if (ext.getCategory() == null || ext.getCategory().isBlank() || "GENERAL".equals(ext.getCategory())) {
-                    metadataService.fetchAndProcessMetadataAsync(ext.getShortId(), longUrl, useAutoTitle);
+                    previewAfterCommit(ext.getShortId(), longUrl, useAutoTitle);
                 }
                 return ext;
             }
@@ -156,7 +204,7 @@ public class DbUrlService implements UrlService {
             UrlEntity saved = urlRepository.save(entity);
 
             // Trigger Unified Smart AI Fetching (Async) - Always for categorization
-            metadataService.fetchAndProcessMetadataAsync(normalized, longUrl, useAutoTitle);
+            previewAfterCommit(normalized, longUrl, useAutoTitle);
             return saved;
         }
         // Rule: Only reuse existing links if NO password and NO expiry is requested.
@@ -168,7 +216,7 @@ public class DbUrlService implements UrlService {
             if (existing.isPresent()) {
                 UrlEntity ext = existing.get();
                 if (ext.getCategory() == null || ext.getCategory().isBlank() || "GENERAL".equals(ext.getCategory())) {
-                    metadataService.fetchAndProcessMetadataAsync(ext.getShortId(), longUrl, useAutoTitle);
+                    previewAfterCommit(ext.getShortId(), longUrl, useAutoTitle);
                 }
                 return ext;
             }
@@ -194,7 +242,7 @@ public class DbUrlService implements UrlService {
         globalStatsRepository.incrementLinks();
 
         // Trigger Unified Smart AI Fetching (Async) - Always for categorization
-        metadataService.fetchAndProcessMetadataAsync(shortId, longUrl, useAutoTitle);
+        previewAfterCommit(shortId, longUrl, useAutoTitle);
         return saved;
     }
 
