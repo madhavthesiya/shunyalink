@@ -294,6 +294,7 @@ export function DashboardLinksPanel({
                       {url.passwordProtected && (
                         <Lock className="w-3 h-3 text-muted-foreground/60 shrink-0" />
                       )}
+                      {url.status === "FLAGGED" && <BlockedBadge />}
                     </a>
                     {url.title != null && url.title !== "" && (
                       <span className="text-[10px] text-muted-foreground/60 font-mono block">
@@ -413,6 +414,7 @@ export function DashboardLinksPanel({
                         {url.passwordProtected && (
                           <Lock className="w-3 h-3 text-muted-foreground/60 shrink-0" />
                         )}
+                        {url.status === "FLAGGED" && <BlockedBadge />}
                       </a>
                       {url.title != null && url.title !== "" && (
                         <span className="text-[10px] text-muted-foreground/60 font-mono block truncate">
@@ -562,5 +564,17 @@ export function DashboardLinksPanel({
         </GlassPanel>
       )}
     </div>
+  );
+}
+
+/** Shown on a link the safety checks blocked (3.4c): it no longer redirects, and visitors see a warning page. */
+function BlockedBadge() {
+  return (
+    <span
+      className="shrink-0 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-destructive"
+      title="Our safety checks flagged this link's destination as unsafe. Visitors now see a warning page instead."
+    >
+      Blocked
+    </span>
   );
 }

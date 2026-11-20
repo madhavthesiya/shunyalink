@@ -30,11 +30,12 @@ class VirtualThreadsIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void requestsRunOnVirtualThreads_soWaitingOnSlowCallsCostsNoPlatformThread() {
-        // A shorten waits seconds for the AI phishing check; a virtual thread parks instead of holding an OS thread.
+        // A shorten waits for Google Safe Browsing (an external call); a virtual thread parks instead of holding an OS
+        // thread. (The slower AI check runs after the commit, on the async pool, since 3.4c.)
         var virtual = new AtomicReference<Boolean>();
-        when(llmIntegrationService.isPhishing(anyString())).thenAnswer(call -> {
+        when(safeBrowsing.check(anyString())).thenAnswer(call -> {
             virtual.set(Thread.currentThread().isVirtual());
-            return false;
+            return com.shunyalink.safety.SafeBrowsingClient.Verdict.CLEAR;
         });
 
         var response = http.postForEntity("/api/v1/url/shorten",

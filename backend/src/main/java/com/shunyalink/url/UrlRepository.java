@@ -22,6 +22,16 @@ public interface UrlRepository extends JpaRepository<UrlEntity, Long>, UrlReposi
     @Query("SELECT u.shortId FROM UrlEntity u WHERE u.userId = :userId AND u.shortId IN :shortIds")
     List<String> findShortIdsOwnedBy(@Param("shortIds") Collection<String> shortIds, @Param("userId") Long userId);
 
+    /**
+     * Flags a link found unsafe after creation. Only an ACTIVE link changes, so a repeated or late verdict is a no-op;
+     * returns 1 if this call flagged it.
+     */
+    @Modifying
+    @Transactional
+    @Query("UPDATE UrlEntity u SET u.status = com.shunyalink.url.LinkStatus.FLAGGED "
+            + "WHERE u.shortId = :shortId AND u.status = com.shunyalink.url.LinkStatus.ACTIVE")
+    int flagIfActive(@Param("shortId") String shortId);
+
     /** One DELETE for a whole bulk delete. Tags and analytics rows go with it: their foreign keys cascade. */
     @Modifying
     @Transactional

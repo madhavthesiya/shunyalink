@@ -34,6 +34,7 @@ Each one states the context, the options considered, what was chosen and what it
 | [0027](0027-instants-in-code-utc-in-storage-schema-later.md) | Instants in the code and the API now; column types later, in a rollback-safe way | Accepted |
 | [0028](0028-spring-boot-4-upgrade-proven-by-tests.md) | Spring Boot 4.1 as a version bump on its own, proven by the tests rather than by the compiler | Accepted |
 | [0029](0029-public-responses-are-allowlists.md) | Public responses are allowlists (a protected link's destination leaked through the public profile) | Accepted |
+| [0030](0030-links-work-at-once-ai-check-after-creation.md) | A link works at once; the AI check runs after it exists, and can block it | Accepted |
 
 Format: *Context → Options → Decision → Consequences*. A superseded decision stays in place with
 its status changed, so the history of *why* is never lost.

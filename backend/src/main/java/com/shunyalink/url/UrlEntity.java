@@ -53,6 +53,11 @@ public class UrlEntity {
     @Column(length = 20)
     private String category = "GENERAL";
 
+    /** ACTIVE redirects; FLAGGED shows a warning page (roadmap 3.4c). */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 16)
+    private LinkStatus status = LinkStatus.ACTIVE;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "url_tags", joinColumns = @JoinColumn(name = "url_id"))
     @Column(name = "tag")
@@ -163,6 +168,10 @@ public class UrlEntity {
     public String getCategory() { return category; }
 
     public void setCategory(String category) { this.category = category; }
+
+    public LinkStatus getStatus() { return status; }
+
+    public void setStatus(LinkStatus status) { this.status = status; }
 
     public Set<String> getTags() { return tags; }
 

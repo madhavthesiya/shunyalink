@@ -68,6 +68,7 @@ public class RedirectCache {
         fields.put("urlId", link.getId().toString());
         fields.put("longUrl", link.getLongUrl());
         fields.put("hasPassword", String.valueOf(link.getPassword() != null));
+        fields.put("status", link.getStatus().name()); // a FLAGGED link must stay blocked from the cache too (3.4c)
         fields.put("title", link.getTitle() != null ? link.getTitle() : "");
         fields.put("expiryTime", link.getExpiryTime() != null ? com.shunyalink.util.UtcTimes.format(link.getExpiryTime()) : ""); // same text as before: rollback-safe
         redis.opsForHash().putAll(key, fields);

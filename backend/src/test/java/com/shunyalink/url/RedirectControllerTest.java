@@ -69,12 +69,48 @@ class RedirectControllerTest {
     }
 
     private void cached(String shortId, String longUrl, boolean hasPassword, String title) {
+        cached(shortId, longUrl, hasPassword, title, "ACTIVE");
+    }
+
+    private void cached(String shortId, String longUrl, boolean hasPassword, String title, String status) {
         when(hashOps.entries("url:entity:" + shortId)).thenReturn(Map.of(
                 "urlId", "42",
                 "longUrl", longUrl,
                 "hasPassword", String.valueOf(hasPassword),
                 "title", title,
-                "expiryTime", ""));
+                "expiryTime", "",
+                "status", status));
+    }
+
+    // ─── Blocked links (3.4c) ────────────────────────────────────────
+
+    @Test
+    void aFlaggedLinkFromTheCache_goesToTheWarningPage_withoutAClick_evenIfItHasAPassword() throws Exception {
+        cached("evil", "https://paypa1-login.example/verify", true, "", "FLAGGED");
+
+        mockMvc.perform(get("/evil").header("User-Agent", BROWSER_UA))
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location", org.hamcrest.Matchers.endsWith("/blocked/evil")));
+
+        verifyNoInteractions(urlRepository, analyticsService);
+    }
+
+    @Test
+    void aCacheEntryWithoutAStatus_writtenBeforeTheUpgrade_reloadsFromTheDatabase_soAFlagIsNeverMissed() throws Exception {
+        when(hashOps.entries("url:entity:old")).thenReturn(Map.of(
+                "urlId", "42", "longUrl", "https://paypa1-login.example/verify", "hasPassword", "false",
+                "title", "", "expiryTime", ""));
+        UrlEntity flagged = new UrlEntity("old", "https://paypa1-login.example/verify", false);
+        org.springframework.test.util.ReflectionTestUtils.setField(flagged, "id", 42L);
+        flagged.setStatus(LinkStatus.FLAGGED);
+        when(urlRepository.findByShortId("old")).thenReturn(Optional.of(flagged));
+
+        mockMvc.perform(get("/old").header("User-Agent", BROWSER_UA))
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location", org.hamcrest.Matchers.endsWith("/blocked/old")));
+
+        verify(hashOps).putAll(eq("url:entity:old"), argThat(fields -> "FLAGGED".equals(fields.get("status"))));
+        verifyNoInteractions(analyticsService);
     }
 
     // ─── Normal redirects ────────────────────────────────────────────

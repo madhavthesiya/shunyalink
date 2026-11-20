@@ -48,6 +48,10 @@ public abstract class BaseIntegrationTest {
     @MockitoBean
     protected com.shunyalink.cp.LlmIntegrationService llmIntegrationService;
 
+    /** Google Safe Browsing is a third-party API too; by default the mock lists nothing (no verdict is "not listed"). */
+    @MockitoBean
+    protected com.shunyalink.safety.SafeBrowsingClient safeBrowsing;
+
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
 

@@ -22,6 +22,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -62,6 +63,9 @@ class DbUrlServiceTest {
 
     @Mock
     private com.shunyalink.safety.LinkSafetyCheck linkSafetyCheck;
+
+    @Mock
+    private com.shunyalink.safety.LinkSafetyReview linkSafetyReview;
 
     /** Real cipher (spied so Mockito injects it): tests exercise actual GCM round trips. */
     @Spy
@@ -120,7 +124,7 @@ class DbUrlServiceTest {
     void aUrlTheSafetyCheckFlags_isRejected_andNothingIsWritten() {
         // Google lists Google's own test URL as malware; the AI alone might call it fine.
         String malware = "http://malware.testing.google.test/testing/malware/";
-        when(linkSafetyCheck.isUnsafe(malware)).thenReturn(true);
+        when(linkSafetyCheck.isKnownUnsafe(malware)).thenReturn(true);
 
         BadRequestException rejected = assertThrows(BadRequestException.class,
                 () -> dbUrlService.shortenUrl(malware, null, null, null, null, null, false, null));
@@ -142,6 +146,61 @@ class DbUrlServiceTest {
         verify(redirectCache).forgetQuietly("abc123"); // any stale "missing" marker is cleared after the commit
         verify(valueOperations, never()).set(eq("url:abc123"), any());
         verify(valueOperations, never()).set(eq("url:abc123"), any(), any(Duration.class));
+    }
+
+    @Test
+    void aNewLink_isCreatedWithoutWaitingForTheAi_andQueuedForItsReview() {
+        when(urlRepository.getNextId()).thenReturn(1002L);
+        when(idEncoder.encode(1002L)).thenReturn("abc124");
+        when(urlRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        UrlEntity result = dbUrlService.shortenUrl("https://example.com/new", null, null, null, null, null, false, null);
+
+        assertEquals(LinkStatus.ACTIVE, result.getStatus());
+        verify(linkSafetyReview).reviewAfterCreation("abc124", "https://example.com/new");
+    }
+
+    @Test
+    void anExistingLinkReturnedForTheSameUrl_isNotReviewedAgain() {
+        // It was reviewed when it was created
+        UrlEntity existing = new UrlEntity();
+        existing.setShortId("old1");
+        existing.setLongUrl("https://example.com/again");
+        existing.setCategory("TECH");
+        when(urlRepository.findFirstByLongUrlAndUserIdIsNullAndIsCustomFalseAndExpiryTimeIsNullAndPasswordIsNull(
+                "https://example.com/again")).thenReturn(Optional.of(existing));
+
+        dbUrlService.shortenUrl("https://example.com/again", null, null, null, null, null, false, null);
+
+        verify(linkSafetyReview, never()).reviewAfterCreation(any(), any());
+    }
+
+    @Test
+    void aFlaggedLink_cannotBeUnlocked_evenWithTheRightPassword() {
+        UrlEntity blocked = new UrlEntity();
+        blocked.setShortId("locked");
+        blocked.setLongUrl("https://paypa1-login.example/verify");
+        blocked.setPassword(linkPasswordCipher.encrypt("open-sesame", "locked"));
+        blocked.setStatus(LinkStatus.FLAGGED);
+        when(urlRepository.findByShortId("locked")).thenReturn(Optional.of(blocked));
+
+        assertThrows(com.shunyalink.exception.ForbiddenException.class,
+                () -> dbUrlService.resolveProtectedLinkWithIdentity("locked", "open-sesame"));
+    }
+
+    @Test
+    void aFlaggedLink_isNotListedOnThePublicBio() {
+        UrlEntity fine = new UrlEntity();
+        fine.setShortId("fine");
+        fine.setLongUrl("https://example.com/fine");
+        UrlEntity blocked = new UrlEntity();
+        blocked.setShortId("blocked");
+        blocked.setLongUrl("https://paypa1-login.example/verify");
+        blocked.setStatus(LinkStatus.FLAGGED);
+        when(urlRepository.findByUserIdAndShowOnBioTrueOrderByOrderIndexAscCreatedAtDesc(7L))
+                .thenReturn(List.of(fine, blocked));
+
+        assertThat(dbUrlService.getBioLinks(7L)).extracting(UrlStatsResponse::getShortId).containsExactly("fine");
     }
 
     @Test
