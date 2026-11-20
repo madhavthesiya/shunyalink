@@ -70,7 +70,7 @@ class FreshAnalyticsIntegrationTest extends BaseIntegrationTest {
         assertThat(service.getStats(alias, owner, 0).getClickCount()).isEqualTo(expected);
         assertThat(service.getMyLinks(owner, null, PageRequest.of(0, 10)).getContent().getFirst().getClickCount()).isEqualTo(expected);
         assertThat(concrete.getBioLinks(owner).getFirst().getClickCount()).isEqualTo(expected);
-        assertThat(controller.getPublicStats().getBody().totalClicks).isEqualTo(expected);
+        assertThat(controller.getPublicStats().totalClicks()).isEqualTo(expected);
         String csv = exporter.exportToCsv(List.of(links.findById(urlId).orElseThrow()));
         assertThat(csv.split("\n")[1].split(",")[2]).isEqualTo("\"" + expected + "\"");
     }
@@ -106,7 +106,7 @@ class FreshAnalyticsIntegrationTest extends BaseIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT click_count FROM urls WHERE id=?", Long.class, urlId)).isEqualTo(7);
         assertThat(jdbc.queryForObject("SELECT total_clicks FROM platform_stats WHERE id=1", Long.class)).isEqualTo(oldPlatform);
         jdbc.update("DELETE FROM urls WHERE id=?", urlId);
-        assertThat(controller.getPublicStats().getBody().totalClicks).isEqualTo(2); // Deleted links do not lower the fresh platform count.
+        assertThat(controller.getPublicStats().totalClicks()).isEqualTo(2); // Deleted links do not lower the fresh platform count.
     }
 
     @Test

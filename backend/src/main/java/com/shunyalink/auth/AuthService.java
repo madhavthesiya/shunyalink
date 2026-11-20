@@ -2,6 +2,7 @@ package com.shunyalink.auth;
 
 import com.shunyalink.exception.BadRequestException;
 import com.shunyalink.exception.ConflictException;
+import com.shunyalink.exception.ForbiddenException;
 import com.shunyalink.security.JwtBlacklistService;
 import com.shunyalink.security.JwtService;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -269,6 +270,18 @@ public class AuthService {
         jwtBlacklistService.revokeAllForUser(user.getId());
 
         return "Password reset successfully!";
+    }
+
+    /**
+     * Accounts must verify their email before creating links, one at a time or by CSV import. Google accounts are
+     * verified by Google. (Moved from the URL controller unchanged, including: an unknown user is not blocked here.)
+     */
+    public void requireVerifiedEmail(Long userId) {
+        UserEntity user = userRepository.findById(userId).orElse(null);
+        if (user != null && !user.isEmailVerified() && !"GOOGLE".equals(user.getAuthProvider())) {
+            throw new ForbiddenException(
+                    "You must verify your email address before you can create links.");
+        }
     }
 
     public ProfileResponse getProfileById(Long userId) {

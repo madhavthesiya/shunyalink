@@ -475,6 +475,7 @@ public class DbUrlService implements UrlService {
     }
 
 
+    @Override
     public List<UrlStatsResponse> getBioLinks(Long userId) {
         List<UrlEntity> entities = urlRepository.findByUserIdAndShowOnBioTrueOrderByOrderIndexAscCreatedAtDesc(userId);
         if (durableAnalyticsReader != null) {
