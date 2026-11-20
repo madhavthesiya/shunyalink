@@ -4,7 +4,7 @@ import com.shunyalink.url.MetadataService;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -39,11 +39,11 @@ public abstract class BaseIntegrationTest {
     }
 
     /** Link previews fetch third-party pages; that network dependency is not what these tests prove. */
-    @MockBean
+    @MockitoBean
     protected MetadataService metadataService;
 
     /** The phishing check calls third-party AI providers; by default the mock answers "not phishing". */
-    @MockBean
+    @MockitoBean
     protected com.shunyalink.cp.LlmIntegrationService llmIntegrationService;
 
     @Autowired

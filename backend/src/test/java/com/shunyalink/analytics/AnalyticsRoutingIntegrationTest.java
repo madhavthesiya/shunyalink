@@ -7,7 +7,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.mock.mockito.SpyBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.data.domain.Range;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -31,7 +31,7 @@ class AnalyticsRoutingIntegrationTest extends BaseIntegrationTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired StringRedisTemplate redis;
     @Autowired MeterRegistry metrics;
-    @SpyBean AnalyticsBatchApplier applier;
+    @MockitoSpyBean AnalyticsBatchApplier applier;
     @Autowired AnalyticsFallbackBuffer fallback;
     @Autowired FreshAnalyticsCutover cutover;
     private final List<UUID> eventIds = new ArrayList<>();

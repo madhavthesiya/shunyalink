@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
@@ -75,16 +75,16 @@ class BlockedPlatformPortfolioTest {
 
     @Autowired private MockMvc http;
 
-    @MockBean private UserRepository users;
-    @MockBean private CodeforcesService codeforces;
-    @MockBean private CodeChefService codeChef;
-    @MockBean private AtCoderService atCoder;
-    @MockBean private GithubService github;
-    @MockBean private RoastService roasts;
-    @MockBean private RateLimiterService rateLimiter;
-    @MockBean private JwtService jwtService;
-    @MockBean private JwtBlacklistService jwtBlacklistService;
-    @MockBean private CustomUserDetailsService customUserDetailsService;
+    @MockitoBean private UserRepository users;
+    @MockitoBean private CodeforcesService codeforces;
+    @MockitoBean private CodeChefService codeChef;
+    @MockitoBean private AtCoderService atCoder;
+    @MockitoBean private GithubService github;
+    @MockitoBean private RoastService roasts;
+    @MockitoBean private RateLimiterService rateLimiter;
+    @MockitoBean private JwtService jwtService;
+    @MockitoBean private JwtBlacklistService jwtBlacklistService;
+    @MockitoBean private CustomUserDetailsService customUserDetailsService;
 
     @AfterAll
     static void stopLeetCode() throws IOException {

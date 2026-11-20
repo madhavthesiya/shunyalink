@@ -11,7 +11,7 @@ import com.shunyalink.security.SecurityConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -28,27 +28,27 @@ class CpControllerTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @MockitoBean
     private UserRepository userRepository;
-    @MockBean
+    @MockitoBean
     private LeetCodeService leetCodeService;
-    @MockBean
+    @MockitoBean
     private CodeforcesService codeforcesService;
-    @MockBean
+    @MockitoBean
     private CodeChefService codeChefService;
-    @MockBean
+    @MockitoBean
     private AtCoderService atCoderService;
-    @MockBean
+    @MockitoBean
     private GithubService githubService;
-    @MockBean
+    @MockitoBean
     private RoastService roastService;
-    @MockBean
+    @MockitoBean
     private RateLimiterService rateLimiterService;
-    @MockBean
+    @MockitoBean
     private JwtService jwtService;
-    @MockBean
+    @MockitoBean
     private JwtBlacklistService jwtBlacklistService;
-    @MockBean
+    @MockitoBean
     private CustomUserDetailsService customUserDetailsService;
 
     @Test

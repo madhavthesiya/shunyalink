@@ -13,7 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -43,34 +43,34 @@ class UrlControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @MockBean
+    @MockitoBean
     private UrlService urlService;
 
-    @MockBean
+    @MockitoBean
     private RateLimiterService rateLimiterService;
 
-    @MockBean
+    @MockitoBean
     private JwtService jwtService;
 
-    @MockBean
+    @MockitoBean
     private JwtBlacklistService jwtBlacklistService;
 
-    @MockBean
+    @MockitoBean
     private CustomUserDetailsService customUserDetailsService;
 
-    @MockBean
+    @MockitoBean
     private com.shunyalink.auth.AuthService authService;
 
-    @MockBean
+    @MockitoBean
     private LinkExportService linkExportService;
 
-    @MockBean
+    @MockitoBean
     private CsvImportService csvImportService;
 
-    @MockBean
+    @MockitoBean
     private com.shunyalink.analytics.PublicStatsService publicStatsService;
 
-    @MockBean
+    @MockitoBean
     private AnalyticsClickRecorder analyticsService;
 
     /** Same principal shape JwtAuthenticationFilter produces in production: the user id. */
